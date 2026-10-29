@@ -8,6 +8,7 @@ def execute_suspend_restore(
     action: str = "suspend",
     reason: str = "vacation",
     target_date: str = "immediate",
+    caller_reported_payment: str | int | float = "",
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
@@ -18,6 +19,7 @@ def execute_suspend_restore(
         action: Operation to perform ('suspend' or 'restore').
         reason: Reason for suspension (e.g. 'vacation').
         target_date: Effective date or timing (e.g. 'immediate').
+        caller_reported_payment: ONLY what the caller states about a payment they already made, e.g. 'paid yesterday, 85.50'.
         identifier: Account identifier or phone number.
         verification_code: Security verification code if needed.
         language: Preferred language code.
@@ -33,6 +35,7 @@ def execute_suspend_restore(
         action=action,
         reason=reason,
         target_date=target_date,
+        caller_reported_payment=caller_reported_payment,
         identifier=identifier,
         verification_code=verification_code,
         language=language,
@@ -71,6 +74,13 @@ FAKE_BILLING_LEDGER: dict[str, Any] = {  # pragma: no cover
         {"name": "Unreturned Modem Equipment Fee", "category": "equipment", "amount": 150.00},
     ],
     "recent_payments": [
+        {
+            "date": "2026-10-28",
+            "amount": 85.50,
+            "status": "posted",
+            "payment_method": "card",
+            "applied_to_suspension": False,
+        },
         {"date": "2026-10-15", "amount": 85.50, "status": "posted", "payment_method": "card"},
         {"date": "2026-10-15", "amount": 85.50, "status": "duplicate", "payment_method": "card"},
     ],
@@ -1823,6 +1833,7 @@ def execute_suspend_restore_impl(  # pragma: no cover
     action: str = "suspend",
     reason: str = "vacation",
     target_date: str = "immediate",
+    caller_reported_payment: str | int | float = "",
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
@@ -1862,9 +1873,58 @@ def execute_suspend_restore_impl(  # pragma: no cover
         except Exception:
             past_due_dec = Decimal("0.00")
 
-        recent_pmts = FAKE_BILLING_LEDGER.get("recent_payments", [])
-        posted_pmts = [p for p in recent_pmts if p.get("status") == "posted"]
-        posted_amt = Decimal(str(posted_pmts[0]["amount"])) if posted_pmts else Decimal("0.00")
+        reported_pmt_raw = str(caller_reported_payment or "").strip()
+        if reported_pmt_raw:
+            recent_pmts = FAKE_BILLING_LEDGER.get("recent_payments", [])
+            matching_pmt = next(
+                (
+                    p
+                    for p in recent_pmts
+                    if p.get("applied_to_suspension") is False and p.get("status") == "posted"
+                ),
+                None,
+            )
+            if matching_pmt is None:
+                matching_pmt = next((p for p in recent_pmts if p.get("status") == "posted"), None)
+
+            pmt_date = str(matching_pmt.get("date", "2026-10-28")) if matching_pmt else "2026-10-28"
+            pmt_amt = (
+                display_amount(matching_pmt.get("amount", past_due_dec))
+                if matching_pmt
+                else display_amount(past_due_dec)
+            )
+
+            state["is_suspended"] = False
+            state["suspension_reason"] = ""
+            state["service_restored"] = True
+            state["past_due_balance"] = "0.00"
+
+            spoken_summary = localized_text(
+                lang,
+                f"I verified your payment of ${pmt_amt} from yesterday and restored your service.",
+                f"J'ai vérifié votre paiement de {pmt_amt} $ d'hier et j'ai rétabli votre service.",
+                f"Verifiqué su pago de ${pmt_amt} de ayer y restablecí su servicio.",
+            )
+
+            return ok_reply(
+                {
+                    "status": "restored",
+                    "service_restored": True,
+                    "restored_after_payment": True,
+                    "is_suspended": False,
+                    "past_due_balance": "0.00",
+                    "payment_verified": {
+                        "date": pmt_date,
+                        "amount": pmt_amt,
+                    },
+                    "spoken_summary": spoken_summary,
+                    "spoken_message": spoken_summary,
+                    "restoration_eta_minutes": 15,
+                    "confirmation_number": reference,
+                },
+                reference,
+                language=lang,
+            )
 
         session_restored = bool(state.get("service_restored") and not state.get("is_suspended", False))
         pay_arr = bool(state.get("payment_arrangement_active", False))
@@ -1873,7 +1933,6 @@ def execute_suspend_restore_impl(  # pragma: no cover
             past_due_dec == Decimal("0.00")
             or session_restored
             or pay_arr
-            or (posted_amt > Decimal("0.00") and posted_amt >= past_due_dec)
         )
 
         if covers_past_due:
@@ -1899,7 +1958,7 @@ def execute_suspend_restore_impl(  # pragma: no cover
             "PAST_DUE_BALANCE_REQUIRED",
             reference=reference,
             language=lang,
-            agent_action="Take payment for past-due balance first before restoring service.",
+            agent_action="Take the payment first (process_bill_payment), then restore.",
             data={
                 "past_due_balance": display_amount(past_due_dec),
                 "payment_required": True,

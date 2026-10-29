@@ -62,6 +62,13 @@ FAKE_BILLING_LEDGER: dict[str, Any] = {  # pragma: no cover
         {"name": "Unreturned Modem Equipment Fee", "category": "equipment", "amount": 150.00},
     ],
     "recent_payments": [
+        {
+            "date": "2026-10-28",
+            "amount": 85.50,
+            "status": "posted",
+            "payment_method": "card",
+            "applied_to_suspension": False,
+        },
         {"date": "2026-10-15", "amount": 85.50, "status": "posted", "payment_method": "card"},
         {"date": "2026-10-15", "amount": 85.50, "status": "duplicate", "payment_method": "card"},
     ],
@@ -1859,7 +1866,11 @@ def get_billing_summary_impl(  # pragma: no cover
         Decimal("0.00"),
     )
     payments_dec = sum(
-        (Decimal(str(item.get("amount", 0))) for item in recent_pmts),
+        (
+            Decimal(str(item.get("amount", 0)))
+            for item in recent_pmts
+            if item.get("applied_to_suspension") is not False
+        ),
         Decimal("0.00"),
     )
     credits_dec = sum(
@@ -1892,7 +1903,10 @@ def get_billing_summary_impl(  # pragma: no cover
     except Exception:
         past_due_dec = Decimal("0.00")
 
-    posted_pmts = [p for p in recent_pmts if p.get("status") == "posted"]
+    posted_pmts = [
+        p for p in recent_pmts
+        if p.get("status") == "posted" and p.get("applied_to_suspension") is not False
+    ]
     last_pmt_amt_str = str(posted_pmts[0].get("amount", "85.50")) if posted_pmts else "85.50"
     last_pmt_date = str(posted_pmts[0].get("date", "2026-10-15")) if posted_pmts else "2026-10-15"
     last_pmt_method = str(state.get("last_payment_method") or (posted_pmts[0].get("payment_method", "card") if posted_pmts else "card"))
@@ -1909,7 +1923,6 @@ def get_billing_summary_impl(  # pragma: no cover
         past_due_dec == Decimal("0.00")
         or session_restored
         or pay_arr
-        or (last_pmt_dec > Decimal("0.00") and last_pmt_dec >= past_due_dec)
     )
 
     last_payment = {
