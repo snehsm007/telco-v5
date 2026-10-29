@@ -53,14 +53,26 @@ def test_manage_mfa_settings_case2_disable_mfa_step1_sms_stepup(monkeypatch) -> 
 
 def test_manage_mfa_settings_case2_disable_mfa_step2_confirmed(monkeypatch) -> None:
     session = SimpleNamespace(
-        state={"auth_status": "pass", "mfa_enabled": True, "login_code_sent": True}
+        state={"auth_status": "pass", "mfa_enabled": True, "login_code_sent": True, "login_channel": "mfa_sms"}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
-    reply = tool.manage_mfa_settings(action="disable")
+    reply = tool.manage_mfa_settings(action="disable", step_up_code="123456")
     assert reply["status"] == "ok"
     assert reply["data"]["mfa_updated"] is True
     assert reply["data"]["mfa_enabled"] is False
     assert session.state["mfa_enabled"] is False
+
+
+def test_manage_mfa_settings_premature_disable_blocked(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"auth_status": "pass", "mfa_enabled": True, "login_channel": "sms"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.manage_mfa_settings(action="disable")
+    assert reply["status"] == "ok"
+    assert reply["data"]["requires_sms_step_up"] is True
+    assert reply["data"]["mfa_updated"] is False
+    assert session.state["mfa_enabled"] is True
 
 
 def test_manage_mfa_settings_case3_lost_authenticator_email_stepup(monkeypatch) -> None:
@@ -100,7 +112,7 @@ def test_manage_mfa_settings_case4_lost_authenticator_email_code_verified(monkey
 def test_manage_mfa_settings_dict_context(monkeypatch) -> None:
     ctx = {"auth_status": "pass", "login_code_sent": True}
     monkeypatch.setattr(tool, "context", ctx, raising=False)
-    reply = tool.manage_mfa_settings(action="disable")
+    reply = tool.manage_mfa_settings(action="disable", step_up_code="123456")
     assert reply["status"] == "ok"
     assert reply["data"]["mfa_updated"] is True
 
@@ -115,7 +127,7 @@ def test_manage_mfa_settings_none_context(monkeypatch) -> None:
 def test_manage_mfa_settings_localization_fr_and_es(monkeypatch) -> None:
     session_fr = SimpleNamespace(state={"auth_status": "pass", "mfa_enabled": True})
     monkeypatch.setattr(tool, "context", session_fr, raising=False)
-    reply_fr = tool.manage_mfa_settings(action="disable", language="fr-CA")
+    reply_fr = tool.manage_mfa_settings(action="disable", step_up_code="123456", language="fr-CA")
     assert reply_fr["status"] == "ok"
     assert reply_fr["data"]["mfa_updated"] is True
     assert "désactivée" in reply_fr["data"]["spoken_message"]

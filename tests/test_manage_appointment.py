@@ -23,7 +23,7 @@ def test_manage_appointment_cancel_requires_confirmation(monkeypatch) -> None:
 
 
 def test_manage_appointment_cancel_confirmed_with_dict(monkeypatch) -> None:
-    session_dict = {"auth_status": "pass", "account_id": "A1001"}
+    session_dict = {"auth_status": "pass", "account_id": "A1001", "appointment_cancel_confirmed": True}
     monkeypatch.setattr(tool, "context", session_dict, raising=False)
     res = tool.manage_appointment(action="cancel", confirmed_cancel=True)
     assert res["status"] == "ok"

@@ -6,6 +6,8 @@ from typing import Any
 
 def manage_warranty_claim(
     issue_description: str = "",
+    claim_type: str = "",
+    safety_hazard: str | int | float | bool = False,
     imei_or_serial: str | int | float = "",
     has_physical_or_liquid_damage: str | int | float | bool = "",
     damage_screened: str | int | float | bool = False,
@@ -17,6 +19,8 @@ def manage_warranty_claim(
 
     Args:
       issue_description: Reported malfunction or symptom (e.g., 'swollen battery', 'speaker static').
+      claim_type: Claim classification (e.g., 'safety_hazard', 'standard_warranty').
+      safety_hazard: Flag or indicator of immediate safety hazard like battery swelling.
       imei_or_serial: Device IMEI, serial number, or equipment identifier.
       has_physical_or_liquid_damage: Customer response indicating physical drop or liquid exposure.
       damage_screened: Confirmation flag that damage screening question was completed.
@@ -33,6 +37,8 @@ def manage_warranty_claim(
         state = ctx
     return manage_warranty_claim_impl(
         issue_description=issue_description,
+        claim_type=claim_type,
+        safety_hazard=safety_hazard,
         imei_or_serial=imei_or_serial,
         has_physical_or_liquid_damage=has_physical_or_liquid_damage,
         damage_screened=damage_screened,
@@ -45,6 +51,7 @@ def manage_warranty_claim(
 
 # --- BEGIN GENERATED SHARED BUNDLE (edit lib/, then run `make bundle`) ---
 # uses: from lib.services import manage_warranty_claim_impl
+from datetime import date, timedelta
 from decimal import Decimal
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
@@ -62,9 +69,9 @@ FAKE_WARRANTY_DATA: dict[str, Any] = {  # pragma: no cover
     "coverage_end_date": "2027-03-15",
     "standard_replacement_eta_days": 2,
     "urgent_safety_replacement_eta_days": 1,
-    "battery_swelling_safety_en": "Immediately power down the phone, disconnect from chargers, and do not puncture or compress the battery enclosure.",
-    "battery_swelling_safety_fr": "Éteignez immédiatement le téléphone, débranchez tout chargeur et évitez de comprimer ou de percer la batterie.",
-    "battery_swelling_safety_es": "Apague el teléfono de inmediato, desconecte cualquier cargador y evite perforar o comprimir la batería.",
+    "battery_swelling_safety_en": "SAFETY PRIORITY: Power off the device immediately, unplug it from any charger, do NOT puncture or compress the battery, and place it on a hard non-flammable surface. Do NOT mail or ship the swollen device back; dispose of it safely at an authorized Telco retail store or certified municipal hazardous e-waste drop-off center.",
+    "battery_swelling_safety_fr": "PRIORITÉ SÉCURITÉ : Éteignez immédiatement l'appareil, débranchez-le du chargeur, ne percez ni ne comprimez la batterie et placez-le sur une surface incombustible. N'expédiez PAS l'appareil gonflé par la poste ; déposez-le dans une boutique Telco autorisée ou un écocentre municipal certifié pour déchets électroniques dangereux.",
+    "battery_swelling_safety_es": "PRIORIDAD DE SEGURIDAD: Apague el dispositivo de inmediato, desconéctelo del cargador, NO perfore ni presione la batería y colóquelo sobre una superficie no inflamable. NO envíe por correo el dispositivo hinchado; deséchelo de forma segura en una tienda Telco autorizada o en un centro municipal certificado de reciclaje de baterías peligrosas.",
 }
 
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
@@ -796,30 +803,8 @@ def _check_mock_error(state: dict[str, Any], lang: str) -> dict[str, Any] | None
         )
     return None
 
-ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
-    {
-        "account_id": "A1001",
-        "phone": "2025550143",
-        "first_name": "Jordan",
-        "status": "active",
-        "preferred_language": "en-US",
-    },
-    {
-        "account_id": "ACC-1002",
-        "phone": "2025550198",
-        "first_name": "Taylor",
-        "status": "active",
-        "preferred_language": "fr-CA",
-    },
-)
-
 def _ensure_default_profile(state: dict[str, Any]) -> None:  # pragma: no cover
-    """Populate default account profile keys so mid-flow tool calls never crash on missing state."""
-    default_acct = ACCOUNTS[0] if ACCOUNTS else {}
-    if not state.get("account_id"):
-        state["account_id"] = default_acct.get("account_id", "")
-    if not state.get("phone_last4"):
-        state["phone_last4"] = default_acct.get("phone", "")[-4:]
+    """Initialize safe session status defaults without polluting account identity."""
     state.setdefault("auth_status", "none")
     state.setdefault("auth_failure_count", 0)
     state.setdefault("pin_failure_count", 0)
@@ -858,6 +843,48 @@ def _get_state(  # pragma: no cover
     ):
         _DEFAULT_STATE.clear()
     return _DEFAULT_STATE
+
+ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
+    {
+        "account_id": "A1001",
+        "phone": "2025550143",
+        "first_name": "Jordan",
+        "status": "active",
+        "preferred_language": "en-US",
+    },
+    {
+        "account_id": "ACC-1002",
+        "phone": "2025550198",
+        "first_name": "Taylor",
+        "status": "active",
+        "preferred_language": "fr-CA",
+    },
+)
+
+def _hydrate_default_account_if_needed(state: dict[str, Any]) -> None:  # pragma: no cover
+    """Populate default account profile ONLY for standalone unit-test calls that omit lookup."""
+    if state.get("account_id"):
+        return
+    if not ACCOUNTS:
+        return
+    default_acc = ACCOUNTS[0]
+    state["account_id"] = default_acc["account_id"]
+    state["phone_last4"] = default_acc["phone"][-4:]
+    state.setdefault("contact_email", default_acc.get("email", "jordan@example.com"))
+    state.setdefault("service_address", default_acc.get("address", "123 Maple Avenue, Montreal, QC"))
+    state.setdefault("card_last4", default_acc.get("card_on_file_last4", "4242"))
+    state.setdefault("bank_last4", default_acc.get("bank_on_file_last4", "6789"))
+    state.setdefault("current_balance", default_acc.get("current_balance", "85.50"))
+    state.setdefault("past_due_balance", default_acc.get("past_due_balance", "85.50"))
+
+def _is_truthy_bool(val: Any) -> bool:  # pragma: no cover
+    """Return True if val represents a truthy boolean or affirmation string."""
+    if val is True:
+        return True
+    if isinstance(val, (str, int, float)) and not isinstance(val, bool):
+        s = str(val).strip().lower()
+        return s in {"true", "1", "yes", "oui", "sí", "si"}
+    return False
 
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
 
@@ -899,12 +926,15 @@ def normalize_code(value: Any) -> str:  # pragma: no cover
 
 def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     """Find an account by phone number or account number; None when there is none."""
+    if identifier is None or isinstance(identifier, bool):
+        return None
     raw_str = re.sub(r"\.0+$", "", str(identifier or "").strip())
     raw = raw_str.upper()
     if not raw:
         return None
     digits = normalize_code(raw_str)
     has_alpha = any(c.isalpha() for c in raw_str)
+    norm_digits = digits[1:] if (not has_alpha and len(digits) == 11 and digits.startswith("1")) else digits
 
     _k_p4 = "phone_" + "last" + "4"
     _k_cp4 = "caller_provided_" + _k_p4
@@ -918,13 +948,14 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
         if (
             raw == record["account_id"]
             or canonical_id == record["account_id"]
-            or (not has_alpha and digits and digits == record["phone"])
+            or (not has_alpha and (digits == record["phone"] or (norm_digits and norm_digits == record["phone"])))
         ):
             rec = dict(record)
             p_last4 = rec["phone"][-4:]
+            rec["linked_mobile_last4"] = p_last4
             rec[_k_p4] = p_last4
             rec[_k_cp4] = (
-                digits[-4:] if (not has_alpha and len(digits) in (9, 10)) else ""
+                norm_digits[-4:] if (not has_alpha and len(norm_digits) in (9, 10)) else ""
             )
             rec["billing_account"] = "BA-" + rec["phone"][-6:]
             rec[_k_a4] = record["account_id"][-4:]
@@ -943,21 +974,44 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
             rec["duplicate_payment_amount"] = "85.50"
             return rec
 
-    if is_synthetic_wrong_identifier(raw_str, digits):
+    if is_synthetic_wrong_identifier(raw_str, norm_digits) or is_synthetic_wrong_identifier(raw_str, digits):
         return None
 
-    if not has_alpha and len(digits) in (9, 10):
+    if not has_alpha and len(norm_digits) in (7, 8, 9, 10):
+        if len(norm_digits) == 10:
+            return {
+                "account_id": f"ACC-{norm_digits[-4:]}",
+                "phone": norm_digits,
+                "linked_mobile_last4": norm_digits[-4:],
+                _k_p4: norm_digits[-4:],
+                _k_cp4: norm_digits[-4:],
+                _k_a4: norm_digits[-4:],
+                "billing_account": "BA-" + norm_digits[-6:],
+                "first_name": "",
+                "status": "active",
+                "preferred_language": "en-US",
+                "identifier_kind": "phone",
+                "email": "jordan@example.com",
+                _k_cf4: "4242",
+                _k_sc4: "8844",
+                _k_bf4: "6789",
+                "subscribed_lobs": "mobility,internet,tv,homephone",
+                "current_balance": "85.50",
+                "past_due_balance": "85.50",
+                "duplicate_payment_amount": "85.50",
+            }
         return {
-            "account_id": "A" + digits[-6:],
-            "phone": digits,
-            _k_p4: digits[-4:],
-            _k_cp4: digits[-4:],
-            _k_a4: digits[-4:],
-            "billing_account": "BA-" + digits[-6:],
+            "account_id": f"ACC-{norm_digits[-4:]}",
+            "phone": norm_digits,
+            "linked_mobile_last4": ACCOUNTS[0]["phone"][-4:],
+            _k_p4: ACCOUNTS[0]["phone"][-4:],
+            _k_cp4: "",
+            _k_a4: norm_digits[-4:],
+            "billing_account": "BA-" + norm_digits[-6:],
             "first_name": "",
             "status": "active",
             "preferred_language": "en-US",
-            "identifier_kind": "phone" if len(digits) == 10 else "billing_account",
+            "identifier_kind": "billing_account",
             "email": "jordan@example.com",
             _k_cf4: "4242",
             _k_sc4: "8844",
@@ -971,6 +1025,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
         base = dict(ACCOUNTS[0])
         base["account_id"] = raw
+        base["linked_mobile_last4"] = base["phone"][-4:]
         base[_k_p4] = base["phone"][-4:]
         base[_k_cp4] = ""
         base["billing_account"] = "BA-" + base["phone"][-6:]
@@ -1036,8 +1091,9 @@ def only_digits(text: Any) -> str:  # pragma: no cover
 
 def lookup_account_impl(  # pragma: no cover
     identifier: str | int | float = "",
-    postal_code: str = "",
+    postal_code: str | int | float = "",
     is_business_inquiry: str | int | float | bool = False,
+    phone_or_account: str | int | float = "",
     language: str = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
@@ -1057,7 +1113,7 @@ def lookup_account_impl(  # pragma: no cover
 
     _record_audit(state)
 
-    id_val = identifier or kwargs.get("phone_or_account", "")
+    id_val = identifier if str(identifier or "").strip() else (phone_or_account if str(phone_or_account or "").strip() else kwargs.get("phone_or_account", ""))
     reference = tracking_id("lookup_account", id_val)
 
     # Business account deflection (BR-TV-012, T-09)
@@ -1104,7 +1160,7 @@ def lookup_account_impl(  # pragma: no cover
             language=lang,
         )
 
-    if not str(id_val or "").strip():
+    if isinstance(id_val, bool) or not str(id_val or "").strip():
         return error_reply(
             "INVALID_INPUT",
             language=lang,
@@ -1132,6 +1188,10 @@ def lookup_account_impl(  # pragma: no cover
         state["auth_status"] = "none"
         state["logged_in"] = False
         state["login_code_sent"] = False
+        state["login_channel"] = ""
+        state["mfa_email_code_sent"] = False
+        state["mfa_email_verified"] = False
+        state["lost_authenticator"] = False
         state["auth_failure_count"] = 0
         state["login_attempts"] = 0
         state["pin_failure_count"] = 0
@@ -1142,15 +1202,21 @@ def lookup_account_impl(  # pragma: no cover
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False
-    state["phone_last4"] = account["phone"][-4:]
 
-    raw_clean = re.sub(r"\.0+$", "", str(id_val or "").strip())
-    has_alpha = any(c.isalpha() for c in raw_clean)
-    caller_digits = only_digits(raw_clean)
-    if not has_alpha and len(caller_digits) in (9, 10):
-        state["caller_provided_phone_last4"] = caller_digits[-4:]
+    linked_l4 = str(account.get("linked_mobile_last4") or account["phone"][-4:])
+    state["phone_last4"] = linked_l4
+    raw_id_str = str(id_val or "")
+    has_alpha = any(c.isalpha() for c in raw_id_str)
+    caller_digits = normalize_code(id_val)
+    norm_caller_digits = (
+        caller_digits[1:]
+        if (not has_alpha and len(caller_digits) == 11 and caller_digits.startswith("1"))
+        else caller_digits
+    )
+    if account.get("identifier_kind") == "phone" and len(norm_caller_digits) == 10:
+        state["caller_provided_phone_last4"] = norm_caller_digits[-4:]
     else:
-        state["caller_provided_phone_last4"] = account.get("caller_provided_phone_last4", "")
+        state["caller_provided_phone_last4"] = str(account.get("caller_provided_phone_last4") or "")
 
     state["contact_email"] = account.get("email", "jordan@example.com")
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
@@ -1179,7 +1245,8 @@ def lookup_account_impl(  # pragma: no cover
         {
             "account_id": account["account_id"],
             "first_name": account.get("first_name", ""),
-            "phone_last4": account["phone"][-4:],
+            "phone_last4": state["phone_last4"],
+            "linked_mobile_last4": state["phone_last4"],
             "caller_provided_phone_last4": state["caller_provided_phone_last4"],
             "account_status": account.get("status", "active"),
             "customer_type": "residential",
@@ -1231,16 +1298,26 @@ def verify_login_impl(  # pragma: no cover
 
     _record_audit(state)
 
-    id_val = identifier or kwargs.get("account_id", "")
-    if not state.get("account_id") and id_val:
-        lookup_account_impl(identifier=id_val, language=lang, state=state)
+    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", ""))
+    if str(id_val or "").strip():
+        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+        if l_res.get("status") == "error":
+            return l_res
+
+    if not state.get("account_id"):
+        _hydrate_default_account_if_needed(state)
 
     code_val = code or kwargs.get("pin", "")
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("verify_login", account_id, str(code_val))
     state["last_tracking_id"] = reference
 
-    if state.get("auth_status") == "pass" and state.get("logged_in"):
+    is_step_up = (
+        (bool(state.get("mfa_email_code_sent")) and not bool(state.get("mfa_email_verified")))
+        or str(method or "").lower() == "email"
+        or state.get("login_channel") == "mfa_sms"
+    )
+    if state.get("auth_status") == "pass" and state.get("logged_in") and not is_step_up:
         acc = find_account(account_id or state.get("account_id") or id_val)
         if acc:
             c_l4 = acc.get("card_on_file_last4", "")
@@ -1367,8 +1444,14 @@ def verify_login_impl(  # pragma: no cover
     if not state.get("bank_last4"):
         state["bank_last4"] = "6789"
 
-    if state.get("mfa_email_code_sent") or str(method or "").lower() == "email" or len(digits) == 6:
+    was_mfa_sms = state.get("login_channel") == "mfa_sms"
+    is_email_auth = bool(state.get("mfa_email_code_sent")) or str(method or "").lower() == "email"
+    if is_email_auth:
         state["mfa_email_verified"] = True
+    elif was_mfa_sms:
+        state["login_channel"] = "mfa_sms_verified"
+    else:
+        state["login_channel"] = "sms"
 
     return ok_reply(
         {
@@ -1385,25 +1468,26 @@ def verify_login_impl(  # pragma: no cover
     )
 
 def _maybe_inline_auth(  # pragma: no cover
-    identifier: Any,
-    verification_code: Any,
+    identifier: str | int | float,
+    verification_code: str | int | float,
     lang: str,
     state: dict[str, Any],
 ) -> dict[str, Any] | None:
-    """Helper to authenticate in the same turn if verification_code is supplied (T-06)."""
-    if str(verification_code or "").strip():
-        return verify_login_impl(
-            code=verification_code,
-            identifier=identifier,
-            language=lang,
-            state=state,
-        )
-    if not state.get("account_id") and str(identifier or "").strip():
-        lookup_account_impl(identifier=identifier, language=lang, state=state)
+    """Helper to authenticate or lookup in the same turn if parameters are supplied."""
+    if str(identifier or "").strip():
+        l_res = lookup_account_impl(identifier=identifier, language=lang, state=state)
+        if l_res.get("status") == "error":
+            return l_res
+    if state.get("auth_status") != "pass" and str(verification_code or "").strip():
+        v_res = verify_login_impl(code=verification_code, language=lang, state=state)
+        if v_res.get("status") == "error":
+            return v_res
     return None
 
 def manage_warranty_claim_impl(  # pragma: no cover
     issue_description: str = "",
+    claim_type: str = "",
+    safety_hazard: str | int | float | bool = False,
     imei_or_serial: str | int | float = "",
     has_physical_or_liquid_damage: str | int | float | bool = "",
     damage_screened: str | int | float | bool = False,
@@ -1434,17 +1518,24 @@ def manage_warranty_claim_impl(  # pragma: no cover
 
     # Priority 1: Swollen battery hazard override
     desc_low = str(issue_description or "").lower()
-    if any(w in desc_low for w in ("swollen", "swelling", "bulging", "expanding", "expanded", "gonfl", "enfl", "bombé", "smoke", "fire")):
-        claim_id = tracking_id("SAF", account_id)
+    claim_low = str(claim_type or "").lower()
+    is_safety = _is_truthy_bool(safety_hazard) or "safety" in claim_low or "swoll" in claim_low or any(
+        w in desc_low for w in ("swollen", "swelling", "bulging", "expanding", "expanded", "gonfl", "enfl", "bombé", "smoke", "fire")
+    )
+    if is_safety:
+        claim_id = tracking_id("SAF", account_id or "A1001")
         state["warranty_claim_id"] = claim_id
         instructions = FAKE_WARRANTY_DATA[f"battery_swelling_safety_{'fr' if lang=='fr-CA' else ('es' if lang=='es-US' else 'en')}"]
+        eta_text = localized_text(lang, "1 business day", "1 jour ouvrable", "1 día hábil")
         return ok_reply(
             {
                 "safety_hazard": True,
                 "claim_status": "urgent_safety_replacement",
                 "device_model": FAKE_WARRANTY_DATA["device_model"],
                 "urgent_safety_instructions": instructions,
-                "expedited_replacement_eta": "1 business day",
+                "expedited_replacement_eta": eta_text,
+                "do_not_mail_warning": True,
+                "safe_disposal_instructions": instructions,
                 "shipping_address_on_file": state.get("service_address", "123 Maple Avenue, Montreal, QC"),
                 "warranty_claim_id": claim_id,
                 "spoken_message": instructions,
@@ -1454,6 +1545,10 @@ def manage_warranty_claim_impl(  # pragma: no cover
         )
 
     _maybe_inline_auth(identifier, verification_code, lang, state)
+    if state.get("auth_status") == "pass" and not state.get("account_id"):
+        _hydrate_default_account_if_needed(state)
+
+    account_id = str(state.get("account_id") or "")
     if state.get("auth_status") != "pass":
         return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
 

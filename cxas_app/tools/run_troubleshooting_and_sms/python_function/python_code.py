@@ -7,6 +7,7 @@ from typing import Any
 def run_troubleshooting_and_sms(
     service_type: str = "internet",
     symptom: str = "",
+    issue_description: str = "",
     tv_sub_type: str = "",
     send_sms_guide: str | int | float | bool = True,
     identifier: str | int | float = "",
@@ -17,6 +18,7 @@ def run_troubleshooting_and_sms(
     Args:
       service_type: Type of service needing troubleshooting ('internet', 'tv', 'mobility').
       symptom: Description of technical issue or error code (e.g., 'slow connection', 'error 101').
+      issue_description: Detailed description of the technical issue.
       tv_sub_type: Specific TV platform ('satellite' or 'streaming').
       send_sms_guide: Flag indicating whether to dispatch an SMS guide to the user's phone.
       identifier: Optional customer phone or account number if known.
@@ -32,6 +34,7 @@ def run_troubleshooting_and_sms(
     return run_troubleshooting_and_sms_impl(
         service_type=service_type,
         symptom=symptom,
+        issue_description=issue_description,
         tv_sub_type=tv_sub_type,
         send_sms_guide=send_sms_guide,
         identifier=identifier,
@@ -42,6 +45,7 @@ def run_troubleshooting_and_sms(
 
 # --- BEGIN GENERATED SHARED BUNDLE (edit lib/, then run `make bundle`) ---
 # uses: from lib.services import run_troubleshooting_and_sms_impl
+from datetime import date, timedelta
 from decimal import Decimal
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
@@ -49,6 +53,23 @@ from typing import Any
 import hashlib
 import re
 import sys
+
+ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
+    {
+        "account_id": "A1001",
+        "phone": "2025550143",
+        "first_name": "Jordan",
+        "status": "active",
+        "preferred_language": "en-US",
+    },
+    {
+        "account_id": "ACC-1002",
+        "phone": "2025550198",
+        "first_name": "Taylor",
+        "status": "active",
+        "preferred_language": "fr-CA",
+    },
+)
 
 FAKE_TROUBLESHOOTING_GUIDES: dict[str, dict[str, Any]] = {  # pragma: no cover
     "internet": {
@@ -854,30 +875,8 @@ def _check_mock_error(state: dict[str, Any], lang: str) -> dict[str, Any] | None
         )
     return None
 
-ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
-    {
-        "account_id": "A1001",
-        "phone": "2025550143",
-        "first_name": "Jordan",
-        "status": "active",
-        "preferred_language": "en-US",
-    },
-    {
-        "account_id": "ACC-1002",
-        "phone": "2025550198",
-        "first_name": "Taylor",
-        "status": "active",
-        "preferred_language": "fr-CA",
-    },
-)
-
 def _ensure_default_profile(state: dict[str, Any]) -> None:  # pragma: no cover
-    """Populate default account profile keys so mid-flow tool calls never crash on missing state."""
-    default_acct = ACCOUNTS[0] if ACCOUNTS else {}
-    if not state.get("account_id"):
-        state["account_id"] = default_acct.get("account_id", "")
-    if not state.get("phone_last4"):
-        state["phone_last4"] = default_acct.get("phone", "")[-4:]
+    """Initialize safe session status defaults without polluting account identity."""
     state.setdefault("auth_status", "none")
     state.setdefault("auth_failure_count", 0)
     state.setdefault("pin_failure_count", 0)
@@ -957,12 +956,15 @@ def normalize_code(value: Any) -> str:  # pragma: no cover
 
 def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     """Find an account by phone number or account number; None when there is none."""
+    if identifier is None or isinstance(identifier, bool):
+        return None
     raw_str = re.sub(r"\.0+$", "", str(identifier or "").strip())
     raw = raw_str.upper()
     if not raw:
         return None
     digits = normalize_code(raw_str)
     has_alpha = any(c.isalpha() for c in raw_str)
+    norm_digits = digits[1:] if (not has_alpha and len(digits) == 11 and digits.startswith("1")) else digits
 
     _k_p4 = "phone_" + "last" + "4"
     _k_cp4 = "caller_provided_" + _k_p4
@@ -976,13 +978,14 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
         if (
             raw == record["account_id"]
             or canonical_id == record["account_id"]
-            or (not has_alpha and digits and digits == record["phone"])
+            or (not has_alpha and (digits == record["phone"] or (norm_digits and norm_digits == record["phone"])))
         ):
             rec = dict(record)
             p_last4 = rec["phone"][-4:]
+            rec["linked_mobile_last4"] = p_last4
             rec[_k_p4] = p_last4
             rec[_k_cp4] = (
-                digits[-4:] if (not has_alpha and len(digits) in (9, 10)) else ""
+                norm_digits[-4:] if (not has_alpha and len(norm_digits) in (9, 10)) else ""
             )
             rec["billing_account"] = "BA-" + rec["phone"][-6:]
             rec[_k_a4] = record["account_id"][-4:]
@@ -1001,21 +1004,44 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
             rec["duplicate_payment_amount"] = "85.50"
             return rec
 
-    if is_synthetic_wrong_identifier(raw_str, digits):
+    if is_synthetic_wrong_identifier(raw_str, norm_digits) or is_synthetic_wrong_identifier(raw_str, digits):
         return None
 
-    if not has_alpha and len(digits) in (9, 10):
+    if not has_alpha and len(norm_digits) in (7, 8, 9, 10):
+        if len(norm_digits) == 10:
+            return {
+                "account_id": f"ACC-{norm_digits[-4:]}",
+                "phone": norm_digits,
+                "linked_mobile_last4": norm_digits[-4:],
+                _k_p4: norm_digits[-4:],
+                _k_cp4: norm_digits[-4:],
+                _k_a4: norm_digits[-4:],
+                "billing_account": "BA-" + norm_digits[-6:],
+                "first_name": "",
+                "status": "active",
+                "preferred_language": "en-US",
+                "identifier_kind": "phone",
+                "email": "jordan@example.com",
+                _k_cf4: "4242",
+                _k_sc4: "8844",
+                _k_bf4: "6789",
+                "subscribed_lobs": "mobility,internet,tv,homephone",
+                "current_balance": "85.50",
+                "past_due_balance": "85.50",
+                "duplicate_payment_amount": "85.50",
+            }
         return {
-            "account_id": "A" + digits[-6:],
-            "phone": digits,
-            _k_p4: digits[-4:],
-            _k_cp4: digits[-4:],
-            _k_a4: digits[-4:],
-            "billing_account": "BA-" + digits[-6:],
+            "account_id": f"ACC-{norm_digits[-4:]}",
+            "phone": norm_digits,
+            "linked_mobile_last4": ACCOUNTS[0]["phone"][-4:],
+            _k_p4: ACCOUNTS[0]["phone"][-4:],
+            _k_cp4: "",
+            _k_a4: norm_digits[-4:],
+            "billing_account": "BA-" + norm_digits[-6:],
             "first_name": "",
             "status": "active",
             "preferred_language": "en-US",
-            "identifier_kind": "phone" if len(digits) == 10 else "billing_account",
+            "identifier_kind": "billing_account",
             "email": "jordan@example.com",
             _k_cf4: "4242",
             _k_sc4: "8844",
@@ -1029,6 +1055,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
         base = dict(ACCOUNTS[0])
         base["account_id"] = raw
+        base["linked_mobile_last4"] = base["phone"][-4:]
         base[_k_p4] = base["phone"][-4:]
         base[_k_cp4] = ""
         base["billing_account"] = "BA-" + base["phone"][-6:]
@@ -1094,8 +1121,9 @@ def only_digits(text: Any) -> str:  # pragma: no cover
 
 def lookup_account_impl(  # pragma: no cover
     identifier: str | int | float = "",
-    postal_code: str = "",
+    postal_code: str | int | float = "",
     is_business_inquiry: str | int | float | bool = False,
+    phone_or_account: str | int | float = "",
     language: str = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
@@ -1115,7 +1143,7 @@ def lookup_account_impl(  # pragma: no cover
 
     _record_audit(state)
 
-    id_val = identifier or kwargs.get("phone_or_account", "")
+    id_val = identifier if str(identifier or "").strip() else (phone_or_account if str(phone_or_account or "").strip() else kwargs.get("phone_or_account", ""))
     reference = tracking_id("lookup_account", id_val)
 
     # Business account deflection (BR-TV-012, T-09)
@@ -1162,7 +1190,7 @@ def lookup_account_impl(  # pragma: no cover
             language=lang,
         )
 
-    if not str(id_val or "").strip():
+    if isinstance(id_val, bool) or not str(id_val or "").strip():
         return error_reply(
             "INVALID_INPUT",
             language=lang,
@@ -1190,6 +1218,10 @@ def lookup_account_impl(  # pragma: no cover
         state["auth_status"] = "none"
         state["logged_in"] = False
         state["login_code_sent"] = False
+        state["login_channel"] = ""
+        state["mfa_email_code_sent"] = False
+        state["mfa_email_verified"] = False
+        state["lost_authenticator"] = False
         state["auth_failure_count"] = 0
         state["login_attempts"] = 0
         state["pin_failure_count"] = 0
@@ -1200,15 +1232,21 @@ def lookup_account_impl(  # pragma: no cover
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False
-    state["phone_last4"] = account["phone"][-4:]
 
-    raw_clean = re.sub(r"\.0+$", "", str(id_val or "").strip())
-    has_alpha = any(c.isalpha() for c in raw_clean)
-    caller_digits = only_digits(raw_clean)
-    if not has_alpha and len(caller_digits) in (9, 10):
-        state["caller_provided_phone_last4"] = caller_digits[-4:]
+    linked_l4 = str(account.get("linked_mobile_last4") or account["phone"][-4:])
+    state["phone_last4"] = linked_l4
+    raw_id_str = str(id_val or "")
+    has_alpha = any(c.isalpha() for c in raw_id_str)
+    caller_digits = normalize_code(id_val)
+    norm_caller_digits = (
+        caller_digits[1:]
+        if (not has_alpha and len(caller_digits) == 11 and caller_digits.startswith("1"))
+        else caller_digits
+    )
+    if account.get("identifier_kind") == "phone" and len(norm_caller_digits) == 10:
+        state["caller_provided_phone_last4"] = norm_caller_digits[-4:]
     else:
-        state["caller_provided_phone_last4"] = account.get("caller_provided_phone_last4", "")
+        state["caller_provided_phone_last4"] = str(account.get("caller_provided_phone_last4") or "")
 
     state["contact_email"] = account.get("email", "jordan@example.com")
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
@@ -1237,7 +1275,8 @@ def lookup_account_impl(  # pragma: no cover
         {
             "account_id": account["account_id"],
             "first_name": account.get("first_name", ""),
-            "phone_last4": account["phone"][-4:],
+            "phone_last4": state["phone_last4"],
+            "linked_mobile_last4": state["phone_last4"],
             "caller_provided_phone_last4": state["caller_provided_phone_last4"],
             "account_status": account.get("status", "active"),
             "customer_type": "residential",
@@ -1254,6 +1293,7 @@ def lookup_account_impl(  # pragma: no cover
 def run_troubleshooting_and_sms_impl(  # pragma: no cover
     service_type: str = "internet",
     symptom: str = "",
+    issue_description: str = "",
     tv_sub_type: str = "",
     send_sms_guide: str | int | float | bool = True,
     identifier: str | int | float = "",
@@ -1274,12 +1314,14 @@ def run_troubleshooting_and_sms_impl(  # pragma: no cover
     if mock_err:
         return mock_err
 
-    if not state.get("account_id") and str(identifier or "").strip():
-        lookup_account_impl(identifier=identifier, language=lang, state=state)
+    if str(identifier or "").strip():
+        l_res = lookup_account_impl(identifier=identifier, language=lang, state=state)
+        if l_res.get("status") == "error":
+            return l_res
 
     _record_audit(state)
 
-    sym = str(symptom or "").lower()
+    sym = str(symptom or issue_description or kwargs.get("issue_description") or "").lower()
     st = str(service_type or "internet").lower()
     tv_sub = str(tv_sub_type or state.get("tv_sub_type") or "").lower()
 
@@ -1303,7 +1345,7 @@ def run_troubleshooting_and_sms_impl(  # pragma: no cover
     if sms_sent:
         state["troubleshooting_sms_sent"] = True
 
-    p_l4 = state.get("caller_provided_phone_last4") or state.get("phone_last4") or ""
+    p_l4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or ACCOUNTS[0]["phone"][-4:])
     ref = tracking_id("TBS", state.get("account_id", ""), guide_key)
     state["last_tracking_id"] = ref
 

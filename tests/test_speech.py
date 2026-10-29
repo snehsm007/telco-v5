@@ -235,3 +235,117 @@ def test_enforce_handover_utterance_called_tools_default_live_agent() -> None:
         tool_args_list=({"identifier": "2025550143"},),
     )
     assert line_no_tools == ""
+
+
+def test_speech_mappingproxy_and_adk_state() -> None:
+    from types import MappingProxyType
+
+    class MockAdkState:
+        def __init__(self, data: dict[str, Any]) -> None:
+            self._data = dict(data)
+
+        def get(self, key: str, default: Any = None) -> Any:
+            return self._data.get(key, default)
+
+        def __getitem__(self, key: str) -> Any:
+            return self._data[key]
+
+    raw = {
+        "caller_provided_phone_last4": "0199",
+        "card_last4": "4242",
+        "bank_last4": "6789",
+        "account_id": "A558475",
+        "language": "fr-CA",
+        "handover_complete": True,
+        "handoff_message": "Message de transfert",
+    }
+    for state_obj in (MappingProxyType(raw), MockAdkState(raw)):
+        res = clean_agent_speech("Votre carte terminant par 0000 est valide.", state_obj)
+        assert "4242" in res
+        res_bank = clean_agent_speech("Votre compte bancaire terminant par 0000 est valide.", state_obj)
+        assert "6789" in res_bank
+        handover_res = enforce_handover_utterance("", state_obj)
+        assert handover_res == "Message de transfert"
+
+
+def test_speech_account_last4_never_rewritten_to_bank() -> None:
+    params = {
+        "caller_provided_phone_last4": "0199",
+        "card_last4": "4242",
+        "bank_last4": "6789",
+        "account_id": "A558475",
+    }
+    # Account ending in 0199 (same as caller phone)
+    assert clean_agent_speech("I found your account ending in 0199.", params) == "I found your account ending in 0199."
+    assert clean_agent_speech("J'ai trouvé votre compte se terminant par 0199.", params) == "J'ai trouvé votre compte se terminant par 0199."
+    # Account ending in 8475 (matches account_id last 4)
+    assert clean_agent_speech("I found your billing account ending in 8475.", params) == "I found your billing account ending in 8475."
+    assert "6789" not in clean_agent_speech("I found your billing account ending in 8475.", params)
+
+
+def test_speech_dual_card_bank_and_pad_debit() -> None:
+    params = {
+        "card_last4": "4242",
+        "bank_last4": "6789",
+        "caller_provided_phone_last4": "0199",
+    }
+    # Dual in one sentence
+    en_both = "Would you like to use Visa ending in 4242 or bank ending in 6789?"
+    assert clean_agent_speech(en_both, params) == en_both
+
+    # Pre-authorized debit on bank account
+    en_pad = "Pre-authorized debit on your bank account ending in 6789 is active."
+    assert clean_agent_speech(en_pad, params) == en_pad
+
+    fr_pad = "Le débit sur votre compte bancaire terminant par 6789 est confirmé."
+    assert clean_agent_speech(fr_pad, params) == fr_pad
+
+    es_pad = "El débito en su cuenta bancaria que termina en 6789 está activo."
+    assert clean_agent_speech(es_pad, params) == es_pad
+
+
+def test_speech_strip_markdown_bullets_and_codefence() -> None:
+    raw = "Options:\n- Plan Starter\n- Plan Plus\n• Plan Gig\nHere is code:\n```json\nRef R123456\n```\nContact 514-555-0199 for pre-authorized debit."
+    cleaned = clean_speech(raw)
+    assert "- " not in cleaned
+    assert "• " not in cleaned
+    assert "```" not in cleaned
+    assert "json" not in cleaned
+    assert "pre-authorized" in cleaned
+    assert "0199" in cleaned
+
+
+def test_enforce_handover_utterance_paraphrased_and_secondary_language() -> None:
+    # Paraphrased existing text with business handoff
+    res = enforce_handover_utterance(
+        "I will transfer you now.",
+        called_tools=("handover_to_person",),
+        tool_args_list=({"reason": "business_handoff", "language": "en-US"},),
+    )
+    assert "business account" in res
+    assert "I will transfer you now." in res
+
+    # Fraud handoff with existing text
+    res_fraud = enforce_handover_utterance(
+        "Please hold.",
+        called_tools=("handover_to_person",),
+        tool_args_list=({"reason": "fraud_investigation", "language": "en-US"},),
+    )
+    assert "challenges" in res_fraud
+    assert "representative who can help" in res_fraud
+
+    # Specialist handoff
+    res_spec = enforce_handover_utterance(
+        "Attendez un instant.",
+        called_tools=("handover_to_person",),
+        tool_args_list=({"reason": "refund_threshold", "language": "fr-CA"},),
+    )
+    assert "spécialiste de la facturation" in res_spec
+
+    # Secondary language (de-DE): should NOT append English fallback copy onto existing text
+    res_de = enforce_handover_utterance(
+        "Moment bitte, ich verbinde Sie.",
+        called_tools=("handover_to_person",),
+        tool_args_list=({"reason": "secondary_language_live_agent", "language": "de-DE"},),
+    )
+    assert res_de == "Moment bitte, ich verbinde Sie."

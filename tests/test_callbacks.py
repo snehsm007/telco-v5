@@ -72,3 +72,28 @@ def test_callbacks_inject_handover_line_mock_part(cb, monkeypatch) -> None:
     out = cb.after_model_callback(SimpleNamespace(state=h_state), tool_only)
     assert out is tool_only
     assert tool_only.content.parts[0].text == handover_msg
+
+
+@pytest.mark.parametrize("cb", ALL_AGENT_CALLBACKS)
+def test_callbacks_coemitted_handover_and_end_session(cb) -> None:
+    parts = [
+        SimpleNamespace(
+            text=None,
+            function_call=SimpleNamespace(
+                name="handover_to_person",
+                args={"reason": "business_solutions", "language": "es-US"},
+            ),
+        ),
+        SimpleNamespace(
+            text=None,
+            function_call=SimpleNamespace(
+                name="end_session",
+                args={"reason": "session_escalated"},
+            ),
+        ),
+    ]
+    resp = SimpleNamespace(content=SimpleNamespace(parts=parts))
+    out = cb.after_model_callback(SimpleNamespace(state={}), resp)
+    assert out is resp
+    assert "cuenta comercial" in resp.content.parts[0].text
+

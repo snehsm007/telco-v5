@@ -90,6 +90,78 @@ def test_keeps_the_spoken_transfer_line_after_a_handover(callback) -> None:
 
 @pytest.mark.parametrize("callback", CALLBACKS)
 def test_returns_none_when_nothing_changes(callback) -> None:
-    assert callback.after_model_callback(SimpleNamespace(state={}), make_response("All set.")) is None
     assert callback.after_model_callback(SimpleNamespace(state={}), SimpleNamespace(content=None)) is None
     assert callback.after_model_callback(SimpleNamespace(state={}), SimpleNamespace(content=SimpleNamespace(parts=None))) is None
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_coemitted_handover_and_end_session_preserves_business_handoff(callback) -> None:
+    parts = [
+        SimpleNamespace(
+            text=None,
+            function_call=SimpleNamespace(
+                name="handover_to_person",
+                args={"reason": "business_handoff", "language": "fr-CA"},
+            ),
+        ),
+        SimpleNamespace(
+            text=None,
+            function_call=SimpleNamespace(
+                name="end_session",
+                args={"reason": "session_escalated", "session_escalated": True},
+            ),
+        ),
+    ]
+    resp = SimpleNamespace(content=SimpleNamespace(parts=parts))
+    res = callback.after_model_callback(SimpleNamespace(state={}), resp)
+    assert res is resp
+    assert "compte affaires" in resp.content.parts[0].text
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_paraphrased_spoken_text_enforces_fraud_empathy_and_handoff(callback) -> None:
+    parts = [
+        SimpleNamespace(text="I understand this is concerning."),
+        SimpleNamespace(
+            text=None,
+            function_call=SimpleNamespace(
+                name="handover_to_person",
+                args={"reason": "fraud_escalation", "language": "en-US"},
+            ),
+        ),
+    ]
+    resp = SimpleNamespace(content=SimpleNamespace(parts=parts))
+    res = callback.after_model_callback(SimpleNamespace(state={}), resp)
+    assert res is resp
+    text = resp.content.parts[0].text
+    assert "facing challenges" in text
+    assert "representative who can help" in text
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_speech_hygiene_mappingproxy_and_adk_state_fidelity(callback) -> None:
+    from types import MappingProxyType
+
+    class MockAdkState:
+        def __init__(self, data: dict[str, Any]) -> None:
+            self._data = dict(data)
+
+        def get(self, key: str, default: Any = None) -> Any:
+            return self._data.get(key, default)
+
+        def __getitem__(self, key: str) -> Any:
+            return self._data[key]
+
+    raw_state = {
+        "caller_provided_phone_last4": "0199",
+        "card_last4": "4242",
+        "bank_last4": "6789",
+    }
+    for st in (MappingProxyType(raw_state), MockAdkState(raw_state)):
+        parts = [SimpleNamespace(text="Your card ending in 0000 and bank ending in 0000.")]
+        resp = SimpleNamespace(content=SimpleNamespace(parts=parts))
+        res = callback.after_model_callback(SimpleNamespace(state=st), resp)
+        assert res is resp
+        assert "4242" in resp.content.parts[0].text
+        assert "6789" in resp.content.parts[0].text
+

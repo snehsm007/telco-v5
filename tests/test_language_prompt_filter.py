@@ -73,3 +73,36 @@ def test_language_prompt_filter_english_default_and_parts_structure(
     assert result is None
     assert "<!-- ACTIVE_LANGUAGE_SHEET -->" in part.text
     assert 'locale="en-US"' in part.text
+
+
+@pytest.mark.parametrize("agent_name, callback_mod", AGENT_CALLBACKS)
+def test_language_prompt_filter_mappingproxy_and_adk_state_with_digits(
+    agent_name: str, callback_mod: Any
+) -> None:
+    from types import MappingProxyType
+
+    class MockAdkState:
+        def __init__(self, data: dict[str, Any]) -> None:
+            self._data = dict(data)
+
+        def get(self, key: str, default: Any = None) -> Any:
+            return self._data.get(key, default)
+
+        def __getitem__(self, key: str) -> Any:
+            return self._data[key]
+
+    raw_state = {"language": "fr-CA"}
+    for st in (MappingProxyType(raw_state), MockAdkState(raw_state)):
+        req = SimpleNamespace(
+            config=SimpleNamespace(system_instruction="Base prompt."),
+            contents=[
+                SimpleNamespace(
+                    role="user",
+                    parts=[SimpleNamespace(text="4242")],
+                )
+            ],
+        )
+        res = callback_mod.before_model_callback(SimpleNamespace(state=st), req)
+        assert res is None
+        assert '<active_language_sheet locale="fr-CA"' in req.config.system_instruction
+

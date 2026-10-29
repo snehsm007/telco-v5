@@ -4,51 +4,75 @@ from types import SimpleNamespace
 from typing import Optional
 
 
-
 def after_model_callback(
     callback_context: CallbackContext,
     llm_response: LlmResponse,
 ) -> Optional[LlmResponse]:
     """Clean speech, mask long numbers, and ensure valid handover lines."""
     state = getattr(callback_context, "state", None)
-    state_dict = state if isinstance(state, dict) else {}
+    state_dict = state if callable(getattr(state, "get", None)) else {}
     content = getattr(llm_response, "content", None)
     parts = getattr(content, "parts", None) if content is not None else None
     if content is None or parts is None:
         return None
 
     changed = False
-    has_spoken_text = False
     called_tools: list[str] = []
     tool_args_list: list[dict] = []
+    spoken_indices: list[int] = []
 
     for part in parts:
         fc = getattr(part, "function_call", None)
         if fc is not None:
-            fc_name = getattr(fc, "name", None)
+            fc_name = str(getattr(fc, "name", "") or "")
             if fc_name:
-                called_tools.append(str(fc_name))
+                called_tools.append(fc_name)
             fc_args = getattr(fc, "args", None)
-            if fc_args is not None:
+            if fc_args is not None and fc_name in (
+                "handover_to_person",
+                "execute_live_agent_handover",
+            ):
                 tool_args_list.append(dict(fc_args))
 
-    for part in parts:
+    for idx, part in enumerate(parts):
         text = getattr(part, "text", None)
         if isinstance(text, str) and text.strip():
-            has_spoken_text = True
+            spoken_indices.append(idx)
             cleaned = clean_agent_speech(text, state_dict)
-            if "handover_to_person" in called_tools:
-                cleaned = enforce_handover_utterance(
-                    cleaned,
-                    state_dict,
-                    called_tools=called_tools,
-                    tool_args_list=tool_args_list,
-                )
             if cleaned != text:
                 part.text = cleaned
                 changed = True
 
-    if not has_spoken_text:
+    has_handover_tool = any(
+        t in ("handover_to_person", "execute_live_agent_handover")
+        for t in called_tools
+    )
+    if spoken_indices and has_handover_tool:
+        last_idx = spoken_indices[-1]
+        combined_text = " ".join(
+            str(getattr(parts[i], "text", "") or "").strip() for i in spoken_indices
+        ).strip()
+        enforced_combined = enforce_handover_utterance(
+            combined_text,
+            state_dict,
+            called_tools=called_tools,
+            tool_args_list=tool_args_list,
+        )
+        if enforced_combined != combined_text:
+            if len(spoken_indices) == 1:
+                new_last = clean_agent_speech(enforced_combined, state_dict)
+            else:
+                suffix = enforced_combined[len(combined_text) :].strip()
+                base_last = str(getattr(parts[last_idx], "text", "") or "").rstrip()
+                new_last = clean_agent_speech(
+                    f"{base_last} {suffix}".strip() if suffix else enforced_combined,
+                    state_dict,
+                )
+            if new_last != getattr(parts[last_idx], "text", None):
+                parts[last_idx].text = new_last
+                changed = True
+
+    if not spoken_indices:
         msg = enforce_handover_utterance(
             "",
             state_dict,
@@ -87,6 +111,52 @@ _LAST4_CONTEXT_RE = re.compile(  # pragma: no cover
     re.IGNORECASE,
 )
 
+_SP_BANK_KWS: tuple[str, ...] = (  # pragma: no cover
+    "bank",
+    "banking",
+    "bancaire",
+    "bancaria",
+    "banco",
+    "checking",
+    "chequing",
+    "chèques",
+    "chèque",
+    "cheques",
+    "savings",
+    "épargne",
+    "ahorros",
+    "corriente",
+    "routing",
+    "transit",
+    "pad",
+)
+
+_SP_CARD_KWS: tuple[str, ...] = (  # pragma: no cover
+    "card",
+    "carte",
+    "tarjeta",
+    "visa",
+    "mastercard",
+    "amex",
+    "crédit",
+    "credit",
+    "débit",
+    "debit",
+    "débito",
+    "debito",
+)
+
+_SP_PHONE_KWS: tuple[str, ...] = (  # pragma: no cover
+    "phone",
+    "mobile",
+    "cell",
+    "téléphone",
+    "cellulaire",
+    "teléfono",
+    "celular",
+    "móvil",
+)
+
 NUMBER_RUN_RE = re.compile(r"\(?\d+\)?(?:[-.]\(?\d+\)?|\s\(?\d{3,}\)?)*")  # pragma: no cover
 
 SPEAKABLE_NUMBERS: frozenset[str] = frozenset()  # pragma: no cover
@@ -102,7 +172,10 @@ def mask_long_numbers(text: str, min_digits: int = 9) -> str:  # pragma: no cove
 
     return NUMBER_RUN_RE.sub(_mask, text)
 
-MARKDOWN_RE = re.compile(r"\*+|`+|^#+[ \t]*", re.MULTILINE)  # pragma: no cover
+MARKDOWN_RE = re.compile(  # pragma: no cover
+    r"```[a-zA-Z0-9_-]*[ \t]*\n?|\*+|`+|^#+[ \t]*|^[ \t]*[-•][ \t]+",
+    re.MULTILINE,
+)
 
 def strip_markdown(text: str) -> str:  # pragma: no cover
     """Drop markdown formatting characters from spoken text."""
@@ -114,20 +187,28 @@ def clean_speech(text: str) -> str:  # pragma: no cover
 
 def clean_agent_speech(  # pragma: no cover
     text: str,
-    session_params: dict[str, Any] | None = None,
+    session_params: Any = None,
 ) -> str:
-    """Clean speech and preserve caller phone, card, and bank last-4 numbers."""
+    """Clean speech and preserve caller phone, card, bank, and account last-4 numbers."""
     cleaned = clean_speech(text)
-    if not isinstance(session_params, dict):
+    if not callable(getattr(session_params, "get", None)):
         return cleaned
     caller_last4 = str(session_params.get("caller_provided_phone_last4") or "").strip()
     profile_last4 = str(session_params.get("phone_last4") or "").strip()
     card_last4 = str(session_params.get("card_last4") or "").strip()
     bank_last4 = str(session_params.get("bank_last4") or "").strip()
+    acc_digits = re.sub(r"\D", "", str(session_params.get("account_id") or ""))
+    account_last4 = acc_digits[-4:] if len(acc_digits) >= 4 else ""
 
-    if len(caller_last4) == 4 and caller_last4.isdigit():
+    valid_caller = len(caller_last4) == 4 and caller_last4.isdigit()
+    valid_profile = len(profile_last4) == 4 and profile_last4.isdigit()
+    valid_card = len(card_last4) == 4 and card_last4.isdigit()
+    valid_bank = len(bank_last4) == 4 and bank_last4.isdigit()
+    effective_phone_last4 = caller_last4 if valid_caller else (profile_last4 if valid_profile else "")
+
+    if valid_caller:
         if (
-            len(profile_last4) == 4
+            valid_profile
             and profile_last4 != caller_last4
             and profile_last4 != card_last4
             and profile_last4 != bank_last4
@@ -135,59 +216,77 @@ def clean_agent_speech(  # pragma: no cover
         ):
             cleaned = re.sub(rf"\b{re.escape(profile_last4)}\b", caller_last4, cleaned)
 
+    if effective_phone_last4 or valid_card or valid_bank:
+
         def _replace_non_card_last4(m: re.Match[str]) -> str:
             prefix = cleaned[max(0, m.start() - 35) : m.start()].lower()
-            if any(
-                w in prefix
-                for w in (
-                    "card",
-                    "carte",
-                    "tarjeta",
-                    "visa",
-                    "mastercard",
-                    "amex",
-                    "crédit",
-                    "credit",
-                    "débit",
-                    "debit",
-                )
-            ):
-                return (
-                    f"{m.group(1)}{card_last4}"
-                    if (len(card_last4) == 4 and card_last4.isdigit())
-                    else m.group(0)
-                )
-            if any(
-                w in prefix
-                for w in (
-                    "bank",
-                    "bancaire",
-                    "checking",
-                    "chequing",
-                    "chèques",
-                    "chèque",
-                    "savings",
-                    "épargne",
-                    "routing",
-                    "transit",
-                    "compte",
-                    "account",
-                    "cuenta",
-                )
-            ):
-                return (
-                    f"{m.group(1)}{bank_last4}"
-                    if (len(bank_last4) == 4 and bank_last4.isdigit())
-                    else m.group(0)
-                )
-            if len(card_last4) == 4 and m.group(2) == card_last4:
-                return m.group(0)
-            if len(bank_last4) == 4 and m.group(2) == bank_last4:
-                return m.group(0)
-            return f"{m.group(1)}{caller_last4}"
+            cue = m.group(1).lower()
+            digits4 = m.group(2)
+
+            card_pos = max((prefix.rfind(w) for w in _SP_CARD_KWS), default=-1)
+            bank_pos = max((prefix.rfind(w) for w in _SP_BANK_KWS), default=-1)
+            phone_pos = max((prefix.rfind(w) for w in _SP_PHONE_KWS), default=-1)
+            is_number_is_cue = any(
+                c in cue for c in ("number is", "numéro est", "número es")
+            )
+            explicit_phone_only = (
+                (is_number_is_cue or phone_pos >= 0)
+                and card_pos < 0
+                and bank_pos < 0
+            )
+
+            if not explicit_phone_only:
+                if (valid_card and digits4 == card_last4) or (
+                    valid_bank and digits4 == bank_last4
+                ):
+                    return m.group(0)
+                if card_pos < 0 and bank_pos < 0:
+                    if effective_phone_last4 and digits4 == effective_phone_last4:
+                        return m.group(0)
+                    if account_last4 and digits4 == account_last4:
+                        return m.group(0)
+
+            if card_pos >= 0 and card_pos > bank_pos:
+                return f"{m.group(1)}{card_last4}" if valid_card else m.group(0)
+            if bank_pos >= 0 and bank_pos > card_pos:
+                return f"{m.group(1)}{bank_last4}" if valid_bank else m.group(0)
+            if effective_phone_last4:
+                return f"{m.group(1)}{effective_phone_last4}"
+            return m.group(0)
 
         cleaned = _LAST4_CONTEXT_RE.sub(_replace_non_card_last4, cleaned)
     return cleaned
+
+_SP_BIZ_TERMS: frozenset[str] = frozenset(  # pragma: no cover
+    {"business", "entreprise", "affaires", "commercial", "comercial"}
+)
+
+_SP_FRAUD_TERMS: frozenset[str] = frozenset(  # pragma: no cover
+    {
+        "fraud",
+        "fraude",
+        "unauthorized",
+        "security",
+        "compromis",
+        "compromise",
+        "sim_swap",
+        "abuse",
+    }
+)
+
+_SP_SPECIALIST_TERMS: frozenset[str] = frozenset(  # pragma: no cover
+    {
+        "refund",
+        "remboursement",
+        "reembolso",
+        "threshold",
+        "specialist",
+        "billing_specialist",
+    }
+)
+
+def _norm_ws(s: str) -> str:  # pragma: no cover
+    return " ".join(s.lower().split())
 
 def resolve_locale(language: str | None) -> str:  # pragma: no cover
     """Normalize a language tag, name, or code into a canonical BCP-47 locale."""
@@ -349,43 +448,87 @@ def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> st
 
 def enforce_handover_utterance(  # pragma: no cover
     text: str,
-    session_params: dict[str, Any] | None = None,
-    called_tools: tuple[str, ...] = (),
-    tool_args_list: tuple[dict[str, Any], ...] = (),
+    session_params: Any = None,
+    called_tools: tuple[str, ...] | list[str] = (),
+    tool_args_list: tuple[dict[str, Any], ...] | list[dict[str, Any]] = (),
 ) -> str:
     """Ensure a handover turn produces a valid localized transfer line."""
-    if (text or "").strip():
+    params = session_params if callable(getattr(session_params, "get", None)) else {}
+    has_handover_call = any(
+        name in ("handover_to_person", "execute_live_agent_handover")
+        for name in called_tools
+    )
+    existing = (text or "").strip()
+
+    if not has_handover_call:
+        if existing:
+            return text
+        if params.get("handover_complete") and params.get("handoff_message"):
+            handoff_msg = str(params.get("handoff_message") or "").strip()
+            if handoff_msg:
+                return handoff_msg
         return text
-    params = session_params if isinstance(session_params, dict) else {}
-    if params.get("handover_complete") and params.get("handoff_message"):
-        handoff_msg = str(params["handoff_message"]).strip()
-        if handoff_msg:
-            return handoff_msg
 
-    if any(name in ("handover_to_person", "execute_live_agent_handover") for name in called_tools):
-        reason = ""
-        target_queue = ""
-        lang = params.get("language")
-        for args in tool_args_list:
-            if isinstance(args, dict):
-                if args.get("reason"):
-                    reason = str(args["reason"]).lower()
-                if args.get("target_queue"):
-                    target_queue = str(args["target_queue"]).lower()
-                if args.get("language"):
-                    lang = args["language"]
-        loc = resolve_copy_locale(lang)
-        if "business" in reason:
-            return spoken_line("business_handoff", loc)
-        if "fraud" in reason:
-            return f"{spoken_line('empathy_protocol', loc)} {spoken_line('live_agent_handoff', loc)}"
-        if (
-            "refund_threshold" in reason
-            or "specialist" in reason
-            or target_queue == "billing_specialist"
-        ):
-            return spoken_line("transfer_to_specialist", loc)
-        return spoken_line("live_agent_handoff", loc)
+    reason = ""
+    target_queue = ""
+    lang = params.get("language")
+    is_business = bool(params.get("business_flag"))
+    for args in tool_args_list:
+        if callable(getattr(args, "get", None)):
+            if args.get("reason"):
+                reason = str(args.get("reason")).lower()
+            if args.get("target_queue"):
+                target_queue = str(args.get("target_queue")).lower()
+            if args.get("language"):
+                lang = args.get("language")
+            if args.get("is_business"):
+                is_business = True
 
-    return text
+    full_loc = resolve_locale(lang)
+    loc = resolve_copy_locale(lang)
+
+    is_biz = (
+        is_business
+        or target_queue == "business_solutions"
+        or any(term in reason for term in _SP_BIZ_TERMS)
+    )
+    is_fraud = target_queue == "fraud_and_security_24x7" or any(
+        term in reason for term in _SP_FRAUD_TERMS
+    )
+    is_specialist = target_queue == "billing_specialist" or any(
+        term in reason for term in _SP_SPECIALIST_TERMS
+    )
+
+    if is_biz:
+        required_lines = [spoken_line("business_handoff", loc)]
+    elif is_fraud:
+        required_lines = [
+            spoken_line("empathy_protocol", loc),
+            spoken_line("live_agent_handoff", loc),
+        ]
+    elif is_specialist:
+        required_lines = [spoken_line("transfer_to_specialist", loc)]
+    else:
+        required_lines = [spoken_line("live_agent_handoff", loc)]
+
+    if not existing:
+        return " ".join(required_lines)
+
+    # Do not append English fallback copy onto already-translated secondary world languages
+    if (
+        full_loc not in ("en-US", "fr-CA", "es-US")
+        or "secondary_language" in reason
+        or target_queue == "multilingual_support"
+    ):
+        return text
+
+    generic_line = spoken_line("live_agent_handoff", loc)
+    if (is_biz or is_specialist) and _norm_ws(existing) == _norm_ws(generic_line):
+        return " ".join(required_lines)
+
+    norm_existing = _norm_ws(existing)
+    missing = [line for line in required_lines if _norm_ws(line) not in norm_existing]
+    if not missing:
+        return text
+    return f"{existing} {' '.join(missing)}"
 # --- END GENERATED SHARED BUNDLE ---

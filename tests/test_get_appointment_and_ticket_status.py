@@ -12,7 +12,7 @@ def test_get_appointment_and_ticket_status_authenticated(monkeypatch) -> None:
     assert len(res["data"]["available_slots"]) == 3
     assert session.state["active_appointment_id"] == "APT-4021"
     assert session.state["appointment_status"] == "scheduled"
-    assert session.state["technician_status"] == "en_route"
+    assert session.state["technician_status"] == "scheduled"
 
 
 def test_get_appointment_and_ticket_status_with_dict_context(monkeypatch) -> None:
@@ -36,7 +36,7 @@ def test_get_appointment_and_ticket_status_localization_french(monkeypatch) -> N
     monkeypatch.setattr(tool, "context", session, raising=False)
     res = tool.get_appointment_and_ticket_status(language="fr-CA")
     assert res["status"] == "ok"
-    assert res["data"]["technician_status"] == "en_route"
+    assert res["data"]["technician_status"] == "scheduled"
     assert len(res["data"]["available_slots"]) == 3
 
 

@@ -286,3 +286,46 @@ def test_apply_language_prompt_filter_instruction_variants() -> None:
     )
     apply_language_prompt_filter(context, req_list_obj)
     assert LANGUAGE_SHEET_SENTINEL in part_in_list.text
+
+
+def test_multiturn_chronology_switches() -> None:
+    # state has language en-US, turn 1 is French, turn 2 is English switch
+    req_en = SimpleNamespace(
+        contents=[
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="Bonjour, j'ai besoin d'aide")]),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="Actually, switch to English please")]),
+        ]
+    )
+    assert detect_active_call_language({"language": "en-US"}, req_en) == "en-US"
+
+    # state has language en-US, turn 1 is French, turn 2 is Spanish switch
+    req_es = SimpleNamespace(
+        contents=[
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="Bonjour, j'ai besoin d'aide")]),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="En español por favor")]),
+        ]
+    )
+    assert detect_active_call_language({"language": "en-US"}, req_es) == "es-US"
+
+
+def test_english_call_with_quebec_address_stays_english() -> None:
+    req = SimpleNamespace(
+        contents=[
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="Hello, I need help with my internet plan")]),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="123 Rue Saint-Laurent, Montréal, Québec")]),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="Which plan is fastest?")]),
+        ]
+    )
+    assert detect_active_call_language({"language": "en-US"}, req) == "en-US"
+
+
+def test_native_turn1_german_portuguese_italian_classification() -> None:
+    de_utt = "Guten Tag, sprechen Sie Deutsch? Ich brauche Hilfe mit meiner Rechnung."
+    assert detect_utterance_language(de_utt, "en-US") == "de-DE"
+
+    pt_utt = "Olá, preciso de ajuda com a minha fatura por favor."
+    assert detect_utterance_language(pt_utt, "en-US") == "pt-BR"
+
+    it_utt = "Buongiorno, parla italiano? Perché ho bisogno di aiuto."
+    assert detect_utterance_language(it_utt, "en-US") == "it-IT"
+

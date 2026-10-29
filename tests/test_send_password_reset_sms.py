@@ -26,8 +26,6 @@ def test_send_password_reset_sms_happy_path(monkeypatch) -> None:
 def test_send_password_reset_sms_unidentified_returns_error(monkeypatch) -> None:
     session = SimpleNamespace(state={})
     monkeypatch.setattr(tool, "context", session, raising=False)
-    monkeypatch.setattr(tool, "ACCOUNTS", [], raising=False)
-    monkeypatch.setattr("lib.services.ACCOUNTS", [])
     reply = tool.send_password_reset_sms()
     assert reply["status"] == "error"
     assert reply["error"] == "NOT_IDENTIFIED"

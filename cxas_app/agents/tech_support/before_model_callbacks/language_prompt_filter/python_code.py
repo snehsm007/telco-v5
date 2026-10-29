@@ -292,6 +292,116 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:  # pra
     lines.append("</active_language_sheet>")
     return "\n".join(lines)
 
+_DP_GERMAN_MARKERS = frozenset(  # pragma: no cover
+    {
+        "guten",
+        "sprechen",
+        "deutsch",
+        "ich",
+        "brauche",
+        "hilfe",
+        "meiner",
+        "meine",
+        "mein",
+        "rechnung",
+        "bitte",
+        "danke",
+        "konto",
+        "vertrag",
+        "störung",
+        "kündigen",
+    }
+)
+
+_DP_ITALIAN_MARKERS = frozenset(  # pragma: no cover
+    {
+        "buongiorno",
+        "buonasera",
+        "parla",
+        "italiano",
+        "perché",
+        "bisogno",
+        "aiuto",
+        "vorrei",
+        "bolletta",
+        "fattura",
+        "grazie",
+        "favore",
+    }
+)
+
+_DP_PORTUGUESE_MARKERS = frozenset(  # pragma: no cover
+    {
+        "olá",
+        "preciso",
+        "ajuda",
+        "minha",
+        "meu",
+        "fatura",
+        "obrigado",
+        "obrigada",
+        "você",
+        "atendente",
+        "cartão",
+        "ligação",
+        "português",
+    }
+)
+
+_DP_QUEBEC_PLACE_TOKENS = frozenset(  # pragma: no cover
+    {
+        "montréal",
+        "montreal",
+        "québec",
+        "quebec",
+        "laval",
+        "longueuil",
+        "gatineau",
+        "sherbrooke",
+        "lévis",
+        "levis",
+        "trois",
+        "rivières",
+        "rivieres",
+        "saguenay",
+        "terrebonne",
+        "brossard",
+        "repentigny",
+        "saint",
+        "sainte",
+        "st",
+        "ste",
+        "laurent",
+        "catherine",
+        "denis",
+        "hubert",
+        "jean",
+        "baptiste",
+        "honoré",
+        "honore",
+        "rené",
+        "rene",
+        "lévesque",
+        "levesque",
+        "côte",
+        "cote",
+        "neiges",
+        "île",
+        "ile",
+        "boulevard",
+        "boul",
+        "rue",
+        "avenue",
+        "ave",
+        "chemin",
+        "ch",
+        "appartement",
+        "apt",
+        "suite",
+        "qc",
+    }
+)
+
 _ENGLISH_MARKERS = frozenset(  # pragma: no cover
     {
         "hello",
@@ -312,6 +422,18 @@ _ENGLISH_MARKERS = frozenset(  # pragma: no cover
         "dispute",
         "payment",
         "phone",
+        "the",
+        "with",
+        "have",
+        "your",
+        "this",
+        "that",
+        "would",
+        "could",
+        "check",
+        "issue",
+        "working",
+        "down",
     }
 )
 
@@ -421,22 +543,78 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
         return "es-US"
     if any(
         p in low
-        for p in ("em português", "em portugues", "switch to portuguese", "portuguese please")
+        for p in (
+            "em português",
+            "em portugues",
+            "fala português",
+            "fala portugues",
+            "in portuguese",
+            "do you speak portuguese",
+            "switch to portuguese",
+            "portuguese please",
+        )
     ):
         return "pt-BR"
-    if any(p in low for p in ("auf deutsch", "switch to german", "german please")):
+    if any(
+        p in low
+        for p in (
+            "auf deutsch",
+            "sprechen sie deutsch",
+            "in german",
+            "do you speak german",
+            "switch to german",
+            "german please",
+        )
+    ):
         return "de-DE"
-    if any(p in low for p in ("in italiano", "switch to italian", "italian please")):
+    if any(
+        p in low
+        for p in (
+            "in italiano",
+            "parla italiano",
+            "in italian",
+            "do you speak italian",
+            "switch to italian",
+            "italian please",
+        )
+    ):
         return "it-IT"
-    if any(p in low for p in ("in mandarin", "in chinese", "mandarin please", "switch to mandarin")):
+    if any(
+        p in low
+        for p in (
+            "in mandarin",
+            "in chinese",
+            "do you speak mandarin",
+            "do you speak chinese",
+            "mandarin please",
+            "switch to mandarin",
+        )
+    ):
         return "zh-CN"
-    if any(p in low for p in ("in hindi", "hindi please", "switch to hindi")):
+    if any(
+        p in low
+        for p in ("in hindi", "do you speak hindi", "hindi please", "switch to hindi")
+    ):
         return "hi-IN"
-    if any(p in low for p in ("in arabic", "arabic please", "switch to arabic")):
+    if any(
+        p in low
+        for p in ("in arabic", "do you speak arabic", "arabic please", "switch to arabic")
+    ):
         return "ar-XA"
-    if any(p in low for p in ("in japanese", "japanese please", "switch to japanese")):
+    if any(
+        p in low
+        for p in (
+            "in japanese",
+            "do you speak japanese",
+            "japanese please",
+            "switch to japanese",
+        )
+    ):
         return "ja-JP"
-    if any(p in low for p in ("in korean", "korean please", "switch to korean")):
+    if any(
+        p in low
+        for p in ("in korean", "do you speak korean", "korean please", "switch to korean")
+    ):
         return "ko-KR"
 
     if re.search(r"[\u0600-\u06ff]", utterance):
@@ -457,7 +635,35 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
     if words == ["gracias"] and resolve_locale(current_language) == "en-US":
         return "en-US"
 
-    has_french_accents = bool(re.search(r"[éèêëàâùûîïôçœ]", low))
+    german_score = sum(1 for w in words if w in _DP_GERMAN_MARKERS) + (
+        1 if re.search(r"[äöß]", low) else 0
+    )
+    portuguese_score = sum(1 for w in words if w in _DP_PORTUGUESE_MARKERS) + (
+        1 if re.search(r"[ãõ]", low) else 0
+    )
+    italian_score = sum(1 for w in words if w in _DP_ITALIAN_MARKERS)
+
+    if (
+        german_score >= 2
+        and german_score >= portuguese_score
+        and german_score >= italian_score
+    ):
+        return "de-DE"
+    if (
+        portuguese_score >= 2
+        and portuguese_score > german_score
+        and portuguese_score >= italian_score
+    ):
+        return "pt-BR"
+    if (
+        italian_score >= 2
+        and italian_score > german_score
+        and italian_score > portuguese_score
+    ):
+        return "it-IT"
+
+    non_place_text = " ".join(w for w in words if w not in _DP_QUEBEC_PLACE_TOKENS)
+    has_french_accents = bool(re.search(r"[éèêëàâùûîïôçœ]", non_place_text))
     french_words = sum(1 for w in words if w in _FRENCH_MARKERS)
     french_score = french_words + (1 if has_french_accents else 0)
 
@@ -496,20 +702,18 @@ def extract_user_utterances(llm_request: Any) -> list[str]:  # pragma: no cover
                     utterances.append(t)
     return utterances
 
-def detect_active_call_language(state_dict: dict[str, Any] | None, llm_request: Any) -> str:  # pragma: no cover
+def detect_active_call_language(state_dict: Any, llm_request: Any) -> str:  # pragma: no cover
     """Determine the active conversation language from state and user turns."""
     user_utterances = extract_user_utterances(llm_request)
-    locked = str((state_dict or {}).get("language") or "").strip()
+    locked = (
+        str(state_dict.get("language") or "").strip()
+        if callable(getattr(state_dict, "get", None))
+        else ""
+    )
 
     current = resolve_locale(locked) if locked else "en-US"
     for utt in user_utterances:
         current = detect_utterance_language(utt, current_language=current)
-
-    if locked and resolve_locale(locked) == "en-US":
-        for utt in user_utterances:
-            lang = detect_utterance_language(utt, current_language="en-US")
-            if lang != "en-US":
-                return lang
 
     return current
 
@@ -520,7 +724,7 @@ def apply_language_prompt_filter(  # pragma: no cover
 ) -> None:
     """Inject language rules and verbatim lines into system instruction in-place."""
     state = getattr(callback_context, "state", None)
-    state_dict = state if isinstance(state, dict) else {}
+    state_dict = state if callable(getattr(state, "get", None)) else {}
     locale = detect_active_call_language(state_dict, llm_request)
     sheet = build_language_sheet(locale, agent_name=agent_name)
 

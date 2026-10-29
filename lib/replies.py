@@ -84,12 +84,51 @@ def tracking_id(prefix: str, *parts: object) -> str:
     return "R" + str(int(digest[:8], 16) % 1_000_000).zfill(6)
 
 
+def normalize_money_str(amount: str | int | float | Decimal) -> str:
+    """Parse human/ASR money input (including French decimal comma) into a canonical decimal string."""
+    if amount is None or isinstance(amount, bool):
+        raise ValueError(f"Unsupported amount: {amount!r}")
+    if isinstance(amount, float) and (amount != amount or amount in (float("inf"), float("-inf"))):
+        raise ValueError(f"Non-finite amount: {amount!r}")
+    if isinstance(amount, (int, float, Decimal)):
+        d = Decimal(str(amount))
+        if not d.is_finite():
+            raise ValueError(f"Non-finite amount: {amount!r}")
+        return str(d)
+    s = str(amount).strip()
+    if not s:
+        raise ValueError("Empty amount")
+    # Strip currency symbols and codes ($, CAD, USD, EUR) at edges
+    s = re.sub(r"(?i)\b(?:cad|usd|eur|dollars?)\b", "", s)
+    s = s.replace("$", "").replace("\u00a0", " ").strip()
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(" ", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif "," in s:
+        if re.fullmatch(r"[+-]?\d{1,3}(?:,\d{3})+", s):
+            # 1,000 -> 1000
+            s = s.replace(",", "")
+        elif re.search(r",\d{1,2}$", s):
+            # 15,00 or 9 876,50 -> comma as decimal separator
+            s = s.replace(" ", "")
+            idx = s.rfind(",")
+            s = s[:idx].replace(",", "") + "." + s[idx + 1 :]
+        else:
+            raise ValueError(f"Invalid comma amount: {amount!r}")
+    if not re.fullmatch(r"[+-]?\d+(?:\.\d+)?", s):
+        raise ValueError(f"Malformed numeric amount: {amount!r}")
+    return s
+
+
 def display_amount(value: Any) -> str:
     """Format money for speech: 85.5 -> "85.50" (two decimals, half-up rounding)."""
     if isinstance(value, bool) or value is None:
         raise ValueError(f"not an amount: {value!r}")
     try:
-        amount = Decimal(str(value).replace(",", "").strip())
+        norm = normalize_money_str(value)
+        amount = Decimal(norm)
     except (InvalidOperation, ValueError) as exc:
         raise ValueError(f"not an amount: {value!r}") from exc
     if not amount.is_finite():

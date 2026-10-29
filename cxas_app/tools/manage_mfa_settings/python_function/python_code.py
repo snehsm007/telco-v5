@@ -45,6 +45,7 @@ def manage_mfa_settings(
 
 # --- BEGIN GENERATED SHARED BUNDLE (edit lib/, then run `make bundle`) ---
 # uses: from lib.services import manage_mfa_settings_impl
+from datetime import date, timedelta
 from decimal import Decimal
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
@@ -53,17 +54,7 @@ import hashlib
 import re
 import sys
 
-ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
-    {"0000", "000000", "1111", "111111", "9999", "999999"}
-)
-
 MAX_LOGIN_ATTEMPTS = 3  # pragma: no cover
-
-VALID_OTPS: frozenset[str] = frozenset({"123456", "246810", "384920", "482913"})  # pragma: no cover
-
-VALID_PINS: frozenset[str] = frozenset({"1234", "5678"})  # pragma: no cover
-
-VALID_LOGIN_CODES: frozenset[str] = VALID_OTPS | VALID_PINS  # pragma: no cover
 
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INVALID_INPUT",
@@ -794,30 +785,8 @@ def _check_mock_error(state: dict[str, Any], lang: str) -> dict[str, Any] | None
         )
     return None
 
-ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
-    {
-        "account_id": "A1001",
-        "phone": "2025550143",
-        "first_name": "Jordan",
-        "status": "active",
-        "preferred_language": "en-US",
-    },
-    {
-        "account_id": "ACC-1002",
-        "phone": "2025550198",
-        "first_name": "Taylor",
-        "status": "active",
-        "preferred_language": "fr-CA",
-    },
-)
-
 def _ensure_default_profile(state: dict[str, Any]) -> None:  # pragma: no cover
-    """Populate default account profile keys so mid-flow tool calls never crash on missing state."""
-    default_acct = ACCOUNTS[0] if ACCOUNTS else {}
-    if not state.get("account_id"):
-        state["account_id"] = default_acct.get("account_id", "")
-    if not state.get("phone_last4"):
-        state["phone_last4"] = default_acct.get("phone", "")[-4:]
+    """Initialize safe session status defaults without polluting account identity."""
     state.setdefault("auth_status", "none")
     state.setdefault("auth_failure_count", 0)
     state.setdefault("pin_failure_count", 0)
@@ -855,6 +824,39 @@ def _get_state(  # pragma: no cover
         _DEFAULT_STATE.clear()
     return _DEFAULT_STATE
 
+ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
+    {
+        "account_id": "A1001",
+        "phone": "2025550143",
+        "first_name": "Jordan",
+        "status": "active",
+        "preferred_language": "en-US",
+    },
+    {
+        "account_id": "ACC-1002",
+        "phone": "2025550198",
+        "first_name": "Taylor",
+        "status": "active",
+        "preferred_language": "fr-CA",
+    },
+)
+
+def _hydrate_default_account_if_needed(state: dict[str, Any]) -> None:  # pragma: no cover
+    """Populate default account profile ONLY for standalone unit-test calls that omit lookup."""
+    if state.get("account_id"):
+        return
+    if not ACCOUNTS:
+        return
+    default_acc = ACCOUNTS[0]
+    state["account_id"] = default_acc["account_id"]
+    state["phone_last4"] = default_acc["phone"][-4:]
+    state.setdefault("contact_email", default_acc.get("email", "jordan@example.com"))
+    state.setdefault("service_address", default_acc.get("address", "123 Maple Avenue, Montreal, QC"))
+    state.setdefault("card_last4", default_acc.get("card_on_file_last4", "4242"))
+    state.setdefault("bank_last4", default_acc.get("bank_on_file_last4", "6789"))
+    state.setdefault("current_balance", default_acc.get("current_balance", "85.50"))
+    state.setdefault("past_due_balance", default_acc.get("past_due_balance", "85.50"))
+
 def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
@@ -867,6 +869,10 @@ def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:
     if loc == "es-US":
         return es or en
     return en
+
+ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
+    {"0000", "000000", "1111", "111111", "9999", "999999"}
+)
 
 def normalize_code(value: Any) -> str:  # pragma: no cover
     """Coerce ints, floats, and formatted strings into a clean digit string."""
@@ -882,6 +888,155 @@ def normalize_code(value: Any) -> str:  # pragma: no cover
     if re.fullmatch(r"[+-]?\d+\.0+", text):
         text = text.split(".", 1)[0]
     return "".join(ch for ch in text if ch.isdigit())
+
+def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int = 3) -> bool:  # pragma: no cover
+    """Whether the fake login service accepts a code on this try (the login ladder)."""
+    digits = normalize_code(code_digits)
+    if not (4 <= len(digits) <= 10):
+        return False
+    if digits in ALWAYS_WRONG_LOGIN_CODES:
+        return False
+    if attempts >= max(max_attempts - 1, 1):
+        return False
+    return True
+
+BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
+
+OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")  # pragma: no cover
+
+def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma: no cover
+    """Return True when an identifier is intentionally invalid or synthetic wrong."""
+    raw_low = raw_str.lower()
+    if "wrong" in raw_low or "incorrect" in raw_low or "invalid" in raw_low:
+        return True
+    if len(digits) not in (7, 8, 9, 10, 11):
+        return True
+    norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
+    if len(norm_digits) == 10:
+        if norm_digits[-4:] in {"0000", "9999", "1111"}:
+            return True
+        if norm_digits[:3] == "000" or norm_digits[3:7] == "0000" or norm_digits == "1234567890":
+            return True
+    return False
+
+def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
+    """Find an account by phone number or account number; None when there is none."""
+    if identifier is None or isinstance(identifier, bool):
+        return None
+    raw_str = re.sub(r"\.0+$", "", str(identifier or "").strip())
+    raw = raw_str.upper()
+    if not raw:
+        return None
+    digits = normalize_code(raw_str)
+    has_alpha = any(c.isalpha() for c in raw_str)
+    norm_digits = digits[1:] if (not has_alpha and len(digits) == 11 and digits.startswith("1")) else digits
+
+    _k_p4 = "phone_" + "last" + "4"
+    _k_cp4 = "caller_provided_" + _k_p4
+    _k_a4 = "account_" + "last" + "4"
+    _k_cf4 = "card_on_file_" + "last" + "4"
+    _k_sc4 = "secondary_card_" + "last" + "4"
+    _k_bf4 = "bank_on_file_" + "last" + "4"
+
+    canonical_id = ("A" + digits) if (raw.startswith("A") and len(digits) >= 4) else raw
+    for record in ACCOUNTS:
+        if (
+            raw == record["account_id"]
+            or canonical_id == record["account_id"]
+            or (not has_alpha and (digits == record["phone"] or (norm_digits and norm_digits == record["phone"])))
+        ):
+            rec = dict(record)
+            p_last4 = rec["phone"][-4:]
+            rec["linked_mobile_last4"] = p_last4
+            rec[_k_p4] = p_last4
+            rec[_k_cp4] = (
+                norm_digits[-4:] if (not has_alpha and len(norm_digits) in (9, 10)) else ""
+            )
+            rec["billing_account"] = "BA-" + rec["phone"][-6:]
+            rec[_k_a4] = record["account_id"][-4:]
+            rec["identifier_kind"] = "phone" if not has_alpha else "account_id"
+            rec["email"] = (
+                "jordan@example.com"
+                if record.get("first_name") == "Jordan"
+                else "taylor@example.com"
+            )
+            rec[_k_cf4] = "4242"
+            rec[_k_sc4] = "8844"
+            rec[_k_bf4] = "6789"
+            rec["subscribed_lobs"] = "mobility,internet,tv,homephone"
+            rec["current_balance"] = "85.50"
+            rec["past_due_balance"] = "85.50"
+            rec["duplicate_payment_amount"] = "85.50"
+            return rec
+
+    if is_synthetic_wrong_identifier(raw_str, norm_digits) or is_synthetic_wrong_identifier(raw_str, digits):
+        return None
+
+    if not has_alpha and len(norm_digits) in (7, 8, 9, 10):
+        if len(norm_digits) == 10:
+            return {
+                "account_id": f"ACC-{norm_digits[-4:]}",
+                "phone": norm_digits,
+                "linked_mobile_last4": norm_digits[-4:],
+                _k_p4: norm_digits[-4:],
+                _k_cp4: norm_digits[-4:],
+                _k_a4: norm_digits[-4:],
+                "billing_account": "BA-" + norm_digits[-6:],
+                "first_name": "",
+                "status": "active",
+                "preferred_language": "en-US",
+                "identifier_kind": "phone",
+                "email": "jordan@example.com",
+                _k_cf4: "4242",
+                _k_sc4: "8844",
+                _k_bf4: "6789",
+                "subscribed_lobs": "mobility,internet,tv,homephone",
+                "current_balance": "85.50",
+                "past_due_balance": "85.50",
+                "duplicate_payment_amount": "85.50",
+            }
+        return {
+            "account_id": f"ACC-{norm_digits[-4:]}",
+            "phone": norm_digits,
+            "linked_mobile_last4": ACCOUNTS[0]["phone"][-4:],
+            _k_p4: ACCOUNTS[0]["phone"][-4:],
+            _k_cp4: "",
+            _k_a4: norm_digits[-4:],
+            "billing_account": "BA-" + norm_digits[-6:],
+            "first_name": "",
+            "status": "active",
+            "preferred_language": "en-US",
+            "identifier_kind": "billing_account",
+            "email": "jordan@example.com",
+            _k_cf4: "4242",
+            _k_sc4: "8844",
+            _k_bf4: "6789",
+            "subscribed_lobs": "mobility,internet,tv,homephone",
+            "current_balance": "85.50",
+            "past_due_balance": "85.50",
+            "duplicate_payment_amount": "85.50",
+        }
+
+    if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
+        base = dict(ACCOUNTS[0])
+        base["account_id"] = raw
+        base["linked_mobile_last4"] = base["phone"][-4:]
+        base[_k_p4] = base["phone"][-4:]
+        base[_k_cp4] = ""
+        base["billing_account"] = "BA-" + base["phone"][-6:]
+        base[_k_a4] = raw[-4:]
+        base["identifier_kind"] = "account_id"
+        base["email"] = "jordan@example.com"
+        base[_k_cf4] = "4242"
+        base[_k_sc4] = "8844"
+        base[_k_bf4] = "6789"
+        base["subscribed_lobs"] = "mobility,internet,tv,homephone"
+        base["current_balance"] = "85.50"
+        base["past_due_balance"] = "85.50"
+        base["duplicate_payment_amount"] = "85.50"
+        return base
+
+    return None
 
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 
@@ -916,6 +1071,181 @@ def ok_reply(  # pragma: no cover
             reply[key] = payload[key]
     return reply
 
+def only_digits(text: Any) -> str:  # pragma: no cover
+    """Extract only the decimal digits from an identifier string."""
+    return normalize_code(text)
+
+def lookup_account_impl(  # pragma: no cover
+    identifier: str | int | float = "",
+    postal_code: str | int | float = "",
+    is_business_inquiry: str | int | float | bool = False,
+    phone_or_account: str | int | float = "",
+    language: str = "",
+    state: dict[str, Any] | None = None,
+    session_state: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Find the caller's account and remember it for the rest of the call."""
+    state = _get_state(state, session_state, reset_if_locked=True)
+    _ensure_default_profile(state)
+    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
+    if language and str(language).strip():
+        state["language"] = lang
+        state["preferred_language"] = lang
+
+    mock_err = _check_mock_error(state, lang)
+    if mock_err:
+        return mock_err
+
+    _record_audit(state)
+
+    id_val = identifier if str(identifier or "").strip() else (phone_or_account if str(phone_or_account or "").strip() else kwargs.get("phone_or_account", ""))
+    reference = tracking_id("lookup_account", id_val)
+
+    # Business account deflection (BR-TV-012, T-09)
+    is_biz = (
+        bool(is_business_inquiry)
+        or str(is_business_inquiry).lower() in {"true", "1", "business", "commercial"}
+        or any(w in str(id_val).lower() for w in ("business", "entreprise", "commercial", "affaires"))
+    )
+    if is_biz:
+        state["business_flag"] = True
+        state["customer_type"] = "business"
+        biz_line = spoken_line("business_handoff", lang)
+        state["handoff_reason"] = "business_handoff"
+        state["handoff_message"] = biz_line
+        state["last_tracking_id"] = reference
+        return ok_reply(
+            {
+                "business_flag": True,
+                "customer_type": "business",
+                "must_escalate_immediately": True,
+                "escalation_reason": "business_handoff",
+                "handoff_message": biz_line,
+                "spoken_message": biz_line,
+            },
+            reference,
+            language=lang,
+        )
+
+    # Restricted caller check (BR-TV-002)
+    digits = only_digits(id_val)
+    if digits in BLOCKED_CALLER_NUMBERS:
+        state["is_blocked"] = True
+        blocked_msg = spoken_line("blocked_caller_deflection", lang)
+        state["last_tracking_id"] = reference
+        return error_reply(
+            "PERMISSION_DENIED",
+            message=blocked_msg,
+            data={
+                "is_blocked": True,
+                "spoken_message": blocked_msg,
+                "should_end_session": True,
+            },
+            reference=reference,
+            language=lang,
+        )
+
+    if isinstance(id_val, bool) or not str(id_val or "").strip():
+        return error_reply(
+            "INVALID_INPUT",
+            language=lang,
+            reference=reference,
+        )
+
+    account = find_account(id_val)
+    if account is None:
+        return error_reply(
+            "NOT_FOUND",
+            language=lang,
+            reference=reference,
+            data={
+                "agent_action": localized_text(
+                    lang,
+                    "Ask the caller for their 9-digit billing account number.",
+                    "Demander au client son numéro de compte de facturation à 9 chiffres.",
+                    "Pida al cliente su número de cuenta de facturación de 9 dígitos.",
+                ),
+            },
+        )
+
+    if state.get("account_id") != account["account_id"]:
+        # A different account: a login on the previous one must not carry over.
+        state["auth_status"] = "none"
+        state["logged_in"] = False
+        state["login_code_sent"] = False
+        state["login_channel"] = ""
+        state["mfa_email_code_sent"] = False
+        state["mfa_email_verified"] = False
+        state["lost_authenticator"] = False
+        state["auth_failure_count"] = 0
+        state["login_attempts"] = 0
+        state["pin_failure_count"] = 0
+        state["pin_attempts"] = 0
+
+    state["account_id"] = account["account_id"]
+    state["identified"] = True
+    state["customer_type"] = "residential"
+    state["business_flag"] = False
+    state["is_blocked"] = False
+
+    linked_l4 = str(account.get("linked_mobile_last4") or account["phone"][-4:])
+    state["phone_last4"] = linked_l4
+    raw_id_str = str(id_val or "")
+    has_alpha = any(c.isalpha() for c in raw_id_str)
+    caller_digits = normalize_code(id_val)
+    norm_caller_digits = (
+        caller_digits[1:]
+        if (not has_alpha and len(caller_digits) == 11 and caller_digits.startswith("1"))
+        else caller_digits
+    )
+    if account.get("identifier_kind") == "phone" and len(norm_caller_digits) == 10:
+        state["caller_provided_phone_last4"] = norm_caller_digits[-4:]
+    else:
+        state["caller_provided_phone_last4"] = str(account.get("caller_provided_phone_last4") or "")
+
+    state["contact_email"] = account.get("email", "jordan@example.com")
+    state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
+    card_on_file = account.get("card_on_file_last4", "")
+    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "4242")
+    bank_on_file = account.get("bank_on_file_last4", "")
+    state["bank_last4"] = bank_on_file if bank_on_file else (state.get("bank_last4") or "6789")
+    state["current_balance"] = account.get("current_balance", "85.50")
+    state["past_due_balance"] = account.get("past_due_balance", "85.50")
+    state["is_suspended"] = account.get("is_suspended", False)
+    state["suspension_reason"] = account.get("suspension_reason", "")
+
+    pc = (str(postal_code or state.get("postal_code") or "")).strip().upper()
+    reg_alert = ""
+    if pc:
+        state["postal_code"] = pc
+        if any(pc.replace(" ", "").startswith(p) for p in OUTAGE_POSTAL_PREFIXES):
+            reg_alert = spoken_line("service_alert_banner", lang)
+            state["regional_alert"] = reg_alert
+
+    if account.get("preferred_language") and not state.get("preferred_language"):
+        state["preferred_language"] = account["preferred_language"]
+
+    state["last_tracking_id"] = reference
+    return ok_reply(
+        {
+            "account_id": account["account_id"],
+            "first_name": account.get("first_name", ""),
+            "phone_last4": state["phone_last4"],
+            "linked_mobile_last4": state["phone_last4"],
+            "caller_provided_phone_last4": state["caller_provided_phone_last4"],
+            "account_status": account.get("status", "active"),
+            "customer_type": "residential",
+            "business_flag": False,
+            "identified": True,
+            "account_found": True,
+            "auth_status": state["auth_status"],
+            "regional_alert": reg_alert,
+        },
+        reference,
+        language=lang,
+    )
+
 def manage_mfa_settings_impl(  # pragma: no cover
     action: str = "disable",
     lost_authenticator: str | int | float | bool = False,
@@ -940,6 +1270,9 @@ def manage_mfa_settings_impl(  # pragma: no cover
     if mock_err:
         return mock_err
 
+    if identifier and not state.get("account_id"):
+        lookup_account_impl(identifier=identifier, language=lang, state=state)
+
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("manage_mfa_settings", account_id, str(action))
     state["last_tracking_id"] = reference
@@ -947,7 +1280,8 @@ def manage_mfa_settings_impl(  # pragma: no cover
     code_val = step_up_code or verification_code
     if str(code_val or "").strip():
         digits = normalize_code(code_val)
-        if digits in ALWAYS_WRONG_LOGIN_CODES or digits not in VALID_LOGIN_CODES:
+        failures = read_count(state, "auth_failure_count")
+        if not login_code_accepted(digits, attempts=failures, max_attempts=MAX_LOGIN_ATTEMPTS):
             failures = read_count(state, "auth_failure_count") + 1
             state["auth_failure_count"] = failures
             if failures >= MAX_LOGIN_ATTEMPTS:
@@ -981,8 +1315,13 @@ def manage_mfa_settings_impl(  # pragma: no cover
             state["auth_status"] = "pass"
             state["logged_in"] = True
             state["auth_failure_count"] = 0
-            if len(digits) == 6 or state.get("mfa_email_code_sent"):
+            if state.get("mfa_email_code_sent"):
                 state["mfa_email_verified"] = True
+            else:
+                state["login_channel"] = "mfa_sms_verified"
+
+    if state.get("auth_status") == "pass" and not state.get("account_id"):
+        _hydrate_default_account_if_needed(state)
 
     if state.get("auth_status") != "pass":
         return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
@@ -1006,6 +1345,8 @@ def manage_mfa_settings_impl(  # pragma: no cover
             return ok_reply(
                 {
                     "requires_email_step_up": True,
+                    "requires_step_up": True,
+                    "step_up_channel": "email",
                     "mfa_updated": False,
                     "masked_backup_email": masked,
                     "spoken_message": spoken,
@@ -1041,35 +1382,30 @@ def manage_mfa_settings_impl(  # pragma: no cover
             language=lang,
         )
 
-    if lang == "fr-CA":
+    if state.get("login_channel") == "mfa_sms_verified" or state.get("mfa_email_verified"):
         state["mfa_enabled"] = False
         return ok_reply(
             {
                 "mfa_updated": True,
                 "mfa_enabled": False,
-                "spoken_message": "L'authentification à deux facteurs a été désactivée pour votre compte.",
-            },
-            reference,
-            language=lang,
-        )
-
-    if state.get("login_code_sent") or state.get("mfa_email_verified"):
-        state["mfa_enabled"] = False
-        return ok_reply(
-            {
-                "mfa_updated": True,
-                "mfa_enabled": False,
-                "spoken_message": "Two-factor authentication has been disabled for your account.",
+                "spoken_message": localized_text(
+                    lang,
+                    "Two-factor authentication has been disabled for your account.",
+                    "L'authentification à deux facteurs a été désactivée pour votre compte.",
+                    "La autenticación de dos factores se ha desactivado para su cuenta.",
+                ),
             },
             reference,
             language=lang,
         )
 
     state["login_code_sent"] = True
-    state["login_channel"] = "sms"
+    state["login_channel"] = "mfa_sms"
     return ok_reply(
         {
             "requires_sms_step_up": True,
+            "requires_step_up": True,
+            "step_up_channel": "sms",
             "mfa_updated": False,
             "spoken_message": spoken_line("id_verification_otp", lang),
         },

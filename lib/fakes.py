@@ -90,12 +90,15 @@ def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:
 
 def find_account(identifier: Any) -> dict[str, Any] | None:
     """Find an account by phone number or account number; None when there is none."""
+    if identifier is None or isinstance(identifier, bool):
+        return None
     raw_str = re.sub(r"\.0+$", "", str(identifier or "").strip())
     raw = raw_str.upper()
     if not raw:
         return None
     digits = normalize_code(raw_str)
     has_alpha = any(c.isalpha() for c in raw_str)
+    norm_digits = digits[1:] if (not has_alpha and len(digits) == 11 and digits.startswith("1")) else digits
 
     _k_p4 = "phone_" + "last" + "4"
     _k_cp4 = "caller_provided_" + _k_p4
@@ -109,13 +112,14 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
         if (
             raw == record["account_id"]
             or canonical_id == record["account_id"]
-            or (not has_alpha and digits and digits == record["phone"])
+            or (not has_alpha and (digits == record["phone"] or (norm_digits and norm_digits == record["phone"])))
         ):
             rec = dict(record)
             p_last4 = rec["phone"][-4:]
+            rec["linked_mobile_last4"] = p_last4
             rec[_k_p4] = p_last4
             rec[_k_cp4] = (
-                digits[-4:] if (not has_alpha and len(digits) in (9, 10)) else ""
+                norm_digits[-4:] if (not has_alpha and len(norm_digits) in (9, 10)) else ""
             )
             rec["billing_account"] = "BA-" + rec["phone"][-6:]
             rec[_k_a4] = record["account_id"][-4:]
@@ -134,21 +138,44 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
             rec["duplicate_payment_amount"] = "85.50"
             return rec
 
-    if is_synthetic_wrong_identifier(raw_str, digits):
+    if is_synthetic_wrong_identifier(raw_str, norm_digits) or is_synthetic_wrong_identifier(raw_str, digits):
         return None
 
-    if not has_alpha and len(digits) in (9, 10):
+    if not has_alpha and len(norm_digits) in (7, 8, 9, 10):
+        if len(norm_digits) == 10:
+            return {
+                "account_id": f"ACC-{norm_digits[-4:]}",
+                "phone": norm_digits,
+                "linked_mobile_last4": norm_digits[-4:],
+                _k_p4: norm_digits[-4:],
+                _k_cp4: norm_digits[-4:],
+                _k_a4: norm_digits[-4:],
+                "billing_account": "BA-" + norm_digits[-6:],
+                "first_name": "",
+                "status": "active",
+                "preferred_language": "en-US",
+                "identifier_kind": "phone",
+                "email": "jordan@example.com",
+                _k_cf4: "4242",
+                _k_sc4: "8844",
+                _k_bf4: "6789",
+                "subscribed_lobs": "mobility,internet,tv,homephone",
+                "current_balance": "85.50",
+                "past_due_balance": "85.50",
+                "duplicate_payment_amount": "85.50",
+            }
         return {
-            "account_id": "A" + digits[-6:],
-            "phone": digits,
-            _k_p4: digits[-4:],
-            _k_cp4: digits[-4:],
-            _k_a4: digits[-4:],
-            "billing_account": "BA-" + digits[-6:],
+            "account_id": f"ACC-{norm_digits[-4:]}",
+            "phone": norm_digits,
+            "linked_mobile_last4": ACCOUNTS[0]["phone"][-4:],
+            _k_p4: ACCOUNTS[0]["phone"][-4:],
+            _k_cp4: "",
+            _k_a4: norm_digits[-4:],
+            "billing_account": "BA-" + norm_digits[-6:],
             "first_name": "",
             "status": "active",
             "preferred_language": "en-US",
-            "identifier_kind": "phone" if len(digits) == 10 else "billing_account",
+            "identifier_kind": "billing_account",
             "email": "jordan@example.com",
             _k_cf4: "4242",
             _k_sc4: "8844",
@@ -162,6 +189,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
     if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
         base = dict(ACCOUNTS[0])
         base["account_id"] = raw
+        base["linked_mobile_last4"] = base["phone"][-4:]
         base[_k_p4] = base["phone"][-4:]
         base[_k_cp4] = ""
         base["billing_account"] = "BA-" + base["phone"][-6:]
@@ -239,8 +267,8 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {
         {
             "id": "NET-PLUS",
             "name": "Fiber Internet 500",
-            "monthly_price": 55.00,
-            "price_display": "55.00",
+            "monthly_price": 75.00,
+            "price_display": "75.00",
             "speed_or_data": "500 Mbps",
             "features_en": "Ultra-fast streaming and gaming, Wi-Fi 6 gateway, zero activation fee",
             "features_fr": "Diffusion et jeux ultra-rapides, borne Wi-Fi 6, aucuns frais d'activation",
@@ -251,8 +279,8 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {
         {
             "id": "NET-GIG",
             "name": "Gigabit Fiber",
-            "monthly_price": 75.00,
-            "price_display": "75.00",
+            "monthly_price": 95.00,
+            "price_display": "95.00",
             "speed_or_data": "1 Gbps",
             "features_en": "Gigabit symmetrical speed, whole-home mesh pod, 24/7 priority support",
             "features_fr": "Vitesse symétrique gigabit, relais maillé pour toute la maison, soutien prioritaire",
@@ -472,7 +500,7 @@ FAKE_APPOINTMENTS_DATA: dict[str, Any] = {
         "window_end": "12:00",
         "window_display": "8:00 AM - 12:00 PM",
         "status": "scheduled",
-        "technician_status": "en_route",
+        "technician_status": "scheduled",
         "technician_name": "Marc-Andre",
         "service_type": "fiber_installation",
         "address": "123 Maple Avenue, Montreal, QC",
@@ -517,7 +545,7 @@ FAKE_WARRANTY_DATA: dict[str, Any] = {
     "coverage_end_date": "2027-03-15",
     "standard_replacement_eta_days": 2,
     "urgent_safety_replacement_eta_days": 1,
-    "battery_swelling_safety_en": "Immediately power down the phone, disconnect from chargers, and do not puncture or compress the battery enclosure.",
-    "battery_swelling_safety_fr": "Éteignez immédiatement le téléphone, débranchez tout chargeur et évitez de comprimer ou de percer la batterie.",
-    "battery_swelling_safety_es": "Apague el teléfono de inmediato, desconecte cualquier cargador y evite perforar o comprimir la batería.",
+    "battery_swelling_safety_en": "SAFETY PRIORITY: Power off the device immediately, unplug it from any charger, do NOT puncture or compress the battery, and place it on a hard non-flammable surface. Do NOT mail or ship the swollen device back; dispose of it safely at an authorized Telco retail store or certified municipal hazardous e-waste drop-off center.",
+    "battery_swelling_safety_fr": "PRIORITÉ SÉCURITÉ : Éteignez immédiatement l'appareil, débranchez-le du chargeur, ne percez ni ne comprimez la batterie et placez-le sur une surface incombustible. N'expédiez PAS l'appareil gonflé par la poste ; déposez-le dans une boutique Telco autorisée ou un écocentre municipal certifié pour déchets électroniques dangereux.",
+    "battery_swelling_safety_es": "PRIORIDAD DE SEGURIDAD: Apague el dispositivo de inmediato, desconéctelo del cargador, NO perfore ni presione la batería y colóquelo sobre una superficie no inflamable. NO envíe por correo el dispositivo hinchado; deséchelo de forma segura en una tienda Telco autorizada o en un centro municipal certificado de reciclaje de baterías peligrosas.",
 }

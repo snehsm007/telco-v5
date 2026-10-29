@@ -6,8 +6,9 @@ from typing import Any
 
 def browse_plans_and_coverage(
     category: str = "internet",
-    postal_code: str = "",
+    postal_code: str | int | float = "",
     service_address: str = "",
+    address: str = "",
     max_budget: str | int | float = "",
     language: str = "",
 ) -> dict[str, Any]:
@@ -17,6 +18,7 @@ def browse_plans_and_coverage(
       category: Plan service category ('internet', 'tv', 'mobility').
       postal_code: The 6-character Canadian postal code or 5-digit ZIP code.
       service_address: Customer street address for coverage check.
+      address: Alternative customer street address.
       max_budget: Maximum monthly price ceiling to filter plans.
       language: Preferred language code such as 'en-US', 'fr-CA', or 'es-US'.
 
@@ -31,6 +33,7 @@ def browse_plans_and_coverage(
         category=category,
         postal_code=postal_code,
         service_address=service_address,
+        address=address,
         max_budget=max_budget,
         language=language,
         state=state,
@@ -39,6 +42,7 @@ def browse_plans_and_coverage(
 
 # --- BEGIN GENERATED SHARED BUNDLE (edit lib/, then run `make bundle`) ---
 # uses: from lib.services import browse_plans_and_coverage_impl
+from datetime import date, timedelta
 from decimal import Decimal
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
@@ -64,8 +68,8 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
         {
             "id": "NET-PLUS",
             "name": "Fiber Internet 500",
-            "monthly_price": 55.00,
-            "price_display": "55.00",
+            "monthly_price": 75.00,
+            "price_display": "75.00",
             "speed_or_data": "500 Mbps",
             "features_en": "Ultra-fast streaming and gaming, Wi-Fi 6 gateway, zero activation fee",
             "features_fr": "Diffusion et jeux ultra-rapides, borne Wi-Fi 6, aucuns frais d'activation",
@@ -76,8 +80,8 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
         {
             "id": "NET-GIG",
             "name": "Gigabit Fiber",
-            "monthly_price": 75.00,
-            "price_display": "75.00",
+            "monthly_price": 95.00,
+            "price_display": "95.00",
             "speed_or_data": "1 Gbps",
             "features_en": "Gigabit symmetrical speed, whole-home mesh pod, 24/7 priority support",
             "features_fr": "Vitesse symétrique gigabit, relais maillé pour toute la maison, soutien prioritaire",
@@ -909,30 +913,8 @@ def _check_mock_error(state: dict[str, Any], lang: str) -> dict[str, Any] | None
         )
     return None
 
-ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
-    {
-        "account_id": "A1001",
-        "phone": "2025550143",
-        "first_name": "Jordan",
-        "status": "active",
-        "preferred_language": "en-US",
-    },
-    {
-        "account_id": "ACC-1002",
-        "phone": "2025550198",
-        "first_name": "Taylor",
-        "status": "active",
-        "preferred_language": "fr-CA",
-    },
-)
-
 def _ensure_default_profile(state: dict[str, Any]) -> None:  # pragma: no cover
-    """Populate default account profile keys so mid-flow tool calls never crash on missing state."""
-    default_acct = ACCOUNTS[0] if ACCOUNTS else {}
-    if not state.get("account_id"):
-        state["account_id"] = default_acct.get("account_id", "")
-    if not state.get("phone_last4"):
-        state["phone_last4"] = default_acct.get("phone", "")[-4:]
+    """Initialize safe session status defaults without polluting account identity."""
     state.setdefault("auth_status", "none")
     state.setdefault("auth_failure_count", 0)
     state.setdefault("pin_failure_count", 0)
@@ -976,6 +958,15 @@ def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
 
+def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:  # pragma: no cover
+    """Return text localized for the caller's target language."""
+    loc = resolve_copy_locale(language)
+    if loc == "fr-CA":
+        return fr
+    if loc == "es-US":
+        return es or en
+    return en
+
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 
 def ok_reply(  # pragma: no cover
@@ -1011,8 +1002,9 @@ def ok_reply(  # pragma: no cover
 
 def browse_plans_and_coverage_impl(  # pragma: no cover
     category: str = "internet",
-    postal_code: str = "",
+    postal_code: str | int | float = "",
     service_address: str = "",
+    address: str = "",
     max_budget: str | int | float = "",
     language: str = "",
     state: dict[str, Any] | None = None,
@@ -1036,23 +1028,29 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
     pc = (str(postal_code or state.get("postal_code") or "")).strip().upper()
     if pc:
         state["postal_code"] = pc
-    addr = str(service_address or state.get("service_address") or "").strip()
-    if addr:
-        state["service_address"] = addr
+    s_addr = str(service_address or address or kwargs.get("address") or state.get("service_address") or "").strip()
+    if s_addr:
+        state["service_address"] = s_addr
 
     cat = str(category or "internet").lower()
     catalog = FAKE_PLAN_CATALOG.get(cat, FAKE_PLAN_CATALOG["internet"])
 
     max_b = None
-    if max_budget and str(max_budget).strip():
+    if max_budget is not None and not isinstance(max_budget, bool) and str(max_budget).strip():
         try:
-            max_b = Decimal(str(max_budget).replace("$", "").replace(",", "").strip())
+            val = Decimal(str(max_budget).replace("$", "").replace(",", "").strip())
+            if val.is_finite() and not val.is_nan():
+                max_b = val
         except Exception:
             max_b = None
 
     shortlist = []
     for p in catalog:
-        if max_b is not None and Decimal(str(p["monthly_price"])) > max_b:
+        try:
+            p_price = Decimal(str(p.get("monthly_price", 0)))
+        except Exception:
+            p_price = Decimal(0)
+        if max_b is not None and p_price > max_b:
             continue
         shortlist.append(p)
         if len(shortlist) >= 3:
@@ -1064,6 +1062,13 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
     ref = tracking_id("browse_plans_and_coverage", cat, pc)
     state["last_tracking_id"] = ref
 
+    contract_term = localized_text(
+        lang,
+        "Month-to-month, no annual contract, $0 activation fee",
+        "Mensuel sans contrat annuel, frais d'activation de 0 $",
+        "Mes a mes sin contrato anual, cargo de activación de $0",
+    )
+
     return ok_reply(
         {
             "category": cat,
@@ -1071,7 +1076,7 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
             "fiber_coverage_available": True,
             "five_g_coverage_available": True,
             "throttled_speed_after_cap": "512 kbps",
-            "contract_term": "month-to-month, $0 activation fee",
+            "contract_term": contract_term,
         },
         ref,
         language=lang,

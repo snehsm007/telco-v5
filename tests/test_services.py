@@ -480,11 +480,12 @@ def test_services_extended_branches_and_edge_cases() -> None:
     assert tbs_mob["status"] == "ok"
 
     # manage_appointment: 2-step confirmation and cancel
-    apt_conf_step = manage_appointment_impl(action="cancel", state=dict(authed, technician_status="scheduled"))
+    apt_state = dict(authed, technician_status="scheduled")
+    apt_conf_step = manage_appointment_impl(action="cancel", state=apt_state)
     assert apt_conf_step["status"] == "ok"
     assert apt_conf_step["data"]["requires_confirmation"] is True
 
-    apt_cancel_done = manage_appointment_impl(action="cancel", confirmed_cancel=True, state=dict(authed, technician_status="scheduled"))
+    apt_cancel_done = manage_appointment_impl(action="cancel", confirmed_cancel=True, state=apt_state)
     assert apt_cancel_done["status"] == "ok"
     assert apt_cancel_done["data"]["appointment_cancelled"] is True
 
