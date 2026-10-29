@@ -87,6 +87,7 @@ def test_send_password_reset_sms_localization_fr_and_es(monkeypatch) -> None:
     assert reply_fr["status"] == "ok"
     assert "cellulaire" in reply_fr["data"]["spoken_summary"]
 
+    session.state.pop("language", None)
     reply_es = tool.send_password_reset_sms(language="es-US")
     assert reply_es["status"] == "ok"
     assert "enlace de restablecimiento" in reply_es["data"]["spoken_summary"]

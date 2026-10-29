@@ -1009,6 +1009,31 @@ def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
 
+def _session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
+    """Resolve session language with inverted precedence: state lock wins over model arg."""
+    if callable(getattr(state, "get", None)):
+        existing = state.get("language")
+        if existing and str(existing).strip():
+            lang = resolve_copy_locale(str(existing))
+            state["language"] = lang
+            if not state.get("preferred_language"):
+                state["preferred_language"] = lang
+            return lang
+
+    if language and str(language).strip():
+        lang = resolve_copy_locale(str(language))
+        if callable(getattr(state, "__setitem__", None)):
+            state["language"] = lang
+            state["preferred_language"] = lang
+        return lang
+
+    if callable(getattr(state, "get", None)):
+        pref = state.get("preferred_language")
+        if pref and str(pref).strip():
+            return resolve_copy_locale(str(pref))
+
+    return resolve_copy_locale(None)
+
 def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:  # pragma: no cover
     """Return text localized for the caller's target language."""
     loc = resolve_copy_locale(language)
@@ -1065,10 +1090,7 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
     """Retrieve 2-3 curated plans and check network coverage without PIN/OTP."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
