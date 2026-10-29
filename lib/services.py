@@ -1274,6 +1274,43 @@ def get_billing_summary_impl(
     pay_arr = bool(state.get("payment_arrangement_active", False))
     line_items = FAKE_BILLING_LEDGER.get("recent_line_items", [])
     recent_pmts = FAKE_BILLING_LEDGER.get("recent_payments", [])
+    adjustments = FAKE_BILLING_LEDGER.get(
+        "adjustments",
+        [{"description": "Account credit", "amount": "-51.00"}],
+    )
+
+    charges_dec = sum(
+        (Decimal(str(item.get("amount", 0))) for item in line_items),
+        Decimal("0.00"),
+    )
+    payments_dec = sum(
+        (Decimal(str(item.get("amount", 0))) for item in recent_pmts),
+        Decimal("0.00"),
+    )
+    credits_dec = sum(
+        (abs(Decimal(str(item.get("amount", 0)))) for item in adjustments),
+        Decimal("0.00"),
+    )
+
+    stmt_tot_str = display_amount(charges_dec)
+    pmts_rec_str = display_amount(payments_dec)
+    creds_app_str = display_amount(credits_dec)
+    amt_due_str = display_amount(bal)
+
+    sec_card_l4 = str(FAKE_BILLING_LEDGER.get("secondary_card_last4") or "8844")
+
+    payment_methods_on_file = [
+        {"type": "card", "last4": card_l4, "primary": True},
+        {"type": "card", "last4": sec_card_l4},
+        {"type": "bank", "last4": bank_l4},
+    ]
+
+    spoken_summary = localized_text(
+        lang,
+        f"Your total amount due is ${amt_due_str}, reflecting total charges of ${stmt_tot_str}, less ${pmts_rec_str} in payments received and ${creds_app_str} in account credits applied.",
+        f"Votre montant total dû est de {amt_due_str} $, comprenant {stmt_tot_str} $ de frais totaux, moins {pmts_rec_str} $ de paiements reçus et {creds_app_str} $ de crédits appliqués au compte.",
+        f"Su monto total adeudado es de ${amt_due_str}, reflejando cargos totales de ${stmt_tot_str}, menos ${pmts_rec_str} en pagos recibidos y ${creds_app_str} en créditos aplicados a la cuenta.",
+    )
 
     try:
         past_due_dec = Decimal(str(past_due))
@@ -1335,6 +1372,7 @@ def get_billing_summary_impl(
             "autopay_enrolled": autopay,
             "payment_arrangement_active": pay_arr,
             "card_on_file_last4": card_l4,
+            "secondary_card_on_file_last4": sec_card_l4,
             "bank_on_file_last4": bank_l4,
             "is_suspended": is_susp,
             "suspension_reason": susp_reason,
@@ -1342,6 +1380,14 @@ def get_billing_summary_impl(
             "recent_payments": recent_pmts,
             "duplicate_payment_amount": "85.50",
             "daily_outage_proration_rate": "2.85",
+            "adjustments": adjustments,
+            "statement_total": stmt_tot_str,
+            "payments_received": pmts_rec_str,
+            "credits_applied": creds_app_str,
+            "amount_due": amt_due_str,
+            "payment_methods_on_file": payment_methods_on_file,
+            "spoken_summary": spoken_summary,
+            "spoken_message": spoken_summary,
         },
         reference,
         language=lang,

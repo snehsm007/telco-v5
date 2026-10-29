@@ -270,6 +270,9 @@ FAKE_BILLING_LEDGER: dict[str, Any] = {
         {"date": "2026-10-15", "amount": 85.50, "status": "posted", "payment_method": "card"},
         {"date": "2026-10-15", "amount": 85.50, "status": "duplicate", "payment_method": "card"},
     ],
+    "adjustments": [
+        {"description": "Account credit", "amount": "-51.00"},
+    ],
 }
 
 FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {
