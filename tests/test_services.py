@@ -46,6 +46,7 @@ from lib.services import (
     run_troubleshooting_and_sms_impl,
     send_login_code,
     send_login_code_impl,
+    _session_language,
     send_password_reset_sms,
     send_password_reset_sms_impl,
     setup_autopay,
@@ -560,3 +561,86 @@ def test_services_extended_branches_and_edge_cases() -> None:
     port_out_res = cancel_or_port_out_service_impl(action_type="port_out", confirmed=True, state=dict(authed, cancellation_fee_disclosed=True))
     assert port_out_res["status"] == "ok"
     assert "port_out_pin" in port_out_res["data"]
+
+
+def test_language_lock_tool_precedence() -> None:
+    # (1) state has fr-CA, model passes "en-US" -> tool copy is fr-CA and state stays fr-CA
+    base_state = {
+        "account_id": "A1001",
+        "phone_last4": "0143",
+        "auth_status": "pass",
+        "language": "fr-CA",
+    }
+
+    # send_login_code_impl
+    s1 = dict(base_state, auth_status="none")
+    r1 = send_login_code_impl(language="en-US", state=s1)
+    assert s1["language"] == "fr-CA"
+    assert r1.get("active_language") == "fr-CA"
+    assert "code à 6 chiffres" in r1.get("spoken_message", "")
+
+    # verify_login_impl
+    s2 = dict(base_state, auth_status="code_sent")
+    r2 = verify_login_impl(code="123456", language="en-US", state=s2)
+    assert s2["language"] == "fr-CA"
+    assert r2.get("active_language") == "fr-CA"
+
+    # get_billing_summary_impl
+    s3 = dict(base_state)
+    r3 = get_billing_summary_impl(language="en-US", state=s3)
+    assert s3["language"] == "fr-CA"
+    assert r3.get("active_language") == "fr-CA"
+
+    # process_refund_or_dispute_impl
+    s4 = dict(base_state)
+    r4 = process_refund_or_dispute_impl(amount="15.00", dispute_type="billing_error", language="en-US", state=s4)
+    assert s4["language"] == "fr-CA"
+    assert r4.get("active_language") == "fr-CA"
+    assert "remboursement" in (r4.get("spoken_message") or r4.get("data", {}).get("verbatim_confirmation", ""))
+
+    # send_password_reset_sms_impl
+    s5 = dict(base_state)
+    r5 = send_password_reset_sms_impl(language="en-US", state=s5)
+    assert s5["language"] == "fr-CA"
+    assert r5.get("active_language") == "fr-CA"
+    assert "réinitialisation" in r5.get("data", {}).get("spoken_summary", "")
+
+    # (2) empty state + model passes fr-CA -> lock set to fr-CA
+    s_init = {"account_id": "A1001"}
+    r_init = send_login_code_impl(language="fr-CA", state=s_init)
+    assert s_init["language"] == "fr-CA"
+    assert r_init.get("active_language") == "fr-CA"
+
+    # (3) en-US state + model passes fr-CA -> upgrade to fr-CA
+    s_upgrade = {"account_id": "A1001", "language": "en-US"}
+    r_upgrade = send_login_code_impl(language="fr-CA", state=s_upgrade)
+    assert s_upgrade["language"] == "fr-CA"
+    assert r_upgrade.get("active_language") == "fr-CA"
+
+    # (4) empty state + model passes "" -> default behaviour unchanged
+    s_default = {"account_id": "A1001"}
+    r_default = send_login_code_impl(language="", state=s_default)
+    assert s_default.get("language") is None or s_default.get("language") == ""
+    assert r_default.get("active_language") == "en-US"
+
+
+def test_asymmetric_session_language_lock() -> None:
+    # fr-CA state + "en-US" arg -> fr-CA
+    s1 = {"language": "fr-CA"}
+    assert _session_language(s1, "en-US") == "fr-CA"
+    assert s1["language"] == "fr-CA"
+
+    # en-US state + "fr-CA" arg -> fr-CA (upgrade)
+    s2 = {"language": "en-US"}
+    assert _session_language(s2, "fr-CA") == "fr-CA"
+    assert s2["language"] == "fr-CA"
+
+    # fr-CA state + "" -> fr-CA
+    s3 = {"language": "fr-CA"}
+    assert _session_language(s3, "") == "fr-CA"
+    assert s3["language"] == "fr-CA"
+
+    # empty state + "" -> default (en-US)
+    s4: dict[str, Any] = {}
+    assert _session_language(s4, "") == "en-US"
+

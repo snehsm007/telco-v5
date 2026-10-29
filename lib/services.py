@@ -116,6 +116,64 @@ def _ensure_default_profile(state: dict[str, Any]) -> None:
     state.setdefault("payment_failure_count", 0)
 
 
+def _session_language(state: dict[str, Any] | None, language: Any = "") -> str:
+    """Resolve session language with asymmetric lock: non-English locks over English.
+
+    When state has no language or is default 'en-US', a model-supplied
+    non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
+    Once state holds a non-English locale, a model-supplied 'en-US' or empty
+    value is ignored (PRD BR-TV-004 lock).
+    """
+    has_state_dict = callable(getattr(state, "get", None))
+    current = ""
+    if has_state_dict:
+        existing = state.get("language")
+        if existing and str(existing).strip():
+            current = resolve_copy_locale(str(existing))
+
+    arg_lang = ""
+    if language and str(language).strip():
+        arg_lang = resolve_copy_locale(str(language))
+
+    # 1. Once state holds a non-English locale, model-supplied en-US/empty is ignored.
+    if current and current != "en-US":
+        state["language"] = current
+        if not state.get("preferred_language"):
+            state["preferred_language"] = current
+        return current
+
+    # 2. When state has no language or is default 'en-US':
+    # A model-supplied non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
+    if arg_lang and arg_lang != "en-US":
+        if callable(getattr(state, "__setitem__", None)):
+            state["language"] = arg_lang
+            state["preferred_language"] = arg_lang
+        return arg_lang
+
+    # 3. If state already had 'en-US', keep it.
+    if current == "en-US":
+        return "en-US"
+
+    # 4. State had no language and model passed non-empty 'en-US'.
+    if arg_lang == "en-US":
+        if callable(getattr(state, "__setitem__", None)):
+            state["language"] = "en-US"
+        return "en-US"
+
+    # 5. Check preferred_language in state if any.
+    if has_state_dict:
+        pref = state.get("preferred_language")
+        if pref and str(pref).strip():
+            pref_loc = resolve_copy_locale(str(pref))
+            if pref_loc != "en-US":
+                if callable(getattr(state, "__setitem__", None)):
+                    state["language"] = pref_loc
+                return pref_loc
+            return "en-US"
+
+    return resolve_copy_locale(None)
+
+
 def _hydrate_default_account_if_needed(state: dict[str, Any]) -> None:
     """Populate default account profile ONLY for standalone unit-test calls that omit lookup."""
     if state.get("account_id"):
@@ -436,10 +494,7 @@ def lookup_account_impl(
     """Find the caller's account and remember it for the rest of the call."""
     state = _get_state(state, session_state, reset_if_locked=True)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -612,10 +667,7 @@ def send_login_code_impl(
     """Send a login code to the phone number or backup email on the account."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -726,10 +778,7 @@ def verify_login_impl(
     """Validate verification PIN or OTP with 3-strike lockout ladder."""
     state = _get_state(state, session_state, reset_if_locked=True)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1027,10 +1076,7 @@ def get_billing_summary_impl(
     """Retrieve billing account balance, due date, autopay status, and line items."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1100,10 +1146,7 @@ def process_bill_payment_impl(
     """Execute bill payment and atomically restore suspended service."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1276,10 +1319,7 @@ def setup_payment_arrangement_impl(
     """Establish formal payment arrangement and restore suspended service."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1367,10 +1407,7 @@ def setup_autopay_impl(
     """Enroll or manage recurring autopay with card or bank account."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1465,10 +1502,7 @@ def process_refund_or_dispute_impl(
     """Process credit adjustment, duplicate payment refund, or fee dispute."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1623,10 +1657,7 @@ def check_regional_outage_impl(
     """Check network infrastructure status by postal code."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1717,10 +1748,7 @@ def run_troubleshooting_and_sms_impl(
     """Diagnose technical symptom, dispatch reset signal, and send SMS guide."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1793,10 +1821,7 @@ def get_appointment_and_ticket_status_impl(
     """Retrieve technician appointment status and 3 available reschedule slots."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1861,10 +1886,7 @@ def manage_appointment_impl(
     """Reschedule or cancel technician appointment with en-route protection."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -2007,10 +2029,7 @@ def browse_plans_and_coverage_impl(
     """Retrieve 2-3 curated plans and check network coverage without PIN/OTP."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -2088,10 +2107,7 @@ def commit_plan_or_order_impl(
     """Finalize plan upgrade, add-on order, or equipment change."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -2195,10 +2211,7 @@ def initiate_number_transfer_impl(
     """Provide port-in checklist or initiate carrier number transfer."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -2308,10 +2321,7 @@ def manage_warranty_claim_impl(
     """Process device warranty claim with safety hazard priority override."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -2427,10 +2437,7 @@ def send_password_reset_sms_impl(
     explicit_session = state is not None or session_state is not None
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -2499,10 +2506,7 @@ def manage_mfa_settings_impl(
     """Configure MFA settings with lost-device backup email step-up."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -2670,10 +2674,7 @@ def execute_suspend_restore_impl(
     """Execute voluntary service suspension or line restoration."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -2756,10 +2757,7 @@ def update_contact_profile_impl(
     """Update contact email, billing address, or preferred language."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -2840,10 +2838,7 @@ def cancel_or_port_out_service_impl(
     """Execute line cancellation with mandatory 2-step fee disclosure gate."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:

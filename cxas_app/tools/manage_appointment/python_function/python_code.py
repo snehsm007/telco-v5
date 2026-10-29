@@ -925,6 +925,63 @@ def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
 
+def _session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
+    """Resolve session language with asymmetric lock: non-English locks over English.
+
+    When state has no language or is default 'en-US', a model-supplied
+    non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
+    Once state holds a non-English locale, a model-supplied 'en-US' or empty
+    value is ignored (PRD BR-TV-004 lock).
+    """
+    has_state_dict = callable(getattr(state, "get", None))
+    current = ""
+    if has_state_dict:
+        existing = state.get("language")
+        if existing and str(existing).strip():
+            current = resolve_copy_locale(str(existing))
+
+    arg_lang = ""
+    if language and str(language).strip():
+        arg_lang = resolve_copy_locale(str(language))
+
+    # 1. Once state holds a non-English locale, model-supplied en-US/empty is ignored.
+    if current and current != "en-US":
+        state["language"] = current
+        if not state.get("preferred_language"):
+            state["preferred_language"] = current
+        return current
+
+    # 2. When state has no language or is default 'en-US':
+    # A model-supplied non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
+    if arg_lang and arg_lang != "en-US":
+        if callable(getattr(state, "__setitem__", None)):
+            state["language"] = arg_lang
+            state["preferred_language"] = arg_lang
+        return arg_lang
+
+    # 3. If state already had 'en-US', keep it.
+    if current == "en-US":
+        return "en-US"
+
+    # 4. State had no language and model passed non-empty 'en-US'.
+    if arg_lang == "en-US":
+        if callable(getattr(state, "__setitem__", None)):
+            state["language"] = "en-US"
+        return "en-US"
+
+    # 5. Check preferred_language in state if any.
+    if has_state_dict:
+        pref = state.get("preferred_language")
+        if pref and str(pref).strip():
+            pref_loc = resolve_copy_locale(str(pref))
+            if pref_loc != "en-US":
+                if callable(getattr(state, "__setitem__", None)):
+                    state["language"] = pref_loc
+                return pref_loc
+            return "en-US"
+
+    return resolve_copy_locale(None)
+
 def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma: no cover
     """Return True when an identifier is intentionally invalid or synthetic wrong."""
     raw_low = raw_str.lower()
@@ -1133,10 +1190,7 @@ def lookup_account_impl(  # pragma: no cover
     """Find the caller's account and remember it for the rest of the call."""
     state = _get_state(state, session_state, reset_if_locked=True)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1323,10 +1377,7 @@ def verify_login_impl(  # pragma: no cover
     """Validate verification PIN or OTP with 3-strike lockout ladder."""
     state = _get_state(state, session_state, reset_if_locked=True)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
@@ -1543,10 +1594,7 @@ def manage_appointment_impl(  # pragma: no cover
     """Reschedule or cancel technician appointment with en-route protection."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
-    lang = resolve_copy_locale(language or state.get("language") or state.get("preferred_language"))
-    if language and str(language).strip():
-        state["language"] = lang
-        state["preferred_language"] = lang
+    lang = _session_language(state, language)
 
     mock_err = _check_mock_error(state, lang)
     if mock_err:
