@@ -46,6 +46,7 @@ from lib.services import (
     run_troubleshooting_and_sms_impl,
     send_login_code,
     send_login_code_impl,
+    _session_language,
     send_password_reset_sms,
     send_password_reset_sms_impl,
     setup_autopay,
@@ -610,9 +611,36 @@ def test_language_lock_tool_precedence() -> None:
     assert s_init["language"] == "fr-CA"
     assert r_init.get("active_language") == "fr-CA"
 
-    # (3) empty state + model passes "" -> default behaviour unchanged
+    # (3) en-US state + model passes fr-CA -> upgrade to fr-CA
+    s_upgrade = {"account_id": "A1001", "language": "en-US"}
+    r_upgrade = send_login_code_impl(language="fr-CA", state=s_upgrade)
+    assert s_upgrade["language"] == "fr-CA"
+    assert r_upgrade.get("active_language") == "fr-CA"
+
+    # (4) empty state + model passes "" -> default behaviour unchanged
     s_default = {"account_id": "A1001"}
     r_default = send_login_code_impl(language="", state=s_default)
     assert s_default.get("language") is None or s_default.get("language") == ""
     assert r_default.get("active_language") == "en-US"
+
+
+def test_asymmetric_session_language_lock() -> None:
+    # fr-CA state + "en-US" arg -> fr-CA
+    s1 = {"language": "fr-CA"}
+    assert _session_language(s1, "en-US") == "fr-CA"
+    assert s1["language"] == "fr-CA"
+
+    # en-US state + "fr-CA" arg -> fr-CA (upgrade)
+    s2 = {"language": "en-US"}
+    assert _session_language(s2, "fr-CA") == "fr-CA"
+    assert s2["language"] == "fr-CA"
+
+    # fr-CA state + "" -> fr-CA
+    s3 = {"language": "fr-CA"}
+    assert _session_language(s3, "") == "fr-CA"
+    assert s3["language"] == "fr-CA"
+
+    # empty state + "" -> default (en-US)
+    s4: dict[str, Any] = {}
+    assert _session_language(s4, "") == "en-US"
 
