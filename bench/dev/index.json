@@ -1,0 +1,252 @@
+[
+  {
+    "name": "sim__cancel_home_phone_french",
+    "topic": "cancel_or_port_out",
+    "language": "fr"
+  },
+  {
+    "name": "sim__cancel_service_mobility_french",
+    "topic": "cancel_or_port_out",
+    "language": "fr"
+  },
+  {
+    "name": "sim__check_outage_active_postal_code",
+    "topic": "outage_check",
+    "language": "en"
+  },
+  {
+    "name": "sim__check_outage_none_found_sms_troubleshoot",
+    "topic": "outage_check",
+    "language": "en"
+  },
+  {
+    "name": "sim__check_tech_status_business_deflection",
+    "topic": "technician_or_ticket_status",
+    "language": "en"
+  },
+  {
+    "name": "sim__check_tech_status_reschedule_pivot",
+    "topic": "technician_or_ticket_status",
+    "language": "en"
+  },
+  {
+    "name": "sim__check_tech_status_standard",
+    "topic": "technician_or_ticket_status",
+    "language": "en"
+  },
+  {
+    "name": "sim__check_ticket_status_retry_strikes",
+    "topic": "technician_or_ticket_status",
+    "language": "en"
+  },
+  {
+    "name": "sim__dispute_charge_auth_retry",
+    "topic": "dispute_refund_credit",
+    "language": "en"
+  },
+  {
+    "name": "sim__dispute_charge_business_account_deflection",
+    "topic": "dispute_refund_credit",
+    "language": "en"
+  },
+  {
+    "name": "sim__dispute_unrecognized_streaming_charge",
+    "topic": "dispute_refund_credit",
+    "language": "en"
+  },
+  {
+    "name": "sim__manage_mfa_auth_failure",
+    "topic": "two_step_login_mfa",
+    "language": "en"
+  },
+  {
+    "name": "sim__manage_mfa_disable",
+    "topic": "two_step_login_mfa",
+    "language": "en"
+  },
+  {
+    "name": "sim__manage_mfa_enable",
+    "topic": "two_step_login_mfa",
+    "language": "en"
+  },
+  {
+    "name": "sim__manage_mfa_french_disable",
+    "topic": "two_step_login_mfa",
+    "language": "fr"
+  },
+  {
+    "name": "sim__pay_bill_french_keypad",
+    "topic": "pay_bill",
+    "language": "fr"
+  },
+  {
+    "name": "sim__pay_mobility_bill_card_file",
+    "topic": "pay_bill",
+    "language": "en"
+  },
+  {
+    "name": "sim__pay_past_due_bill_prevent_suspension",
+    "topic": "pay_bill",
+    "language": "en"
+  },
+  {
+    "name": "sim__port_out_number_english",
+    "topic": "cancel_or_port_out",
+    "language": "en"
+  },
+  {
+    "name": "sim__report_fraud_mid_call_switch",
+    "topic": "fraud",
+    "language": "en"
+  },
+  {
+    "name": "sim__report_fraud_phishing",
+    "topic": "fraud",
+    "language": "en"
+  },
+  {
+    "name": "sim__report_fraud_sim_swap",
+    "topic": "fraud",
+    "language": "en"
+  },
+  {
+    "name": "sim__report_fraud_standard",
+    "topic": "fraud",
+    "language": "en"
+  },
+  {
+    "name": "sim__request_refund_exceeding_threshold_escalation",
+    "topic": "dispute_refund_credit",
+    "language": "en"
+  },
+  {
+    "name": "sim__request_refund_overcharge_french",
+    "topic": "dispute_refund_credit",
+    "language": "fr"
+  },
+  {
+    "name": "sim__reset_password_sms_escalation",
+    "topic": "password_reset",
+    "language": "en"
+  },
+  {
+    "name": "sim__reset_password_standard",
+    "topic": "password_reset",
+    "language": "en"
+  },
+  {
+    "name": "sim__reset_password_wrong_number_retry",
+    "topic": "password_reset",
+    "language": "en"
+  },
+  {
+    "name": "sim__restore_service_already_paid",
+    "topic": "restore_service",
+    "language": "en"
+  },
+  {
+    "name": "sim__restore_service_payment_arrangement",
+    "topic": "restore_service",
+    "language": "en"
+  },
+  {
+    "name": "sim__restore_service_standard",
+    "topic": "restore_service",
+    "language": "en"
+  },
+  {
+    "name": "sim__setup_autopay_french",
+    "topic": "autopay",
+    "language": "fr"
+  },
+  {
+    "name": "sim__setup_autopay_internet_english",
+    "topic": "autopay",
+    "language": "en"
+  },
+  {
+    "name": "sim__speak_immediate_english",
+    "topic": "talk_to_a_person",
+    "language": "en"
+  },
+  {
+    "name": "sim__speak_immediate_french",
+    "topic": "talk_to_a_person",
+    "language": "fr"
+  },
+  {
+    "name": "sim__speak_mid_call_billing_english",
+    "topic": "talk_to_a_person",
+    "language": "en"
+  },
+  {
+    "name": "sim__speak_mid_call_tech_french",
+    "topic": "talk_to_a_person",
+    "language": "fr"
+  },
+  {
+    "name": "sim__transfer_landline_mobile_french",
+    "topic": "move_number_in",
+    "language": "fr"
+  },
+  {
+    "name": "sim__transfer_number_competitor",
+    "topic": "move_number_in",
+    "language": "en"
+  },
+  {
+    "name": "sim__troubleshoot_mobile_data_slow",
+    "topic": "troubleshooting",
+    "language": "en"
+  },
+  {
+    "name": "sim__troubleshoot_mobile_service_french",
+    "topic": "troubleshooting",
+    "language": "fr"
+  },
+  {
+    "name": "sim__troubleshoot_satellite_tv_error",
+    "topic": "troubleshooting",
+    "language": "en"
+  },
+  {
+    "name": "sim__troubleshoot_tv_app_freezing",
+    "topic": "troubleshooting",
+    "language": "en"
+  },
+  {
+    "name": "sim__upgrade_internet_speed_french",
+    "topic": "upgrade",
+    "language": "fr"
+  },
+  {
+    "name": "sim__upgrade_internet_wfh",
+    "topic": "upgrade",
+    "language": "en"
+  },
+  {
+    "name": "sim__upgrade_mobile_plan_budget",
+    "topic": "upgrade",
+    "language": "en"
+  },
+  {
+    "name": "sim__warranty_replacement_check_status",
+    "topic": "warranty",
+    "language": "en"
+  },
+  {
+    "name": "sim__warranty_replacement_iphone_screen",
+    "topic": "warranty",
+    "language": "en"
+  },
+  {
+    "name": "sim__warranty_replacement_samsung_french",
+    "topic": "warranty",
+    "language": "fr"
+  },
+  {
+    "name": "sim__warranty_replacement_swollen_battery_french",
+    "topic": "warranty",
+    "language": "fr"
+  }
+]

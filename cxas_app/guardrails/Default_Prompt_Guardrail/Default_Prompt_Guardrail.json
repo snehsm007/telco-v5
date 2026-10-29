@@ -1,0 +1,13 @@
+{
+  "name": "2566b2f8-67df-4749-ab48-89d25d58cb94",
+  "displayName": "Default Prompt Guardrail",
+  "enabled": true,
+  "action": {
+    "generativeAnswer": {
+      "prompt": "I can't help with that request."
+    }
+  },
+  "llmPromptSecurity": {
+    "defaultSettings": {}
+  }
+}

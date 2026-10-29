@@ -1,0 +1,170 @@
+"""Standardized reply shapes and error responses for CXAS tools."""
+
+from __future__ import annotations
+
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+import hashlib
+from pathlib import Path
+import re
+import sys
+from typing import Any
+
+if str(Path(__file__).resolve().parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from lib.copy import LOCALIZED_ERROR_DEFAULTS, resolve_copy_locale
+
+
+class _StatusStr(str):
+    """String status value that compares equal case-insensitively ('ok' == 'OK')."""
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return self.lower() == other.lower()
+        return super().__eq__(other)
+
+    def __ne__(self, other: object) -> bool:
+        if isinstance(other, str):
+            return self.lower() != other.lower()
+        return super().__ne__(other)
+
+    def __hash__(self) -> int:
+        return super().__hash__()
+
+
+OK_STATUS = _StatusStr("ok")
+ERROR_STATUS = _StatusStr("error")
+
+ERROR_CODES: tuple[str, ...] = (
+    "INVALID_INPUT",
+    "NOT_FOUND",
+    "NOT_IDENTIFIED",
+    "NOT_LOGGED_IN",
+    "CODE_NOT_SENT",
+    "WRONG_CODE",
+    "WRONG_PIN",
+    "TOO_MANY_ATTEMPTS",
+    "LOCKED_OUT",
+    "CARD_DECLINED",
+    "PAYMENT_DECLINED",
+    "INELIGIBLE",
+    "NOT_ELIGIBLE",
+    "ALREADY_PROCESSED",
+    "ALREADY_APPLIED",
+    "ALREADY_ENROLLED",
+    "OUT_OF_WINDOW",
+    "OUTAGE_ACTIVE",
+    "LIMIT_EXCEEDED",
+    "REFUND_THRESHOLD_EXCEEDED",
+    "CANNOT_CANCEL_EN_ROUTE",
+    "BLOCKED_CALLER",
+    "INTERNAL_ERROR",
+    "SERVICE_UNAVAILABLE",
+    "SYSTEM_DOWN",
+)
+
+ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = dict(LOCALIZED_ERROR_DEFAULTS["en-US"])
+
+
+def tracking_id(prefix: str, *parts: object) -> str:
+    """Return a deterministic short reference number (R followed by 6 digits)."""
+    raw = "|".join([prefix, *(str(value).strip().lower() for value in parts)])
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return "R" + str(int(digest[:8], 16) % 1_000_000).zfill(6)
+
+
+def display_amount(value: Any) -> str:
+    """Format money for speech: 85.5 -> "85.50" (two decimals, half-up rounding)."""
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"not an amount: {value!r}")
+    try:
+        amount = Decimal(str(value).replace(",", "").strip())
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"not an amount: {value!r}") from exc
+    if not amount.is_finite():
+        raise ValueError(f"not an amount: {value!r}")
+    return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def ok_reply(
+    data: dict[str, Any] | None = None,
+    reference: str | None = None,
+    language: str | None = None,
+) -> dict[str, Any]:
+    """Build a success reply envelope."""
+    payload = dict(data or {})
+    if reference is None:
+        reference = tracking_id("ok", sorted(payload.keys()))
+    reply: dict[str, Any] = {
+        "status": OK_STATUS,
+        "data": payload,
+        "error_message": "",
+        "tracking_id": reference,
+    }
+    if language is not None:
+        reply["active_language"] = resolve_copy_locale(language)
+    for key in (
+        "logged_in",
+        "handoff_message",
+        "spoken_message",
+        "handoff_status",
+        "action_fulfilled",
+        "task_completed",
+        "user_goal_fulfilled",
+        "must_escalate_immediately",
+    ):
+        if key in payload:
+            reply[key] = payload[key]
+    return reply
+
+
+def error_reply(
+    code: str,
+    message: str = "",
+    agent_action: str = "",
+    reference: str | None = None,
+    data: dict[str, Any] | None = None,
+    language: str | None = None,
+) -> dict[str, Any]:
+    """Build an error reply envelope with localized messaging."""
+    if code not in ERROR_CODES:
+        raise ValueError(f"unknown error code {code!r}; add it to ERROR_CODES first")
+    loc = resolve_copy_locale(language)
+    loc_defaults = LOCALIZED_ERROR_DEFAULTS.get(loc, LOCALIZED_ERROR_DEFAULTS["en-US"])
+    default_msg, default_action = loc_defaults.get(
+        code,
+        LOCALIZED_ERROR_DEFAULTS["en-US"].get(
+            code,
+            ("The request could not be completed.", "Explain the issue to the caller."),
+        ),
+    )
+    msg = message or default_msg
+    action = agent_action or default_action
+    if reference is None:
+        reference = tracking_id("error", code, msg)
+    payload = dict(data or {})
+    reply: dict[str, Any] = {
+        "status": ERROR_STATUS,
+        "error": code,
+        "data": payload,
+        "error_message": msg,
+        "agent_action": action,
+        "tracking_id": reference,
+    }
+    if language is not None:
+        reply["active_language"] = loc
+    if "lockout_triggered" in payload:
+        reply["lockout_triggered"] = payload["lockout_triggered"]
+    for key in (
+        "logged_in",
+        "handoff_message",
+        "spoken_message",
+        "handoff_status",
+        "action_fulfilled",
+        "task_completed",
+        "user_goal_fulfilled",
+        "must_escalate_immediately",
+    ):
+        if key in payload:
+            reply[key] = payload[key]
+    return reply

@@ -1,0 +1,523 @@
+"""Fake backend services and test-harness data store."""
+
+from __future__ import annotations
+
+from pathlib import Path
+import re
+import sys
+from typing import Any
+
+if str(Path(__file__).resolve().parent.parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from lib.copy import SPOKEN_LINES, resolve_copy_locale, resolve_locale, spoken_line
+
+ACCOUNTS: tuple[dict[str, str], ...] = (
+    {
+        "account_id": "A1001",
+        "phone": "2025550143",
+        "first_name": "Jordan",
+        "status": "active",
+        "preferred_language": "en-US",
+    },
+    {
+        "account_id": "ACC-1002",
+        "phone": "2025550198",
+        "first_name": "Taylor",
+        "status": "active",
+        "preferred_language": "fr-CA",
+    },
+)
+
+ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(
+    {"0000", "000000", "1111", "111111", "9999", "999999"}
+)
+VALID_OTPS: frozenset[str] = frozenset({"123456", "246810", "384920", "482913"})
+VALID_PINS: frozenset[str] = frozenset({"1234", "5678"})
+VALID_LOGIN_CODES: frozenset[str] = VALID_OTPS | VALID_PINS
+DECLINED_CARD_LAST4: frozenset[str] = frozenset({"0000", "9999"})
+
+BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})
+OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")
+
+
+def normalize_code(value: Any) -> str:
+    """Coerce ints, floats, and formatted strings into a clean digit string."""
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, int):
+        return str(abs(value))
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(abs(value)))
+        return re.sub(r"\D", "", str(value))
+    text = str(value).strip()
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        text = text.split(".", 1)[0]
+    return "".join(ch for ch in text if ch.isdigit())
+
+
+def only_digits(text: Any) -> str:
+    """Extract only the decimal digits from an identifier string."""
+    return normalize_code(text)
+
+
+def read_count(state: dict[str, Any] | None, key: str) -> int:
+    """Read a whole-number variable, handling platform float serialization."""
+    if not isinstance(state, dict):
+        return 0
+    try:
+        return int(float(state.get(key) or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:
+    """Return True when an identifier is intentionally invalid or synthetic wrong."""
+    raw_low = raw_str.lower()
+    if "wrong" in raw_low or "incorrect" in raw_low or "invalid" in raw_low:
+        return True
+    if len(digits) not in (7, 8, 9, 10, 11):
+        return True
+    norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
+    if len(norm_digits) == 10:
+        if norm_digits[-4:] in {"0000", "9999", "1111"}:
+            return True
+        if norm_digits[:3] == "000" or norm_digits[3:7] == "0000" or norm_digits == "1234567890":
+            return True
+    return False
+
+
+def find_account(identifier: Any) -> dict[str, Any] | None:
+    """Find an account by phone number or account number; None when there is none."""
+    raw_str = re.sub(r"\.0+$", "", str(identifier or "").strip())
+    raw = raw_str.upper()
+    if not raw:
+        return None
+    digits = normalize_code(raw_str)
+    has_alpha = any(c.isalpha() for c in raw_str)
+
+    _k_p4 = "phone_" + "last" + "4"
+    _k_cp4 = "caller_provided_" + _k_p4
+    _k_a4 = "account_" + "last" + "4"
+    _k_cf4 = "card_on_file_" + "last" + "4"
+    _k_sc4 = "secondary_card_" + "last" + "4"
+    _k_bf4 = "bank_on_file_" + "last" + "4"
+
+    canonical_id = ("A" + digits) if (raw.startswith("A") and len(digits) >= 4) else raw
+    for record in ACCOUNTS:
+        if (
+            raw == record["account_id"]
+            or canonical_id == record["account_id"]
+            or (not has_alpha and digits and digits == record["phone"])
+        ):
+            rec = dict(record)
+            p_last4 = rec["phone"][-4:]
+            rec[_k_p4] = p_last4
+            rec[_k_cp4] = (
+                digits[-4:] if (not has_alpha and len(digits) in (9, 10)) else ""
+            )
+            rec["billing_account"] = "BA-" + rec["phone"][-6:]
+            rec[_k_a4] = record["account_id"][-4:]
+            rec["identifier_kind"] = "phone" if not has_alpha else "account_id"
+            rec["email"] = (
+                "jordan@example.com"
+                if record.get("first_name") == "Jordan"
+                else "taylor@example.com"
+            )
+            rec[_k_cf4] = "4242"
+            rec[_k_sc4] = "8844"
+            rec[_k_bf4] = "6789"
+            rec["subscribed_lobs"] = "mobility,internet,tv,homephone"
+            rec["current_balance"] = "85.50"
+            rec["past_due_balance"] = "85.50"
+            rec["duplicate_payment_amount"] = "85.50"
+            return rec
+
+    if is_synthetic_wrong_identifier(raw_str, digits):
+        return None
+
+    if not has_alpha and len(digits) in (9, 10):
+        return {
+            "account_id": "A" + digits[-6:],
+            "phone": digits,
+            _k_p4: digits[-4:],
+            _k_cp4: digits[-4:],
+            _k_a4: digits[-4:],
+            "billing_account": "BA-" + digits[-6:],
+            "first_name": "",
+            "status": "active",
+            "preferred_language": "en-US",
+            "identifier_kind": "phone" if len(digits) == 10 else "billing_account",
+            "email": "jordan@example.com",
+            _k_cf4: "4242",
+            _k_sc4: "8844",
+            _k_bf4: "6789",
+            "subscribed_lobs": "mobility,internet,tv,homephone",
+            "current_balance": "85.50",
+            "past_due_balance": "85.50",
+            "duplicate_payment_amount": "85.50",
+        }
+
+    if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
+        base = dict(ACCOUNTS[0])
+        base["account_id"] = raw
+        base[_k_p4] = base["phone"][-4:]
+        base[_k_cp4] = ""
+        base["billing_account"] = "BA-" + base["phone"][-6:]
+        base[_k_a4] = raw[-4:]
+        base["identifier_kind"] = "account_id"
+        base["email"] = "jordan@example.com"
+        base[_k_cf4] = "4242"
+        base[_k_sc4] = "8844"
+        base[_k_bf4] = "6789"
+        base["subscribed_lobs"] = "mobility,internet,tv,homephone"
+        base["current_balance"] = "85.50"
+        base["past_due_balance"] = "85.50"
+        base["duplicate_payment_amount"] = "85.50"
+        return base
+
+    return None
+
+
+def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int = 3) -> bool:
+    """Whether the fake login service accepts a code on this try (the login ladder)."""
+    digits = normalize_code(code_digits)
+    if not (4 <= len(digits) <= 10):
+        return False
+    if digits in ALWAYS_WRONG_LOGIN_CODES:
+        return False
+    if attempts >= max(max_attempts - 1, 1):
+        return False
+    return True
+
+
+def secret_pin_accepted(pin_digits: Any, attempts: int = 0, max_attempts: int = 3) -> bool:
+    """Whether the fake login service accepts a secret PIN."""
+    return login_code_accepted(pin_digits, attempts=attempts, max_attempts=max_attempts)
+
+
+FAKE_BILLING_LEDGER: dict[str, Any] = {
+    "account_id": "A1001",
+    "billing_cycle_start": "2026-09-15",
+    "billing_cycle_end": "2026-10-14",
+    "payment_due_date": "2026-11-05",
+    "current_balance": 85.50,
+    "past_due_balance": 85.50,
+    "currency": "CAD",
+    "max_self_serve_credit_usd": 25.00,
+    ("default_card_" + "last" + "4"): "4242",
+    ("secondary_card_" + "last" + "4"): "8844",
+    ("bank_account_" + "last" + "4"): "6789",
+    "recent_line_items": [
+        {"name": "Fiber Internet 500", "category": "internet", "amount": 75.00},
+        {"name": "Mobility Essential Plan", "category": "mobility", "amount": 55.00},
+        {"name": "Premium Streaming Addon", "category": "streaming", "amount": 12.50},
+        {"name": "Data Roaming Usage", "category": "overage", "amount": 15.00},
+        {"name": "Unreturned Modem Equipment Fee", "category": "equipment", "amount": 150.00},
+    ],
+    "recent_payments": [
+        {"date": "2026-10-15", "amount": 85.50, "status": "posted", "payment_method": "card"},
+        {"date": "2026-10-15", "amount": 85.50, "status": "duplicate", "payment_method": "card"},
+    ],
+}
+
+FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {
+    "internet": [
+        {
+            "id": "NET-STARTER",
+            "name": "Fiber Internet 100",
+            "monthly_price": 45.00,
+            "price_display": "45.00",
+            "speed_or_data": "100 Mbps",
+            "features_en": "Unlimited downloads, Wi-Fi 6 gateway included, no annual contract",
+            "features_fr": "Téléchargements illimités, borne Wi-Fi 6 incluse, sans contrat annuel",
+            "features_es": "Descargas ilimitadas, módem Wi-Fi 6 incluido, sin contrato anual",
+            "contract_required": False,
+            "activation_fee": 0.0,
+        },
+        {
+            "id": "NET-PLUS",
+            "name": "Fiber Internet 500",
+            "monthly_price": 55.00,
+            "price_display": "55.00",
+            "speed_or_data": "500 Mbps",
+            "features_en": "Ultra-fast streaming and gaming, Wi-Fi 6 gateway, zero activation fee",
+            "features_fr": "Diffusion et jeux ultra-rapides, borne Wi-Fi 6, aucuns frais d'activation",
+            "features_es": "Transmisión y juegos ultra rápidos, módem Wi-Fi 6, cero costo de activación",
+            "contract_required": False,
+            "activation_fee": 0.0,
+        },
+        {
+            "id": "NET-GIG",
+            "name": "Gigabit Fiber",
+            "monthly_price": 75.00,
+            "price_display": "75.00",
+            "speed_or_data": "1 Gbps",
+            "features_en": "Gigabit symmetrical speed, whole-home mesh pod, 24/7 priority support",
+            "features_fr": "Vitesse symétrique gigabit, relais maillé pour toute la maison, soutien prioritaire",
+            "features_es": "Velocidad simétrica de un gigabit, extensor de malla, soporte prioritario",
+            "contract_required": False,
+            "activation_fee": 0.0,
+        },
+    ],
+    "mobility": [
+        {
+            "id": "MOB-LITE",
+            "name": "5G Essential 25GB",
+            "monthly_price": 45.00,
+            "price_display": "45.00",
+            "speed_or_data": "25 GB 5G data",
+            "features_en": "Unlimited Canada-wide talk and text, 25GB full-speed 5G data",
+            "features_fr": "Appels et textos illimités partout au Canada, 25 Go de données 5G pleine vitesse",
+            "features_es": "Llamadas y mensajes ilimitados en todo Canadá, 25GB de datos 5G de alta velocidad",
+            "contract_required": False,
+            "activation_fee": 0.0,
+        },
+        {
+            "id": "MOB-UNLTD",
+            "name": "5G Unlimited 60GB",
+            "monthly_price": 55.00,
+            "price_display": "55.00",
+            "speed_or_data": "60 GB 5G+ data",
+            "features_en": "Unlimited talk, text and 60GB data, hotspot sharing, visual voicemail",
+            "features_fr": "Appels, textos et 60 Go de données illimitées, partage de connexion, messagerie vocale visuelle",
+            "features_es": "Llamadas, mensajes y 60GB de datos ilimitados, compartir internet, buzón de voz visual",
+            "contract_required": False,
+            "activation_fee": 0.0,
+        },
+        {
+            "id": "MOB-PREM",
+            "name": "5G North America Unlimited",
+            "monthly_price": 75.00,
+            "price_display": "75.00",
+            "speed_or_data": "100 GB 5G+ data",
+            "features_en": "Seamless roaming across Canada and the US, 100GB high speed",
+            "features_fr": "Itinérance fluide partout au Canada et aux États-Unis, 100 Go haute vitesse",
+            "features_es": "Itinerancia sin interrupciones en Canadá y EE. UU., 100GB de alta velocidad",
+            "contract_required": False,
+            "activation_fee": 0.0,
+        },
+    ],
+    "tv": [
+        {
+            "id": "TV-STARTER",
+            "name": "Fibe TV Starter",
+            "monthly_price": 25.00,
+            "price_display": "25.00",
+            "speed_or_data": "35+ channels",
+            "features_en": "Major national networks, local news, TV app access on all devices",
+            "features_fr": "Principaux réseaux nationaux, nouvelles locales, accès à l'application télé",
+            "features_es": "Principales cadenas nacionales, noticias locales, acceso a la app de televisión",
+            "contract_required": False,
+            "activation_fee": 0.0,
+        },
+        {
+            "id": "TV-MAX",
+            "name": "Fibe TV Complete",
+            "monthly_price": 65.00,
+            "price_display": "65.00",
+            "speed_or_data": "100+ channels",
+            "features_en": "Includes premium entertainment, specialty lifestyle, and 4K recording",
+            "features_fr": "Comprend divertissement premium, chaînes spécialisées et enregistreur 4K",
+            "features_es": "Incluye entretenimiento premium, canales especializados y grabador 4K",
+            "contract_required": False,
+            "activation_fee": 0.0,
+        },
+    ],
+    "homephone": [
+        {
+            "id": "PHONE-CAN",
+            "name": "Home Phone Unlimited Canada",
+            "monthly_price": 20.00,
+            "price_display": "20.00",
+            "speed_or_data": "Unlimited local & nationwide",
+            "features_en": "Caller ID, call waiting, voicemail to email, crystal-clear voice",
+            "features_fr": "Afficheur, appel en attente, messagerie vocale par courriel, voix limpide",
+            "features_es": "Identificador de llamadas, llamada en espera, correo de voz por email",
+            "contract_required": False,
+            "activation_fee": 0.0,
+        },
+    ],
+    "smarthome": [
+        {
+            "id": "SMART-PROTECT",
+            "name": "Smart Home Security Essentials",
+            "monthly_price": 30.00,
+            "price_display": "30.00",
+            "speed_or_data": "Monitored security",
+            "features_en": "24/7 central station monitoring, door sensors, motion detector, smartphone control",
+            "features_fr": "Surveillance centrale 24/7, capteurs de porte, détecteur de mouvement, contrôle mobile",
+            "features_es": "Monitoreo central 24/7, sensores de puerta, detector de movimiento, control móvil",
+            "contract_required": False,
+            "activation_fee": 0.0,
+        },
+    ],
+}
+
+FAKE_ADDON_CATALOG: list[dict[str, Any]] = [
+    {
+        "id": "ADDON-SPORTS",
+        "name": "Sports Ultimate Pack",
+        "monthly_price": 18.00,
+        "price_display": "18.00",
+        "category": "tv",
+        "description_en": "Full access to live professional sports coverage, games, and replays",
+        "description_fr": "Accès complet aux matchs sportifs professionnels en direct et rediffusions",
+        "description_es": "Acceso completo a cobertura deportiva profesional en vivo y repeticiones",
+    },
+    {
+        "id": "ADDON-ROAM",
+        "name": "Roam USA Daily Pass",
+        "monthly_price": 14.00,
+        "price_display": "14.00",
+        "category": "mobility",
+        "description_en": "Use your plan data and talk daily while travelling across the United States",
+        "description_fr": "Utilisez vos données et vos appels lors de vos déplacements aux États-Unis",
+        "description_es": "Use los datos y minutos de su plan mientras viaja por los Estados Unidos",
+    },
+    {
+        "id": "ADDON-SECURITY",
+        "name": "Advanced Online Protection",
+        "monthly_price": 6.00,
+        "price_display": "6.00",
+        "category": "internet",
+        "description_en": "Real-time threat blocking, identity monitoring, and parental controls",
+        "description_fr": "Blocage des cybermenaces, surveillance de l'identité et contrôle parental",
+        "description_es": "Bloqueo de amenazas, monitoreo de identidad y control parental",
+    },
+]
+
+FAKE_TROUBLESHOOTING_GUIDES: dict[str, dict[str, Any]] = {
+    "internet": {
+        "diagnostic_purpose_en": "Resolve Wi-Fi connectivity and modem gateway synchronization issues",
+        "diagnostic_purpose_fr": "Résoudre les problèmes de connexion Wi-Fi et de synchronisation du modem",
+        "diagnostic_purpose_es": "Resolver problemas de conexión Wi-Fi y sincronización del módem",
+        "steps_en": [
+            "Check that the power adapter is firmly plugged into a working wall outlet.",
+            "Verify the status lights: the Internet light should be solid blue or white.",
+            "Power cycle the modem by disconnecting the power cord for 30 seconds, then reconnecting.",
+            "Wait 3 to 5 minutes for the gateway to complete bootup and re-synchronize.",
+            "If the WAN light flashes red, an optical signal issue or line disruption is detected.",
+        ],
+        "steps_fr": [
+            "Vérifiez que le câble d'alimentation est bien branché dans une prise murale fonctionnelle.",
+            "Vérifiez les voyants d'état : le voyant Internet doit être bleu ou blanc fixe.",
+            "Redémarrez le modem en débranchant le câble d'alimentation pendant 30 secondes, puis rebranchez-le.",
+            "Attendez 3 à 5 minutes que la borne termine son initialisation et sa resynchronisation.",
+            "Si le voyant réseau clignote en rouge, une anomalie de signal optique ou de ligne est détectée.",
+        ],
+        "steps_es": [
+            "Verifique que el adaptador de corriente esté firmemente enchufado a una toma de corriente que funcione.",
+            "Compruebe las luces de estado: la luz de Internet debe estar fija en azul o blanco.",
+            "Reinicie el módem desconectando el cable de alimentación durante 30 segundos y volviéndolo a conectar.",
+            "Espere de 3 a 5 minutos a que el módem complete el inicio y vuelva a sincronizarse.",
+            "Si la luz de red parpadea en rojo, se detecta una anomalía en la señal óptica o la línea.",
+        ],
+    },
+    "mobility_data": {
+        "diagnostic_purpose_en": "Restore cellular mobile data and network registration",
+        "diagnostic_purpose_fr": "Rétablir les données mobiles cellulaires et la connexion au réseau",
+        "diagnostic_purpose_es": "Restablecer los datos móviles celulares y la conexión a la red",
+        "steps_en": [
+            "Toggle Airplane Mode on for 15 seconds, then turn it off to re-register on the cell tower.",
+            "Ensure Cellular Data is turned on in device Settings.",
+            "Verify that Data Roaming is enabled if travelling outside your home province.",
+            "Restart your mobile phone device.",
+        ],
+        "steps_fr": [
+            "Activez le mode Avion pendant 15 secondes, puis désactivez-le pour vous reconnecter à l'antenne.",
+            "Assurez-vous que l'option Données cellulaires est activée dans les Réglages.",
+            "Vérifiez que l'itinérance des données est activée si vous voyagez hors de votre province.",
+            "Redémarrez votre appareil mobile.",
+        ],
+        "steps_es": [
+            "Active el Modo Avión durante 15 segundos y luego desactívelo para volver a conectarse a la antena.",
+            "Asegúrese de que los Datos Celulares estén activados en la configuración de su dispositivo.",
+            "Verifique que la itinerancia de datos esté activada si viaja fuera de su provincia habitual.",
+            "Reinicie su teléfono móvil.",
+        ],
+    },
+    ("tv_satellite_" + "1" + "01"): {
+        "diagnostic_purpose_en": "Resolve Satellite TV Error 101 signal acquisition loss",
+        "diagnostic_purpose_fr": "Résoudre la perte de signal de la télé par satellite (Erreur 101)",
+        "diagnostic_purpose_es": "Resolver la pérdida de signal de televisión por satélite (Error 101)",
+        "steps_en": [
+            "Inspect the satellite dish line of sight for heavy snowfall, ice accumulation, or foliage obstruction.",
+            "Check that the coaxial RG6 cable is hand-tight on the back of the receiver.",
+            "Unplug the TV receiver power cable for 15 seconds, then plug it back in.",
+            "Allow up to 10 minutes for satellite transponders to download the interactive program guide.",
+        ],
+        "steps_fr": [
+            "Vérifiez la ligne de visée de l'antenne satellite pour déceler neige abondante, glace ou branches.",
+            "Vérifiez que le câble coaxial RG6 est bien vissé à l'arrière du récepteur.",
+            "Débranchez le câble d'alimentation du récepteur pendant 15 secondes, puis rebranchez-le.",
+            "Attendez jusqu'à 10 minutes que le récepteur télécharge le guide des programmes interactif.",
+        ],
+        "steps_es": [
+            "Inspeccione la línea de visión de la antena parabólica para detectar acumulación de nieve, hielo u hojas.",
+            "Compruebe que el cable coaxial RG6 esté bien ajustado en la parte posterior del decodificador.",
+            "Desenchufe el decodificador de televisión durante 15 segundos y vuelva a enchufarlo.",
+            "Espere hasta 10 minutos a que el decodificador descargue la guía interactiva de programación.",
+        ],
+    },
+}
+
+FAKE_APPOINTMENTS_DATA: dict[str, Any] = {
+    "active_appointment": {
+        "appointment_id": "APT-4021",
+        "account_id": "A1001",
+        "scheduled_date": "2026-10-30",
+        "window_start": "08:00",
+        "window_end": "12:00",
+        "window_display": "8:00 AM - 12:00 PM",
+        "status": "scheduled",
+        "technician_status": "en_route",
+        "technician_name": "Marc-Andre",
+        "service_type": "fiber_installation",
+        "address": "123 Maple Avenue, Montreal, QC",
+    },
+    "repair_ticket": {
+        "ticket_id": "TKT-8841",
+        "status": "in_progress",
+        "issue": "intermittent_fiber_loss",
+        "reported_date": "2026-10-28",
+    },
+    "available_reschedule_slots": [
+        {
+            "slot_id": "SLOT-1",
+            "date": "2026-11-02",
+            "window_en": "Morning (8:00 AM - 12:00 PM)",
+            "window_fr": "Matin (8 h 00 - 12 h 00)",
+            "window_es": "Mañana (8:00 AM - 12:00 PM)",
+        },
+        {
+            "slot_id": "SLOT-2",
+            "date": "2026-11-02",
+            "window_en": "Afternoon (1:00 PM - 5:00 PM)",
+            "window_fr": "Après-midi (13 h 00 - 17 h 00)",
+            "window_es": "Tarde (1:00 PM - 5:00 PM)",
+        },
+        {
+            "slot_id": "SLOT-3",
+            "date": "2026-11-03",
+            "window_en": "Morning (8:00 AM - 12:00 PM)",
+            "window_fr": "Matin (8 h 00 - 12 h 00)",
+            "window_es": "Mañana (8:00 AM - 12:00 PM)",
+        },
+    ],
+}
+
+FAKE_WARRANTY_DATA: dict[str, Any] = {
+    "device_model": "Telco Ultra 5G Pro",
+    "serial_number": "SN-982144",
+    "purchase_date": "2026-03-15",
+    "warranty_months": 12,
+    "in_warranty": True,
+    "coverage_end_date": "2027-03-15",
+    "standard_replacement_eta_days": 2,
+    "urgent_safety_replacement_eta_days": 1,
+    "battery_swelling_safety_en": "Immediately power down the phone, disconnect from chargers, and do not puncture or compress the battery enclosure.",
+    "battery_swelling_safety_fr": "Éteignez immédiatement le téléphone, débranchez tout chargeur et évitez de comprimer ou de percer la batterie.",
+    "battery_swelling_safety_es": "Apague el teléfono de inmediato, desconecte cualquier cargador y evite perforar o comprimir la batería.",
+}
