@@ -46,7 +46,7 @@ def setup_payment_arrangement(
 # --- BEGIN GENERATED SHARED BUNDLE (edit lib/, then run `make bundle`) ---
 # uses: from lib.services import setup_payment_arrangement_impl
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -116,6 +116,7 @@ ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INTERNAL_ERROR",
     "SERVICE_UNAVAILABLE",
     "SYSTEM_DOWN",
+    "UNKNOWN_PLAN_ID",
 )
 
 class _StatusStr(str):  # pragma: no cover
@@ -282,6 +283,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "The service is temporarily unavailable.",
             "Apologize for the outage and hand the caller over to a person.",
         ),
+        "UNKNOWN_PLAN_ID": (
+            "The requested plan or add-on ID was not found in the catalog.",
+            "List the available plan IDs to the caller and ask them to select a valid plan.",
+        ),
     },
     "fr-CA": {
         "INVALID_INPUT": (
@@ -428,6 +433,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "Le système est temporairement indisponible.",
             "Présenter des excuses pour l'interruption et transférer le client à un agent.",
         ),
+        "UNKNOWN_PLAN_ID": (
+            "L'identifiant de forfait ou d'option demandé est introuvable dans le catalogue.",
+            "Indiquer les forfaits disponibles au client et lui demander de choisir un forfait valide.",
+        ),
     },
     "es-US": {
         "INVALID_INPUT": (
@@ -573,6 +582,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
         "SYSTEM_DOWN": (
             "El sistema está temporalmente fuera de servicio.",
             "Pida disculpas por la interrupción y transfiera al cliente con una persona.",
+        ),
+        "UNKNOWN_PLAN_ID": (
+            "El plan o paquete adicional solicitado no se encontró en el catálogo.",
+            "Indique los planes disponibles al cliente y pídale que elija un plan válido.",
         ),
     },
 }

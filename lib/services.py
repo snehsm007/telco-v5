@@ -9,7 +9,7 @@ Every key used here is declared in cxas_app/app.json.
 from __future__ import annotations
 
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 import re
 from typing import Any
 
@@ -32,6 +32,7 @@ from lib.fakes import (
     FAKE_TROUBLESHOOTING_GUIDES,
     FAKE_WARRANTY_DATA,
     OUTAGE_POSTAL_PREFIXES,
+    SALES_TAX_RATE,
     VALID_LOGIN_CODES,
     VALID_OTPS,
     VALID_PINS,
@@ -2087,6 +2088,7 @@ def browse_plans_and_coverage_impl(
     catalog = FAKE_PLAN_CATALOG.get(cat, FAKE_PLAN_CATALOG["internet"])
 
     max_b = _parse_positive_money(max_budget)
+    tax_rate = Decimal(str(SALES_TAX_RATE))
 
     shortlist = []
     for p in catalog:
@@ -2094,13 +2096,44 @@ def browse_plans_and_coverage_impl(
             p_price = Decimal(str(p.get("monthly_price", 0)))
         except Exception:
             p_price = Decimal(0)
+        p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        p_total = p_price + p_tax
         if max_b is not None and p_price > max_b:
             continue
-        shortlist.append(p)
+        p_copy = dict(p)
+        p_copy["estimated_tax"] = str(p_tax)
+        p_copy["estimated_total_monthly"] = str(p_total)
+        p_copy["monthly_total_with_tax"] = str(p_total)
+        p_copy.setdefault("contract_required", False)
+        shortlist.append(p_copy)
         if len(shortlist) >= 3:
             break
     if not shortlist:
-        shortlist = catalog[:2]
+        for p in catalog[:2]:
+            p_copy = dict(p)
+            p_price = Decimal(str(p.get("monthly_price", 0)))
+            p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            p_total = p_price + p_tax
+            p_copy["estimated_tax"] = str(p_tax)
+            p_copy["estimated_total_monthly"] = str(p_total)
+            p_copy["monthly_total_with_tax"] = str(p_total)
+            p_copy.setdefault("contract_required", False)
+            shortlist.append(p_copy)
+
+    cat_addons = [a for a in FAKE_ADDON_CATALOG if a.get("category") == cat]
+    if not cat_addons:
+        cat_addons = list(FAKE_ADDON_CATALOG)
+    addons_enriched = []
+    for a in cat_addons:
+        a_copy = dict(a)
+        a_copy["contract_required"] = False
+        a_price = Decimal(str(a.get("monthly_price", 0)))
+        a_tax = (a_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        a_total = a_price + a_tax
+        a_copy["estimated_tax"] = str(a_tax)
+        a_copy["estimated_total_monthly"] = str(a_total)
+        a_copy["monthly_total_with_tax"] = str(a_total)
+        addons_enriched.append(a_copy)
 
     state["shortlisted_plan_ids"] = ",".join(p["id"] for p in shortlist)
     ref = tracking_id("browse_plans_and_coverage", cat, pc)
@@ -2117,6 +2150,8 @@ def browse_plans_and_coverage_impl(
         {
             "category": cat,
             "shortlisted_plans": shortlist,
+            "available_add_ons": addons_enriched,
+            "add_ons": addons_enriched,
             "fiber_coverage_available": True,
             "five_g_coverage_available": True,
             "throttled_speed_after_cap": "512 kbps",
@@ -2139,6 +2174,7 @@ def commit_plan_or_order_impl(
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    confirmed: bool | str = False,
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -2186,23 +2222,74 @@ def commit_plan_or_order_impl(
                 plan_info = addon
                 break
 
-    plan_name = plan_info["name"] if plan_info else chosen_plan_id
-    new_monthly_price = (
-        str(plan_info.get("price_display"))
-        if plan_info and plan_info.get("price_display")
-        else (display_amount(plan_info["monthly_price"]) if plan_info and "monthly_price" in plan_info else "75.00")
+    valid_plan_ids = [p["id"] for cat in FAKE_PLAN_CATALOG.values() for p in cat] + [a["id"] for a in FAKE_ADDON_CATALOG]
+    if not plan_info:
+        msg = localized_text(
+            lang,
+            f"Unknown plan or add-on ID '{chosen_plan_id}'. Valid IDs are: {', '.join(valid_plan_ids)}.",
+            f"Identifiant de forfait ou option inconnu '{chosen_plan_id}'. Les identifiants valides sont : {', '.join(valid_plan_ids)}.",
+            f"ID de plan o complemento desconocido '{chosen_plan_id}'. Los IDs válidos son: {', '.join(valid_plan_ids)}.",
+        )
+        return error_reply(
+            "UNKNOWN_PLAN_ID",
+            message=msg,
+            reference=reference,
+            data={"valid_plan_ids": valid_plan_ids, "requested_plan_id": chosen_plan_id},
+            language=lang,
+        )
+
+    plan_name = device_name if (device_name and not plan_id) else plan_info["name"]
+    tax_rate = Decimal(str(SALES_TAX_RATE))
+    p_price = Decimal(str(plan_info.get("monthly_price", 0)))
+    p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    p_total = p_price + p_tax
+    price_disp = display_amount(p_price)
+    tax_disp = display_amount(p_tax)
+    total_disp = display_amount(p_total)
+
+    contract_term = localized_text(
+        lang,
+        "Month-to-month, no annual contract, $0 activation fee",
+        "Mensuel sans contrat annuel, frais d'activation de 0 $",
+        "Mes a mes sin contrato anual, cargo de activación de $0",
     )
+    eff_date = (
+        localized_text(lang, "immediate", "immédiat", "inmediato")
+        if not device_name
+        else localized_text(lang, "2 to 3 business days", "2 à 3 jours ouvrables", "2 a 3 días hábiles")
+    )
+
+    quote_summary = localized_text(
+        lang,
+        f"{plan_name}: ${price_disp}/month plus ${tax_disp} estimated tax (${total_disp} total monthly). Contract: {contract_term}. Delivery/activation: {eff_date}.",
+        f"{plan_name} : {price_disp} $/mois plus {tax_disp} $ de taxes estimées ({total_disp} $ au total par mois). Contrat : {contract_term}. Livraison/activation : {eff_date}.",
+        f"{plan_name}: ${price_disp}/mes más ${tax_disp} de impuestos estimados (${total_disp} total mensual). Contrato: {contract_term}. Entrega/activación: {eff_date}.",
+    )
+
+    if not _is_truthy_bool(confirmed):
+        return error_reply(
+            "REQUIRES_CONFIRMATION",
+            message=quote_summary,
+            agent_action="read the quote and get an explicit yes, then call again with confirmed=true",
+            reference=reference,
+            data={
+                "plan_id": chosen_plan_id,
+                "plan_name": plan_name,
+                "monthly_price": price_disp,
+                "estimated_tax": tax_disp,
+                "monthly_total_with_tax": total_disp,
+                "contract_term": contract_term,
+                "delivery_eta": eff_date,
+                "quote_summary": quote_summary,
+            },
+            language=lang,
+        )
 
     state["selected_plan_id"] = chosen_plan_id
     order_ref = tracking_id("ORD", account_id, chosen_plan_id)
     state["last_order_id"] = order_ref
 
     p_l4 = state.get("caller_provided_phone_last4") or state.get("phone_last4") or ""
-    eff_date = (
-        localized_text(lang, "immediate", "immédiat", "inmediato")
-        if not device_name
-        else localized_text(lang, "2 to 3 business days", "2 à 3 jours ouvrables", "2 a 3 días hábiles")
-    )
     bundle_summary = localized_text(
         lang,
         "Remaining bundle services remain unchanged.",
@@ -2216,7 +2303,11 @@ def commit_plan_or_order_impl(
             "order_type": order_type or "plan_upgrade",
             "plan_id": chosen_plan_id,
             "plan_name": plan_name,
-            "new_monthly_price": new_monthly_price,
+            "new_monthly_price": price_disp,
+            "estimated_tax": tax_disp,
+            "monthly_total_with_tax": total_disp,
+            "contract_term": contract_term,
+            "quote_summary": quote_summary,
             "effective_date": eff_date,
             "throttled_speed_after_cap": "512 kbps",
             "remaining_bundle_summary": bundle_summary,

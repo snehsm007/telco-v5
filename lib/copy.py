@@ -330,6 +330,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
             "The service is temporarily unavailable.",
             "Apologize for the outage and hand the caller over to a person.",
         ),
+        "UNKNOWN_PLAN_ID": (
+            "The requested plan or add-on ID was not found in the catalog.",
+            "List the available plan IDs to the caller and ask them to select a valid plan.",
+        ),
     },
     "fr-CA": {
         "INVALID_INPUT": (
@@ -476,6 +480,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
             "Le système est temporairement indisponible.",
             "Présenter des excuses pour l'interruption et transférer le client à un agent.",
         ),
+        "UNKNOWN_PLAN_ID": (
+            "L'identifiant de forfait ou d'option demandé est introuvable dans le catalogue.",
+            "Indiquer les forfaits disponibles au client et lui demander de choisir un forfait valide.",
+        ),
     },
     "es-US": {
         "INVALID_INPUT": (
@@ -621,6 +629,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
         "SYSTEM_DOWN": (
             "El sistema está temporalmente fuera de servicio.",
             "Pida disculpas por la interrupción y transfiera al cliente con una persona.",
+        ),
+        "UNKNOWN_PLAN_ID": (
+            "El plan o paquete adicional solicitado no se encontró en el catálogo.",
+            "Indique los planes disponibles al cliente y pídale que elija un plan válido.",
         ),
     },
 }

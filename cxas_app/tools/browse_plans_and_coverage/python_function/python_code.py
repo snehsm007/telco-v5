@@ -43,13 +43,46 @@ def browse_plans_and_coverage(
 # --- BEGIN GENERATED SHARED BUNDLE (edit lib/, then run `make bundle`) ---
 # uses: from lib.services import browse_plans_and_coverage_impl
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 import hashlib
 import re
 import sys
+
+FAKE_ADDON_CATALOG: list[dict[str, Any]] = [  # pragma: no cover
+    {
+        "id": "ADDON-SPORTS",
+        "name": "Sports Ultimate Pack",
+        "monthly_price": 18.00,
+        "price_display": "18.00",
+        "category": "tv",
+        "description_en": "Full access to live professional sports coverage, games, and replays",
+        "description_fr": "Accès complet aux matchs sportifs professionnels en direct et rediffusions",
+        "description_es": "Acceso completo a cobertura deportiva profesional en vivo y repeticiones",
+    },
+    {
+        "id": "ADDON-ROAM",
+        "name": "Roam USA Daily Pass",
+        "monthly_price": 14.00,
+        "price_display": "14.00",
+        "category": "mobility",
+        "description_en": "Use your plan data and talk daily while travelling across the United States",
+        "description_fr": "Utilisez vos données et vos appels lors de vos déplacements aux États-Unis",
+        "description_es": "Use los datos y minutos de su plan mientras viaja por los Estados Unidos",
+    },
+    {
+        "id": "ADDON-SECURITY",
+        "name": "Advanced Online Protection",
+        "monthly_price": 6.00,
+        "price_display": "6.00",
+        "category": "internet",
+        "description_en": "Real-time threat blocking, identity monitoring, and parental controls",
+        "description_fr": "Blocage des cybermenaces, surveillance de l'identité et contrôle parental",
+        "description_es": "Bloqueo de amenazas, monitoreo de identidad y control parental",
+    },
+]
 
 FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
     "internet": [
@@ -59,6 +92,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 45.00,
             "price_display": "45.00",
             "speed_or_data": "100 Mbps",
+            "download_speed": "100 Mbps",
+            "upload_speed": "100 Mbps",
+            "included_modem": "Wi-Fi 6 Gateway (included at $0/month)",
+            "modem_compatibility": "Wi-Fi 6 Giga Hub gateway (included at $0/month); compatible with all standard Wi-Fi devices and whole-home mesh pods",
             "features_en": "Unlimited downloads, Wi-Fi 6 gateway included, no annual contract",
             "features_fr": "Téléchargements illimités, borne Wi-Fi 6 incluse, sans contrat annuel",
             "features_es": "Descargas ilimitadas, módem Wi-Fi 6 incluido, sin contrato anual",
@@ -71,6 +108,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 75.00,
             "price_display": "75.00",
             "speed_or_data": "500 Mbps",
+            "download_speed": "500 Mbps",
+            "upload_speed": "500 Mbps",
+            "included_modem": "Wi-Fi 6 Gateway (included at $0/month)",
+            "modem_compatibility": "Wi-Fi 6 Giga Hub gateway (included at $0/month); compatible with all standard Wi-Fi devices and whole-home mesh pods",
             "features_en": "Ultra-fast streaming and gaming, Wi-Fi 6 gateway, zero activation fee",
             "features_fr": "Diffusion et jeux ultra-rapides, borne Wi-Fi 6, aucuns frais d'activation",
             "features_es": "Transmisión y juegos ultra rápidos, módem Wi-Fi 6, cero costo de activación",
@@ -83,6 +124,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 95.00,
             "price_display": "95.00",
             "speed_or_data": "1 Gbps",
+            "download_speed": "1 Gbps",
+            "upload_speed": "1 Gbps",
+            "included_modem": "Wi-Fi 6 Giga Hub with whole-home mesh pod (included at $0/month)",
+            "modem_compatibility": "Wi-Fi 6 Giga Hub gateway (included at $0/month); compatible with all standard Wi-Fi devices and whole-home mesh pods",
             "features_en": "Gigabit symmetrical speed, whole-home mesh pod, 24/7 priority support",
             "features_fr": "Vitesse symétrique gigabit, relais maillé pour toute la maison, soutien prioritaire",
             "features_es": "Velocidad simétrica de un gigabit, extensor de malla, soporte prioritario",
@@ -97,6 +142,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 45.00,
             "price_display": "45.00",
             "speed_or_data": "25 GB 5G data",
+            "download_speed": "Up to 250 Mbps (5G)",
+            "upload_speed": "Up to 50 Mbps",
+            "included_modem": "SIM / eSIM card (included at $0)",
+            "modem_compatibility": "Compatible with all unlocked 4G LTE and 5G smartphones",
             "features_en": "Unlimited Canada-wide talk and text, 25GB full-speed 5G data",
             "features_fr": "Appels et textos illimités partout au Canada, 25 Go de données 5G pleine vitesse",
             "features_es": "Llamadas y mensajes ilimitados en todo Canadá, 25GB de datos 5G de alta velocidad",
@@ -109,6 +158,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 55.00,
             "price_display": "55.00",
             "speed_or_data": "60 GB 5G+ data",
+            "download_speed": "Up to 1 Gbps (5G+)",
+            "upload_speed": "Up to 100 Mbps",
+            "included_modem": "SIM / eSIM card (included at $0)",
+            "modem_compatibility": "Compatible with all unlocked 4G LTE and 5G smartphones",
             "features_en": "Unlimited talk, text and 60GB data, hotspot sharing, visual voicemail",
             "features_fr": "Appels, textos et 60 Go de données illimitées, partage de connexion, messagerie vocale visuelle",
             "features_es": "Llamadas, mensajes y 60GB de datos ilimitados, compartir internet, buzón de voz visual",
@@ -121,6 +174,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 75.00,
             "price_display": "75.00",
             "speed_or_data": "100 GB 5G+ data",
+            "download_speed": "Up to 1 Gbps (5G+ ultra)",
+            "upload_speed": "Up to 100 Mbps",
+            "included_modem": "SIM / eSIM card (included at $0)",
+            "modem_compatibility": "Compatible with all unlocked 4G LTE and 5G smartphones",
             "features_en": "Seamless roaming across Canada and the US, 100GB high speed",
             "features_fr": "Itinérance fluide partout au Canada et aux États-Unis, 100 Go haute vitesse",
             "features_es": "Itinerancia sin interrupciones en Canadá y EE. UU., 100GB de alta velocidad",
@@ -135,6 +192,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 25.00,
             "price_display": "25.00",
             "speed_or_data": "35+ channels",
+            "download_speed": "N/A",
+            "upload_speed": "N/A",
+            "included_modem": "4K TV Terminal (included)",
+            "modem_compatibility": "Compatible with Fibe TV 4K receiver and mobile TV app",
             "features_en": "Major national networks, local news, TV app access on all devices",
             "features_fr": "Principaux réseaux nationaux, nouvelles locales, accès à l'application télé",
             "features_es": "Principales cadenas nacionales, noticias locales, acceso a la app de televisión",
@@ -147,6 +208,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 65.00,
             "price_display": "65.00",
             "speed_or_data": "100+ channels",
+            "download_speed": "N/A",
+            "upload_speed": "N/A",
+            "included_modem": "4K TV Terminal (included)",
+            "modem_compatibility": "Compatible with Fibe TV 4K receiver and mobile TV app",
             "features_en": "Includes premium entertainment, specialty lifestyle, and 4K recording",
             "features_fr": "Comprend divertissement premium, chaînes spécialisées et enregistreur 4K",
             "features_es": "Incluye entretenimiento premium, canales especializados y grabador 4K",
@@ -161,6 +226,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 20.00,
             "price_display": "20.00",
             "speed_or_data": "Unlimited local & nationwide",
+            "download_speed": "N/A",
+            "upload_speed": "N/A",
+            "included_modem": "Home Phone Terminal",
+            "modem_compatibility": "Standard analog phone jack compatible",
             "features_en": "Caller ID, call waiting, voicemail to email, crystal-clear voice",
             "features_fr": "Afficheur, appel en attente, messagerie vocale par courriel, voix limpide",
             "features_es": "Identificador de llamadas, llamada en espera, correo de voz por email",
@@ -175,6 +244,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 30.00,
             "price_display": "30.00",
             "speed_or_data": "Monitored security",
+            "download_speed": "N/A",
+            "upload_speed": "N/A",
+            "included_modem": "Smart Security Hub",
+            "modem_compatibility": "Compatible with Telco smart security sensors and mobile app",
             "features_en": "24/7 central station monitoring, door sensors, motion detector, smartphone control",
             "features_fr": "Surveillance centrale 24/7, capteurs de porte, détecteur de mouvement, contrôle mobile",
             "features_es": "Monitoreo central 24/7, sensores de puerta, detector de movimiento, control móvil",
@@ -183,6 +256,8 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
         },
     ],
 }
+
+SALES_TAX_RATE: float = 0.15  # pragma: no cover
 
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INVALID_INPUT",
@@ -221,6 +296,7 @@ ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INTERNAL_ERROR",
     "SERVICE_UNAVAILABLE",
     "SYSTEM_DOWN",
+    "UNKNOWN_PLAN_ID",
 )
 
 class _StatusStr(str):  # pragma: no cover
@@ -387,6 +463,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "The service is temporarily unavailable.",
             "Apologize for the outage and hand the caller over to a person.",
         ),
+        "UNKNOWN_PLAN_ID": (
+            "The requested plan or add-on ID was not found in the catalog.",
+            "List the available plan IDs to the caller and ask them to select a valid plan.",
+        ),
     },
     "fr-CA": {
         "INVALID_INPUT": (
@@ -533,6 +613,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "Le système est temporairement indisponible.",
             "Présenter des excuses pour l'interruption et transférer le client à un agent.",
         ),
+        "UNKNOWN_PLAN_ID": (
+            "L'identifiant de forfait ou d'option demandé est introuvable dans le catalogue.",
+            "Indiquer les forfaits disponibles au client et lui demander de choisir un forfait valide.",
+        ),
     },
     "es-US": {
         "INVALID_INPUT": (
@@ -678,6 +762,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
         "SYSTEM_DOWN": (
             "El sistema está temporalmente fuera de servicio.",
             "Pida disculpas por la interrupción y transfiera al cliente con una persona.",
+        ),
+        "UNKNOWN_PLAN_ID": (
+            "El plan o paquete adicional solicitado no se encontró en el catálogo.",
+            "Indique los planes disponibles al cliente y pídale que elija un plan válido.",
         ),
     },
 }
@@ -1141,6 +1229,7 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
     catalog = FAKE_PLAN_CATALOG.get(cat, FAKE_PLAN_CATALOG["internet"])
 
     max_b = _parse_positive_money(max_budget)
+    tax_rate = Decimal(str(SALES_TAX_RATE))
 
     shortlist = []
     for p in catalog:
@@ -1148,13 +1237,44 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
             p_price = Decimal(str(p.get("monthly_price", 0)))
         except Exception:
             p_price = Decimal(0)
+        p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        p_total = p_price + p_tax
         if max_b is not None and p_price > max_b:
             continue
-        shortlist.append(p)
+        p_copy = dict(p)
+        p_copy["estimated_tax"] = str(p_tax)
+        p_copy["estimated_total_monthly"] = str(p_total)
+        p_copy["monthly_total_with_tax"] = str(p_total)
+        p_copy.setdefault("contract_required", False)
+        shortlist.append(p_copy)
         if len(shortlist) >= 3:
             break
     if not shortlist:
-        shortlist = catalog[:2]
+        for p in catalog[:2]:
+            p_copy = dict(p)
+            p_price = Decimal(str(p.get("monthly_price", 0)))
+            p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            p_total = p_price + p_tax
+            p_copy["estimated_tax"] = str(p_tax)
+            p_copy["estimated_total_monthly"] = str(p_total)
+            p_copy["monthly_total_with_tax"] = str(p_total)
+            p_copy.setdefault("contract_required", False)
+            shortlist.append(p_copy)
+
+    cat_addons = [a for a in FAKE_ADDON_CATALOG if a.get("category") == cat]
+    if not cat_addons:
+        cat_addons = list(FAKE_ADDON_CATALOG)
+    addons_enriched = []
+    for a in cat_addons:
+        a_copy = dict(a)
+        a_copy["contract_required"] = False
+        a_price = Decimal(str(a.get("monthly_price", 0)))
+        a_tax = (a_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        a_total = a_price + a_tax
+        a_copy["estimated_tax"] = str(a_tax)
+        a_copy["estimated_total_monthly"] = str(a_total)
+        a_copy["monthly_total_with_tax"] = str(a_total)
+        addons_enriched.append(a_copy)
 
     state["shortlisted_plan_ids"] = ",".join(p["id"] for p in shortlist)
     ref = tracking_id("browse_plans_and_coverage", cat, pc)
@@ -1171,6 +1291,8 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
         {
             "category": cat,
             "shortlisted_plans": shortlist,
+            "available_add_ons": addons_enriched,
+            "add_ons": addons_enriched,
             "fiber_coverage_available": True,
             "five_g_coverage_available": True,
             "throttled_speed_after_cap": "512 kbps",

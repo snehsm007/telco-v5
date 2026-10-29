@@ -12,6 +12,7 @@ def commit_plan_or_order(
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    confirmed: bool = False,
 ) -> dict[str, Any]:
     """Finalize plan upgrade, add-on order, or equipment change for an authenticated customer.
 
@@ -23,6 +24,7 @@ def commit_plan_or_order(
       identifier: Optional customer phone or account number if known.
       verification_code: Optional one-time verification passcode.
       language: Preferred language code such as 'en-US', 'fr-CA', or 'es-US'.
+      confirmed: Set to true once caller explicitly confirms the plan quote; false/omitted returns a quote requiring confirmation.
 
     Returns:
       dict: status, data containing order reference, effective date, delivery info, and agent_action on errors.
@@ -39,6 +41,7 @@ def commit_plan_or_order(
         identifier=identifier,
         verification_code=verification_code,
         language=language,
+        confirmed=confirmed,
         state=state,
     )
 
@@ -46,7 +49,7 @@ def commit_plan_or_order(
 # --- BEGIN GENERATED SHARED BUNDLE (edit lib/, then run `make bundle`) ---
 # uses: from lib.services import commit_plan_or_order_impl
 from datetime import date, timedelta
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -97,6 +100,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 45.00,
             "price_display": "45.00",
             "speed_or_data": "100 Mbps",
+            "download_speed": "100 Mbps",
+            "upload_speed": "100 Mbps",
+            "included_modem": "Wi-Fi 6 Gateway (included at $0/month)",
+            "modem_compatibility": "Wi-Fi 6 Giga Hub gateway (included at $0/month); compatible with all standard Wi-Fi devices and whole-home mesh pods",
             "features_en": "Unlimited downloads, Wi-Fi 6 gateway included, no annual contract",
             "features_fr": "Téléchargements illimités, borne Wi-Fi 6 incluse, sans contrat annuel",
             "features_es": "Descargas ilimitadas, módem Wi-Fi 6 incluido, sin contrato anual",
@@ -109,6 +116,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 75.00,
             "price_display": "75.00",
             "speed_or_data": "500 Mbps",
+            "download_speed": "500 Mbps",
+            "upload_speed": "500 Mbps",
+            "included_modem": "Wi-Fi 6 Gateway (included at $0/month)",
+            "modem_compatibility": "Wi-Fi 6 Giga Hub gateway (included at $0/month); compatible with all standard Wi-Fi devices and whole-home mesh pods",
             "features_en": "Ultra-fast streaming and gaming, Wi-Fi 6 gateway, zero activation fee",
             "features_fr": "Diffusion et jeux ultra-rapides, borne Wi-Fi 6, aucuns frais d'activation",
             "features_es": "Transmisión y juegos ultra rápidos, módem Wi-Fi 6, cero costo de activación",
@@ -121,6 +132,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 95.00,
             "price_display": "95.00",
             "speed_or_data": "1 Gbps",
+            "download_speed": "1 Gbps",
+            "upload_speed": "1 Gbps",
+            "included_modem": "Wi-Fi 6 Giga Hub with whole-home mesh pod (included at $0/month)",
+            "modem_compatibility": "Wi-Fi 6 Giga Hub gateway (included at $0/month); compatible with all standard Wi-Fi devices and whole-home mesh pods",
             "features_en": "Gigabit symmetrical speed, whole-home mesh pod, 24/7 priority support",
             "features_fr": "Vitesse symétrique gigabit, relais maillé pour toute la maison, soutien prioritaire",
             "features_es": "Velocidad simétrica de un gigabit, extensor de malla, soporte prioritario",
@@ -135,6 +150,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 45.00,
             "price_display": "45.00",
             "speed_or_data": "25 GB 5G data",
+            "download_speed": "Up to 250 Mbps (5G)",
+            "upload_speed": "Up to 50 Mbps",
+            "included_modem": "SIM / eSIM card (included at $0)",
+            "modem_compatibility": "Compatible with all unlocked 4G LTE and 5G smartphones",
             "features_en": "Unlimited Canada-wide talk and text, 25GB full-speed 5G data",
             "features_fr": "Appels et textos illimités partout au Canada, 25 Go de données 5G pleine vitesse",
             "features_es": "Llamadas y mensajes ilimitados en todo Canadá, 25GB de datos 5G de alta velocidad",
@@ -147,6 +166,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 55.00,
             "price_display": "55.00",
             "speed_or_data": "60 GB 5G+ data",
+            "download_speed": "Up to 1 Gbps (5G+)",
+            "upload_speed": "Up to 100 Mbps",
+            "included_modem": "SIM / eSIM card (included at $0)",
+            "modem_compatibility": "Compatible with all unlocked 4G LTE and 5G smartphones",
             "features_en": "Unlimited talk, text and 60GB data, hotspot sharing, visual voicemail",
             "features_fr": "Appels, textos et 60 Go de données illimitées, partage de connexion, messagerie vocale visuelle",
             "features_es": "Llamadas, mensajes y 60GB de datos ilimitados, compartir internet, buzón de voz visual",
@@ -159,6 +182,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 75.00,
             "price_display": "75.00",
             "speed_or_data": "100 GB 5G+ data",
+            "download_speed": "Up to 1 Gbps (5G+ ultra)",
+            "upload_speed": "Up to 100 Mbps",
+            "included_modem": "SIM / eSIM card (included at $0)",
+            "modem_compatibility": "Compatible with all unlocked 4G LTE and 5G smartphones",
             "features_en": "Seamless roaming across Canada and the US, 100GB high speed",
             "features_fr": "Itinérance fluide partout au Canada et aux États-Unis, 100 Go haute vitesse",
             "features_es": "Itinerancia sin interrupciones en Canadá y EE. UU., 100GB de alta velocidad",
@@ -173,6 +200,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 25.00,
             "price_display": "25.00",
             "speed_or_data": "35+ channels",
+            "download_speed": "N/A",
+            "upload_speed": "N/A",
+            "included_modem": "4K TV Terminal (included)",
+            "modem_compatibility": "Compatible with Fibe TV 4K receiver and mobile TV app",
             "features_en": "Major national networks, local news, TV app access on all devices",
             "features_fr": "Principaux réseaux nationaux, nouvelles locales, accès à l'application télé",
             "features_es": "Principales cadenas nacionales, noticias locales, acceso a la app de televisión",
@@ -185,6 +216,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 65.00,
             "price_display": "65.00",
             "speed_or_data": "100+ channels",
+            "download_speed": "N/A",
+            "upload_speed": "N/A",
+            "included_modem": "4K TV Terminal (included)",
+            "modem_compatibility": "Compatible with Fibe TV 4K receiver and mobile TV app",
             "features_en": "Includes premium entertainment, specialty lifestyle, and 4K recording",
             "features_fr": "Comprend divertissement premium, chaînes spécialisées et enregistreur 4K",
             "features_es": "Incluye entretenimiento premium, canales especializados y grabador 4K",
@@ -199,6 +234,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 20.00,
             "price_display": "20.00",
             "speed_or_data": "Unlimited local & nationwide",
+            "download_speed": "N/A",
+            "upload_speed": "N/A",
+            "included_modem": "Home Phone Terminal",
+            "modem_compatibility": "Standard analog phone jack compatible",
             "features_en": "Caller ID, call waiting, voicemail to email, crystal-clear voice",
             "features_fr": "Afficheur, appel en attente, messagerie vocale par courriel, voix limpide",
             "features_es": "Identificador de llamadas, llamada en espera, correo de voz por email",
@@ -213,6 +252,10 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "monthly_price": 30.00,
             "price_display": "30.00",
             "speed_or_data": "Monitored security",
+            "download_speed": "N/A",
+            "upload_speed": "N/A",
+            "included_modem": "Smart Security Hub",
+            "modem_compatibility": "Compatible with Telco smart security sensors and mobile app",
             "features_en": "24/7 central station monitoring, door sensors, motion detector, smartphone control",
             "features_fr": "Surveillance centrale 24/7, capteurs de porte, détecteur de mouvement, contrôle mobile",
             "features_es": "Monitoreo central 24/7, sensores de puerta, detector de movimiento, control móvil",
@@ -221,6 +264,8 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
         },
     ],
 }
+
+SALES_TAX_RATE: float = 0.15  # pragma: no cover
 
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INVALID_INPUT",
@@ -259,6 +304,7 @@ ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INTERNAL_ERROR",
     "SERVICE_UNAVAILABLE",
     "SYSTEM_DOWN",
+    "UNKNOWN_PLAN_ID",
 )
 
 class _StatusStr(str):  # pragma: no cover
@@ -425,6 +471,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "The service is temporarily unavailable.",
             "Apologize for the outage and hand the caller over to a person.",
         ),
+        "UNKNOWN_PLAN_ID": (
+            "The requested plan or add-on ID was not found in the catalog.",
+            "List the available plan IDs to the caller and ask them to select a valid plan.",
+        ),
     },
     "fr-CA": {
         "INVALID_INPUT": (
@@ -571,6 +621,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "Le système est temporairement indisponible.",
             "Présenter des excuses pour l'interruption et transférer le client à un agent.",
         ),
+        "UNKNOWN_PLAN_ID": (
+            "L'identifiant de forfait ou d'option demandé est introuvable dans le catalogue.",
+            "Indiquer les forfaits disponibles au client et lui demander de choisir un forfait valide.",
+        ),
     },
     "es-US": {
         "INVALID_INPUT": (
@@ -716,6 +770,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
         "SYSTEM_DOWN": (
             "El sistema está temporalmente fuera de servicio.",
             "Pida disculpas por la interrupción y transfiera al cliente con una persona.",
+        ),
+        "UNKNOWN_PLAN_ID": (
+            "El plan o paquete adicional solicitado no se encontró en el catálogo.",
+            "Indique los planes disponibles al cliente y pídale que elija un plan válido.",
         ),
     },
 }
@@ -1053,6 +1111,15 @@ def _hydrate_default_account_if_needed(state: dict[str, Any]) -> None:  # pragma
     state.setdefault("bank_last4", default_acc.get("bank_on_file_last4", "6789"))
     state.setdefault("current_balance", default_acc.get("current_balance", "85.50"))
     state.setdefault("past_due_balance", default_acc.get("past_due_balance", "85.50"))
+
+def _is_truthy_bool(val: Any) -> bool:  # pragma: no cover
+    """Return True if val represents a truthy boolean or affirmation string."""
+    if val is True:
+        return True
+    if isinstance(val, (str, int, float)) and not isinstance(val, bool):
+        s = str(val).strip().lower()
+        return s in {"true", "1", "yes", "oui", "sí", "si"}
+    return False
 
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
 
@@ -1758,6 +1825,7 @@ def commit_plan_or_order_impl(  # pragma: no cover
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    confirmed: bool | str = False,
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -1805,23 +1873,74 @@ def commit_plan_or_order_impl(  # pragma: no cover
                 plan_info = addon
                 break
 
-    plan_name = plan_info["name"] if plan_info else chosen_plan_id
-    new_monthly_price = (
-        str(plan_info.get("price_display"))
-        if plan_info and plan_info.get("price_display")
-        else (display_amount(plan_info["monthly_price"]) if plan_info and "monthly_price" in plan_info else "75.00")
+    valid_plan_ids = [p["id"] for cat in FAKE_PLAN_CATALOG.values() for p in cat] + [a["id"] for a in FAKE_ADDON_CATALOG]
+    if not plan_info:
+        msg = localized_text(
+            lang,
+            f"Unknown plan or add-on ID '{chosen_plan_id}'. Valid IDs are: {', '.join(valid_plan_ids)}.",
+            f"Identifiant de forfait ou option inconnu '{chosen_plan_id}'. Les identifiants valides sont : {', '.join(valid_plan_ids)}.",
+            f"ID de plan o complemento desconocido '{chosen_plan_id}'. Los IDs válidos son: {', '.join(valid_plan_ids)}.",
+        )
+        return error_reply(
+            "UNKNOWN_PLAN_ID",
+            message=msg,
+            reference=reference,
+            data={"valid_plan_ids": valid_plan_ids, "requested_plan_id": chosen_plan_id},
+            language=lang,
+        )
+
+    plan_name = device_name if (device_name and not plan_id) else plan_info["name"]
+    tax_rate = Decimal(str(SALES_TAX_RATE))
+    p_price = Decimal(str(plan_info.get("monthly_price", 0)))
+    p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    p_total = p_price + p_tax
+    price_disp = display_amount(p_price)
+    tax_disp = display_amount(p_tax)
+    total_disp = display_amount(p_total)
+
+    contract_term = localized_text(
+        lang,
+        "Month-to-month, no annual contract, $0 activation fee",
+        "Mensuel sans contrat annuel, frais d'activation de 0 $",
+        "Mes a mes sin contrato anual, cargo de activación de $0",
     )
+    eff_date = (
+        localized_text(lang, "immediate", "immédiat", "inmediato")
+        if not device_name
+        else localized_text(lang, "2 to 3 business days", "2 à 3 jours ouvrables", "2 a 3 días hábiles")
+    )
+
+    quote_summary = localized_text(
+        lang,
+        f"{plan_name}: ${price_disp}/month plus ${tax_disp} estimated tax (${total_disp} total monthly). Contract: {contract_term}. Delivery/activation: {eff_date}.",
+        f"{plan_name} : {price_disp} $/mois plus {tax_disp} $ de taxes estimées ({total_disp} $ au total par mois). Contrat : {contract_term}. Livraison/activation : {eff_date}.",
+        f"{plan_name}: ${price_disp}/mes más ${tax_disp} de impuestos estimados (${total_disp} total mensual). Contrato: {contract_term}. Entrega/activación: {eff_date}.",
+    )
+
+    if not _is_truthy_bool(confirmed):
+        return error_reply(
+            "REQUIRES_CONFIRMATION",
+            message=quote_summary,
+            agent_action="read the quote and get an explicit yes, then call again with confirmed=true",
+            reference=reference,
+            data={
+                "plan_id": chosen_plan_id,
+                "plan_name": plan_name,
+                "monthly_price": price_disp,
+                "estimated_tax": tax_disp,
+                "monthly_total_with_tax": total_disp,
+                "contract_term": contract_term,
+                "delivery_eta": eff_date,
+                "quote_summary": quote_summary,
+            },
+            language=lang,
+        )
 
     state["selected_plan_id"] = chosen_plan_id
     order_ref = tracking_id("ORD", account_id, chosen_plan_id)
     state["last_order_id"] = order_ref
 
     p_l4 = state.get("caller_provided_phone_last4") or state.get("phone_last4") or ""
-    eff_date = (
-        localized_text(lang, "immediate", "immédiat", "inmediato")
-        if not device_name
-        else localized_text(lang, "2 to 3 business days", "2 à 3 jours ouvrables", "2 a 3 días hábiles")
-    )
     bundle_summary = localized_text(
         lang,
         "Remaining bundle services remain unchanged.",
@@ -1835,7 +1954,11 @@ def commit_plan_or_order_impl(  # pragma: no cover
             "order_type": order_type or "plan_upgrade",
             "plan_id": chosen_plan_id,
             "plan_name": plan_name,
-            "new_monthly_price": new_monthly_price,
+            "new_monthly_price": price_disp,
+            "estimated_tax": tax_disp,
+            "monthly_total_with_tax": total_disp,
+            "contract_term": contract_term,
+            "quote_summary": quote_summary,
             "effective_date": eff_date,
             "throttled_speed_after_cap": "512 kbps",
             "remaining_bundle_summary": bundle_summary,
