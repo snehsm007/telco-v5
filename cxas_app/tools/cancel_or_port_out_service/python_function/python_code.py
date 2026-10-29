@@ -60,6 +60,23 @@ import hashlib
 import re
 import sys
 
+ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
+    {
+        "account_id": "A1001",
+        "phone": "2025550143",
+        "first_name": "Jordan",
+        "status": "active",
+        "preferred_language": "en-US",
+    },
+    {
+        "account_id": "ACC-1002",
+        "phone": "2025550198",
+        "first_name": "Taylor",
+        "status": "active",
+        "preferred_language": "fr-CA",
+    },
+)
+
 FAKE_BILLING_LEDGER: dict[str, Any] = {  # pragma: no cover
     "account_id": "A1001",
     "billing_cycle_start": "2026-09-15",
@@ -871,23 +888,6 @@ def _get_state(  # pragma: no cover
         _DEFAULT_STATE.clear()
     return _DEFAULT_STATE
 
-ACCOUNTS: tuple[dict[str, str], ...] = (  # pragma: no cover
-    {
-        "account_id": "A1001",
-        "phone": "2025550143",
-        "first_name": "Jordan",
-        "status": "active",
-        "preferred_language": "en-US",
-    },
-    {
-        "account_id": "ACC-1002",
-        "phone": "2025550198",
-        "first_name": "Taylor",
-        "status": "active",
-        "preferred_language": "fr-CA",
-    },
-)
-
 def _hydrate_default_account_if_needed(state: dict[str, Any]) -> None:  # pragma: no cover
     """Populate default account profile ONLY for standalone unit-test calls that omit lookup."""
     if state.get("account_id"):
@@ -1627,20 +1627,51 @@ def cancel_or_port_out_service_impl(  # pragma: no cover
     )
     disclosure_given = bool(state.get("cancellation_fee_disclosed"))
 
+    action = str(action_type or kwargs.get("action", "cancel")).strip().lower()
+    is_port_out = action in {"port_out", "portout", "port"}
+
+    port_account = account_id if account_id else (ACCOUNTS[0]["account_id"] if ACCOUNTS else "ACC-0001")
+    transfer_pin = "849201"
+
+    timeline = localized_text(
+        lang,
+        "15 to 30 minutes for mobile; 2 to 5 business days for landline",
+        "15 à 30 minutes pour mobile; 2 à 5 jours ouvrables pour ligne fixe",
+        "15 a 30 minutos para móvil; 2 a 5 días hábiles para línea fija",
+    )
+    agent_action = localized_text(
+        lang,
+        "Read the contract cancellation disclosure to the caller and request their explicit confirmation to proceed.",
+        "Lisez la divulgation de résiliation de contrat à l'appelant et demandez sa confirmation explicite pour continuer.",
+        "Lea la divulgación de cancelación de contrato al cliente y solicite su confirmación explícita para continuar.",
+    )
+
     if not disclosure_given or not is_conf:
         state["cancellation_fee_disclosed"] = True
         disc_line = spoken_line("contract_cancellation_fee_disclosure", lang)
+        data: dict[str, Any] = {
+            "requires_confirmation": True,
+            "service_cancelled": False,
+            "contract_disclosure_required": True,
+            "contract_disclosure": disc_line,
+            "verbatim_disclosure": disc_line,
+            "spoken_message": disc_line,
+            "early_termination_fee": "0.00",
+            "early_cancellation_fee": "0.00",
+            "final_bill_estimate": "28.50",
+            "prorated_final_bill_estimate": "28.50",
+            "optional_retention_offer": retention,
+            "remaining_service_rates": rem_rates,
+            "timeline": timeline,
+            "transfer_timeline": timeline,
+            "agent_action": agent_action,
+        }
+        if is_port_out:
+            data["porting_account_number"] = port_account
+            data["transfer_pin"] = transfer_pin
+            data["port_out_pin"] = transfer_pin
         return ok_reply(
-            {
-                "requires_confirmation": True,
-                "service_cancelled": False,
-                "early_cancellation_fee": "0.00",
-                "prorated_final_bill_estimate": "28.50",
-                "optional_retention_offer": retention,
-                "verbatim_disclosure": disc_line,
-                "spoken_message": disc_line,
-                "remaining_service_rates": rem_rates,
-            },
+            data,
             reference,
             language=lang,
         )
@@ -1656,9 +1687,17 @@ def cancel_or_port_out_service_impl(  # pragma: no cover
         "final_statement_days": 5,
         "equipment_return_instructions": eq_instructions,
         "remaining_service_rates": rem_rates,
+        "contract_disclosure_required": True,
+        "early_termination_fee": "0.00",
+        "early_cancellation_fee": "0.00",
+        "final_bill_estimate": "28.50",
+        "prorated_final_bill_estimate": "28.50",
+        "timeline": timeline,
     }
-    if str(action_type).lower() == "port_out":
-        res["port_out_pin"] = "849201"
+    if is_port_out:
+        res["port_out_pin"] = transfer_pin
+        res["transfer_pin"] = transfer_pin
+        res["porting_account_number"] = port_account
 
     return ok_reply(res, cxl_id, language=lang)
 # --- END GENERATED SHARED BUNDLE ---
