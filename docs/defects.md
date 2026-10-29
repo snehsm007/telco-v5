@@ -57,3 +57,45 @@ Group failing evaluations by shared root cause (not one entry per evaluation). F
 - **Fix & `file:line`**: Judge timing artifact; caller switched topic mid-call and agent immediately escalated in that turn. No agent code change needed.
 - **Alternatives considered**: Prompt change rejected; transfer is already immediate upon the first fraud mention.
 - **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as judge timing artifact on `full-32498c1` (2/3 pass).
+
+### DEF-05: VE-12 simulator invented login codes indistinguishable from fact-less auth evaluations
+- **Found by**: `VE-12` (`sim__manage_mfa_auth_failure`) (`full-32498c1` 0/3, `full-532d45d` 0/3)
+- **Evidence**: `bench/runs/failing_runs_data/full-532d45d/VE-12__af11e5a7__r1.md`, `bench/runs/failing_runs_data/full-532d45d/VE-12__af11e5a7__r2.md`, `bench/runs/failing_runs_data/full-532d45d/VE-12__af11e5a7__r3.md`
+- **Label**: `scenario`
+- **Status**: `open`
+- **Root cause layer**: `platform / scenario`
+- **Diagnosis (all 3 judge metrics)**:
+  - *Expectations*: All runs FAIL: Guide says provide incorrect codes ×3; the simulator's invented codes (`998877`/`842957`/`482910`…) are indistinguishable from the invented codes 12 fact-less auth evals need accepted on attempt 1 (Rule 21). Fails whenever identification succeeds because invented codes either get accepted or bypass expected lockout.
+  - *User Goal*: Skipped via config (score -1)
+  - *Hallucination*: Skipped via config (score -1)
+- **Fix & `file:line`**: Recorded noise. Simulator-generated random codes conflict with the need to accept fact-less authentication codes across other evaluations. No agent code change.
+- **Alternatives considered**: Rejecting random codes breaks fact-less login in 12 other evaluations.
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as simulator/eval design noise (0/3 on full-532d45d).
+
+### DEF-06: VE-24 judge expects literal key string instead of localized verbatim transfer_to_specialist line
+- **Found by**: `VE-24` (`sim__request_refund_exceeding_threshold_escalation`) (`full-532d45d`, `2/3`)
+- **Evidence**: `bench/runs/failing_runs_data/full-532d45d/VE-24__af11e5a7__r3.md`
+- **Label**: `judge`
+- **Status**: `open`
+- **Root cause layer**: `platform`
+- **Diagnosis (all 3 judge metrics)**:
+  - *Expectations*: Slot 3 FAIL: Agent speaks `transfer_to_specialist` verbatim in every slot, but some judge slots demand the literal key string `transfer_to_specialist` rather than the spoken localized line.
+  - *User Goal*: Skipped via config (score -1)
+  - *Hallucination*: Skipped via config (score -1)
+- **Fix & `file:line`**: Recorded noise / judge artifact; tool surfaces `verbatim_key: "transfer_to_specialist"` next to spoken/handoff messages.
+- **Alternatives considered**: Emitting literal key in agent utterance rejected as unnatural for callers.
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as judge artifact (2/3 on full-532d45d).
+
+### DEF-07: VE-41 out-of-service caller cannot authenticate and correctly hands over to human
+- **Found by**: `VE-41` (`sim__troubleshoot_mobile_service_french`) (`smoke-db3068f`, `1/3`)
+- **Evidence**: `bench/runs/failing_runs_data/smoke-db3068f/` VE-41 r1/r2
+- **Label**: `scenario`
+- **Status**: `open`
+- **Root cause layer**: `scenario`
+- **Diagnosis (all 3 judge metrics)**:
+  - *Expectations*: "Aucun service" caller cannot receive SMS, has no PIN, and does not recognise the e-mail on file. PRD M4 requires auth before account troubleshooting, so handover to a human representative is PRD-correct.
+  - *User Goal*: Skipped via config (score -1)
+  - *Hallucination*: Skipped via config (score -1)
+- **Fix & `file:line`**: Scenario conflict: unauthenticated caller cannot proceed with self-serve troubleshooting under PRD M4 security requirements. Handover is PRD-correct behavior. No agent code change.
+- **Alternatives considered**: Bypassing authentication would violate PRD M4 security policies.
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as scenario design conflict (1/3 on smoke-db3068f, 3/3 on full-532d45d when caller authenticates).
