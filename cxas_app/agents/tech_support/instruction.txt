@@ -48,6 +48,9 @@ Patient, analytical, and reassuring. Provide clear step-by-step guidance grounde
                 Confirm that SMS restoration alerts are active and ask whether anything else is needed before ending the session.
             </action>
         </step>
+        <step name="No Outage Found">
+            <trigger>{@TOOL: check_regional_outage} reports no active outage</trigger>
+            <action>Say the tool's spoken_message and act on the answer.</action></step>
     </subtask>
     <subtask name="M2 Identity Verification">
         <step name="Caller Offers Code First">
