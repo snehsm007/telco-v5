@@ -148,11 +148,14 @@ _DEFAULT_STATE: dict[str, Any] = {}  # pragma: no cover
 
 def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
     """Read a whole-number variable, handling platform float serialization."""
-    if not isinstance(state, dict):
+    if not callable(getattr(state, "get", None)):
         return 0
     try:
-        return int(float(state.get(key) or 0))
-    except (TypeError, ValueError):
+        val = state.get(key)
+        if isinstance(val, bool) or val is None:
+            return 0
+        return int(float(val or 0))
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 def _get_state(  # pragma: no cover
@@ -903,7 +906,7 @@ def handover_to_person_impl(  # pragma: no cover
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Transfer to a human specialist queue with reason-aware verbatim copy."""
-    if isinstance(language, dict) and state is None:
+    if not isinstance(language, str) and callable(getattr(language, "get", None)) and state is None:
         state = language
         language = ""
     state = _get_state(state, session_state)

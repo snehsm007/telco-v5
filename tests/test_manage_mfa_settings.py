@@ -144,3 +144,30 @@ def test_manage_mfa_settings_localization_fr_and_es(monkeypatch) -> None:
     reply_es = tool.manage_mfa_settings(lost_authenticator=True, language="es-US")
     assert reply_es["status"] == "ok"
     assert "desactivado" in reply_es["data"]["spoken_message"]
+
+
+def test_manage_mfa_settings_pin_login_after_email_send_still_requires_email_stepup(
+    monkeypatch,
+) -> None:
+    import cxas_app.tools.send_login_code.python_function.python_code as send_tool
+    import cxas_app.tools.verify_login.python_function.python_code as verify_tool
+
+    session = SimpleNamespace(state={"account_id": "A1001", "mfa_enabled": True})
+    monkeypatch.setattr(send_tool, "context", session, raising=False)
+    monkeypatch.setattr(verify_tool, "context", session, raising=False)
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    send_tool.send_login_code(channel="email")
+    verify_tool.verify_login(code="1234", method="pin")
+
+    step1 = tool.manage_mfa_settings(action="disable", lost_authenticator=True)
+    assert step1["status"] == "ok"
+    assert step1["data"]["requires_email_step_up"] is True
+    assert step1["data"]["mfa_updated"] is False
+
+    step2 = tool.manage_mfa_settings(
+        action="disable", lost_authenticator=True, step_up_code="384920"
+    )
+    assert step2["status"] == "ok"
+    assert step2["data"]["mfa_updated"] is True
+    assert step2["data"]["mfa_enabled"] is False

@@ -64,11 +64,14 @@ def only_digits(text: Any) -> str:
 
 def read_count(state: dict[str, Any] | None, key: str) -> int:
     """Read a whole-number variable, handling platform float serialization."""
-    if not isinstance(state, dict):
+    if not callable(getattr(state, "get", None)):
         return 0
     try:
-        return int(float(state.get(key) or 0))
-    except (TypeError, ValueError):
+        val = state.get(key)
+        if isinstance(val, bool) or val is None:
+            return 0
+        return int(float(val or 0))
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 

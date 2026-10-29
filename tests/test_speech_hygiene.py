@@ -165,3 +165,69 @@ def test_speech_hygiene_mappingproxy_and_adk_state_fidelity(callback) -> None:
         assert "4242" in resp.content.parts[0].text
         assert "6789" in resp.content.parts[0].text
 
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_multipart_handover_replacement_and_append_across_queues(callback) -> None:
+    # 1. Generic 2-part split on business/specialist/fraud replaces cleanly without mid-word slicing
+    for reason, queue, expected_sub in (
+        ("business_handoff", "business_solutions", "business account"),
+        ("refund_threshold_exceeded", "billing_specialist", "billing specialist"),
+        ("fraud_escalation", "fraud_and_security_24x7", "facing challenges"),
+    ):
+        fc_h = SimpleNamespace(
+            name="handover_to_person",
+            args={"reason": reason, "target_queue": queue, "language": "en-US"},
+        )
+        fc_e = SimpleNamespace(
+            name="end_session",
+            args={"reason": "session_escalated", "session_escalated": True},
+        )
+        parts = [
+            SimpleNamespace(text="I'll connect you to a representative who can help.", function_call=None),
+            SimpleNamespace(text="Please hold.", function_call=None),
+            SimpleNamespace(text=None, function_call=fc_h),
+            SimpleNamespace(text=None, function_call=fc_e),
+        ]
+        resp = SimpleNamespace(content=SimpleNamespace(parts=parts))
+        out = callback.after_model_callback(SimpleNamespace(state={"language": "en-US"}), resp)
+        assert out is resp
+        spoken = " ".join(p.text.strip() for p in resp.content.parts if getattr(p, "text", None) and p.text.strip())
+        assert expected_sub in spoken
+        assert " nsfer you" not in spoken
+        assert len([p for p in resp.content.parts if getattr(p, "function_call", None) is not None]) == 2
+        if queue == "fraud_and_security_24x7":
+            assert spoken.index("facing challenges") < spoken.index("Please hold")
+
+    # 2. 2-part paraphrased handover where enforced_combined starts with combined_text
+    parts_append = [
+        SimpleNamespace(text="One moment.", function_call=None),
+        SimpleNamespace(text="Hold on.", function_call=None),
+        SimpleNamespace(
+            text=None,
+            function_call=SimpleNamespace(
+                name="handover_to_person",
+                args={"reason": "business_handoff", "language": "fr-CA"},
+            ),
+        ),
+    ]
+    resp_append = SimpleNamespace(content=SimpleNamespace(parts=parts_append))
+    assert callback.after_model_callback(SimpleNamespace(state={"language": "fr-CA"}), resp_append) is resp_append
+    spoken_fr = " ".join(p.text.strip() for p in resp_append.content.parts if getattr(p, "text", None) and p.text.strip())
+    assert spoken_fr.startswith("One moment. Hold on.")
+    assert "compte affaires" in spoken_fr
+
+    # 3. Extra part carrying a co-located function_call clears text without popping function_call
+    fc_inline = SimpleNamespace(
+        name="handover_to_person",
+        args={"reason": "business_handoff", "language": "es-US"},
+    )
+    parts_inline_fc = [
+        SimpleNamespace(text="Le comunicaré con un representante que pueda ayudarle.", function_call=None),
+        SimpleNamespace(text="Por favor espere.", function_call=fc_inline),
+    ]
+    resp_inline = SimpleNamespace(content=SimpleNamespace(parts=parts_inline_fc))
+    assert callback.after_model_callback(SimpleNamespace(state={"language": "es-US"}), resp_inline) is resp_inline
+    assert "cuenta comercial" in resp_inline.content.parts[0].text
+    assert resp_inline.content.parts[1].text == ""
+    assert resp_inline.content.parts[1].function_call is fc_inline
+

@@ -826,11 +826,14 @@ _DEFAULT_STATE: dict[str, Any] = {}  # pragma: no cover
 
 def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
     """Read a whole-number variable, handling platform float serialization."""
-    if not isinstance(state, dict):
+    if not callable(getattr(state, "get", None)):
         return 0
     try:
-        return int(float(state.get(key) or 0))
-    except (TypeError, ValueError):
+        val = state.get(key)
+        if isinstance(val, bool) or val is None:
+            return 0
+        return int(float(val or 0))
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 def _get_state(  # pragma: no cover
@@ -1130,7 +1133,8 @@ def lookup_account_impl(  # pragma: no cover
 
     # Restricted caller check (BR-TV-002)
     digits = only_digits(id_val)
-    if digits in BLOCKED_CALLER_NUMBERS:
+    norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
+    if digits in BLOCKED_CALLER_NUMBERS or norm_digits in BLOCKED_CALLER_NUMBERS:
         state["is_blocked"] = True
         blocked_msg = spoken_line("blocked_caller_deflection", lang)
         state["last_tracking_id"] = reference
@@ -1245,6 +1249,10 @@ def lookup_account_impl(  # pragma: no cover
         reference,
         language=lang,
     )
+
+LOGIN_CODE_LENGTH = 6  # pragma: no cover
+
+SECRET_PIN_LENGTH = 4  # pragma: no cover
 
 ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
     {"0000", "000000", "1111", "111111", "9999", "999999"}
@@ -1431,11 +1439,18 @@ def verify_login_impl(  # pragma: no cover
         state["bank_last4"] = "6789"
 
     was_mfa_sms = state.get("login_channel") == "mfa_sms"
-    is_email_auth = bool(state.get("mfa_email_code_sent")) or str(method or "").lower() == "email"
+    method_low = str(method or "").strip().lower()
+    is_email_auth = (
+        len(digits) == LOGIN_CODE_LENGTH
+        and method_low != "pin"
+        and (bool(state.get("mfa_email_code_sent")) or method_low == "email")
+    )
     if is_email_auth:
         state["mfa_email_verified"] = True
-    elif was_mfa_sms:
+    elif was_mfa_sms and len(digits) == LOGIN_CODE_LENGTH and method_low != "pin":
         state["login_channel"] = "mfa_sms_verified"
+    elif method_low == "pin" or len(digits) == SECRET_PIN_LENGTH:
+        state["login_channel"] = "pin"
     else:
         state["login_channel"] = "sms"
 
@@ -1580,16 +1595,64 @@ def process_bill_payment_impl(  # pragma: no cover
         return error_reply("INVALID_INPUT", reference=reference, language=lang)
     amt_str = display_amount(amt_val)
 
-    provided_method = card_last4 or bank_last4
+    if isinstance(card_last4, bool) or isinstance(bank_last4, bool):
+        return error_reply("INVALID_INPUT", reference=reference, language=lang)
+    pm_low = str(payment_method or "").strip().lower()
+    has_card_arg = bool(str(card_last4 or "").strip())
+    has_bank_arg = bool(str(bank_last4 or "").strip())
+    has_card_word = any(w in pm_low for w in ("card", "carte", "tarjeta"))
+    is_bank = (
+        (has_bank_arg and not has_card_arg) or (
+            not has_card_arg
+            and (
+                any(
+                    w in pm_low
+                    for w in (
+                        "bank",
+                        "checking",
+                        "chequing",
+                        "savings",
+                        "pad",
+                        "dpa",
+                        "ach",
+                        "eft",
+                        "bancaire",
+                        "chèques",
+                        "cheques",
+                        "épargne",
+                        "epargne",
+                        "compte",
+                        "prélèvement",
+                        "prelevement",
+                        "bancaria",
+                        "banco",
+                        "corriente",
+                        "ahorros",
+                    )
+                )
+                or (
+                    any(w in pm_low for w in ("debit", "débit", "débito", "debito"))
+                    and not has_card_word
+                )
+            )
+        )
+    )
+    provided_method = bank_last4 if is_bank else (card_last4 or bank_last4)
     l4_parsed = _extract_last4(provided_method)
     if l4_parsed is None:
         return error_reply("INVALID_INPUT", reference=reference, language=lang)
-    l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or "4242")[-4:]
+    if is_bank:
+        l4 = l4_parsed or str(state.get("bank_last4") or "6789")[-4:]
+    else:
+        l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or "4242")[-4:]
 
     if l4 in DECLINED_CARD_LAST4:
         failures = read_count(state, "payment_failure_count") + 1
         state["payment_failure_count"] = failures
-        state["card_last4"] = ""
+        if is_bank:
+            state["bank_last4"] = ""
+        else:
+            state["card_last4"] = ""
         state["declined_card_last4"] = l4
         state["payment_declined_once"] = True
         if failures >= MAX_PAYMENT_ATTEMPTS:
@@ -1611,15 +1674,20 @@ def process_bill_payment_impl(  # pragma: no cover
             language=lang,
             data={
                 "payment_failure_count": failures,
-                "card_last4": "",
+                "card_last4": "" if not is_bank else state.get("card_last4", ""),
                 "declined_card_last4": l4,
                 "payment_declined_once": True,
             },
         )
 
     state["payment_failure_count"] = 0
-    state["card_last4"] = l4
-    state["last_payment_method"] = str(payment_method or "card_on_file")
+    if is_bank:
+        state["bank_last4"] = l4
+        eff_method = str(payment_method or "bank") if (pm_low and pm_low != "card_on_file") else "bank"
+    else:
+        state["card_last4"] = l4
+        eff_method = str(payment_method or "card_on_file")
+    state["last_payment_method"] = eff_method
     state["current_balance"] = "0.00"
     state["past_due_balance"] = "0.00"
     state["is_suspended"] = False
@@ -1628,17 +1696,23 @@ def process_bill_payment_impl(  # pragma: no cover
 
     conf = tracking_id("PAY", account_id, amt_str)
     state["last_tracking_id"] = conf
+    reply_data: dict[str, Any] = {
+        "payment_processed": True,
+        "amount_paid": amt_str,
+        "remaining_balance": "0.00",
+        "payment_method": eff_method if is_bank else payment_method,
+        "masked_last4": l4,
+        "confirmation_number": conf,
+        "service_restored": True,
+        "restoration_eta_minutes": 15,
+    }
+    if is_bank:
+        reply_data["bank_last4"] = l4
+        reply_data["card_last4"] = ""
+    else:
+        reply_data["card_last4"] = l4
     return ok_reply(
-        {
-            "payment_processed": True,
-            "amount_paid": amt_str,
-            "remaining_balance": "0.00",
-            "payment_method": payment_method,
-            "card_last4": l4,
-            "confirmation_number": conf,
-            "service_restored": True,
-            "restoration_eta_minutes": 15,
-        },
+        reply_data,
         conf,
         language=lang,
     )

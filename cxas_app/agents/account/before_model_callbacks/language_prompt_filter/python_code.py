@@ -292,14 +292,23 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:  # pra
     lines.append("</active_language_sheet>")
     return "\n".join(lines)
 
+_DP_CANADIAN_POSTAL_RE = re.compile(  # pragma: no cover
+    r"\b[a-z]\d[a-z]\s*-?\s*\d[a-z]\d\b",
+    re.IGNORECASE,
+)
+
 _DP_GERMAN_MARKERS = frozenset(  # pragma: no cover
     {
         "guten",
+        "hallo",
+        "morgen",
+        "abend",
         "sprechen",
         "deutsch",
         "ich",
         "brauche",
         "hilfe",
+        "helfen",
         "meiner",
         "meine",
         "mein",
@@ -310,6 +319,13 @@ _DP_GERMAN_MARKERS = frozenset(  # pragma: no cover
         "vertrag",
         "störung",
         "kündigen",
+        "möchte",
+        "funktioniert",
+        "nicht",
+        "haben",
+        "habe",
+        "kann",
+        "können",
     }
 )
 
@@ -317,34 +333,63 @@ _DP_ITALIAN_MARKERS = frozenset(  # pragma: no cover
     {
         "buongiorno",
         "buonasera",
+        "salve",
+        "ciao",
         "parla",
         "italiano",
         "perché",
         "bisogno",
         "aiuto",
+        "aiutarmi",
+        "aiutare",
         "vorrei",
+        "potete",
         "bolletta",
         "fattura",
+        "connessione",
+        "funziona",
+        "disdire",
+        "abbonamento",
+        "cellulare",
+        "guasto",
         "grazie",
         "favore",
+        "mia",
+        "mio",
     }
 )
 
 _DP_PORTUGUESE_MARKERS = frozenset(  # pragma: no cover
     {
         "olá",
+        "oi",
+        "bom",
+        "boa",
+        "noite",
         "preciso",
         "ajuda",
         "minha",
+        "minhas",
         "meu",
+        "meus",
         "fatura",
+        "conta",
+        "plano",
+        "quero",
+        "gostaria",
+        "não",
+        "tenho",
+        "estou",
         "obrigado",
         "obrigada",
         "você",
+        "vocês",
         "atendente",
         "cartão",
         "ligação",
         "português",
+        "senha",
+        "aparelho",
     }
 )
 
@@ -402,6 +447,44 @@ _DP_QUEBEC_PLACE_TOKENS = frozenset(  # pragma: no cover
     }
 )
 
+_DP_STREET_ADDRESS_TOKENS = frozenset(  # pragma: no cover
+    {
+        "rue",
+        "boulevard",
+        "boul",
+        "blvd",
+        "avenue",
+        "ave",
+        "av",
+        "chemin",
+        "ch",
+        "route",
+        "rte",
+        "rang",
+        "place",
+        "côte",
+        "cote",
+        "impasse",
+        "croissant",
+        "allée",
+        "allee",
+        "terrasse",
+        "promenade",
+        "montée",
+        "montee",
+        "appartement",
+        "apt",
+        "street",
+        "road",
+        "rd",
+        "drive",
+        "dr",
+        "qc",
+    }
+)
+
+_DP_STREET_NUMBER_RE = re.compile(r"\b\d{1,5}\b")  # pragma: no cover
+
 _ENGLISH_MARKERS = frozenset(  # pragma: no cover
     {
         "hello",
@@ -434,6 +517,12 @@ _ENGLISH_MARKERS = frozenset(  # pragma: no cover
         "issue",
         "working",
         "down",
+        "is",
+        "am",
+        "at",
+        "address",
+        "moving",
+        "availability",
     }
 )
 
@@ -475,6 +564,19 @@ _FRENCH_MARKERS = frozenset(  # pragma: no cover
         "pouvez",
         "voudrais",
         "veux",
+        "aimerais",
+        "habite",
+        "adresse",
+        "déménage",
+        "vérifier",
+        "disponibilité",
+        "élevée",
+        "trop",
+        "besoin",
+        "aide",
+        "problème",
+        "connexion",
+        "fonctionne",
     }
 )
 
@@ -498,6 +600,177 @@ _SPANISH_MARKERS = frozenset(  # pragma: no cover
     }
 )
 
+_DP_EXPLICIT_SWITCH_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (  # pragma: no cover
+    (
+        "fr-CA",
+        (
+            "en français",
+            "en francais",
+            "parler en français",
+            "parler en francais",
+            "switch to french",
+            "french please",
+            "in french",
+            "speak french",
+            "passer au français",
+            "passer au francais",
+        ),
+    ),
+    (
+        "en-US",
+        (
+            "in english",
+            "switch to english",
+            "speak english",
+            "english please",
+            "en anglais",
+            "parler en anglais",
+            "passer à l'anglais",
+            "passer a l'anglais",
+            "en inglés",
+            "en ingles",
+            "hablar inglés",
+            "hablar ingles",
+            "habla inglés",
+            "habla ingles",
+        ),
+    ),
+    (
+        "es-US",
+        (
+            "en español",
+            "en espanol",
+            "hablar en español",
+            "hablar en espanol",
+            "hablar español",
+            "hablar espanol",
+            "habla español",
+            "habla espanol",
+            "switch to spanish",
+            "spanish please",
+            "in spanish",
+            "speak spanish",
+            "en espagnol",
+            "parler en espagnol",
+        ),
+    ),
+    (
+        "pt-BR",
+        (
+            "em português",
+            "em portugues",
+            "fala português",
+            "fala portugues",
+            "in portuguese",
+            "do you speak portuguese",
+            "speak portuguese",
+            "switch to portuguese",
+            "portuguese please",
+        ),
+    ),
+    (
+        "de-DE",
+        (
+            "auf deutsch",
+            "sprechen sie deutsch",
+            "in german",
+            "do you speak german",
+            "speak german",
+            "switch to german",
+            "german please",
+        ),
+    ),
+    (
+        "it-IT",
+        (
+            "in italiano",
+            "parla italiano",
+            "in italian",
+            "do you speak italian",
+            "speak italian",
+            "switch to italian",
+            "italian please",
+        ),
+    ),
+    (
+        "zh-CN",
+        (
+            "in mandarin",
+            "in chinese",
+            "do you speak mandarin",
+            "do you speak chinese",
+            "speak mandarin",
+            "speak chinese",
+            "mandarin please",
+            "switch to mandarin",
+        ),
+    ),
+    (
+        "hi-IN",
+        (
+            "in hindi",
+            "do you speak hindi",
+            "speak hindi",
+            "hindi please",
+            "switch to hindi",
+        ),
+    ),
+    (
+        "ar-XA",
+        (
+            "in arabic",
+            "do you speak arabic",
+            "speak arabic",
+            "arabic please",
+            "switch to arabic",
+        ),
+    ),
+    (
+        "ja-JP",
+        (
+            "in japanese",
+            "do you speak japanese",
+            "speak japanese",
+            "japanese please",
+            "switch to japanese",
+        ),
+    ),
+    (
+        "ko-KR",
+        (
+            "in korean",
+            "do you speak korean",
+            "speak korean",
+            "korean please",
+            "switch to korean",
+        ),
+    ),
+)
+
+_DP_NEGATED_SWITCH_PREFIX_RE = re.compile(  # pragma: no cover
+    r"(?:"
+    r"\b(?:don't|do\s+not|dont|cannot|can't|cant|not)\s+"
+    r"(?:want\s+to\s+|know\s+how\s+to\s+)?(?:speak\s+|talk\s+|switch\s+to\s+)?"
+    r"|\b(?:pas|jamais)\s+(?:parler\s+|continuer\s+)?"
+    r"|\bno\s+(?:hablo|habla|hablas|hablamos|puedo|podemos|quiero)\s+(?:hablar\s+)?"
+    r")$",
+    re.IGNORECASE,
+)
+
+def _dp_match_explicit_switch(low: str) -> str:  # pragma: no cover
+    """Return target locale for the last non-negated explicit switch term in `low`."""
+    best_end = -1
+    best_locale = ""
+    for target_locale, terms in _DP_EXPLICIT_SWITCH_TERMS:
+        for term in terms:
+            for m in re.finditer(rf"(?<!\w){re.escape(term)}(?!\w)", low):
+                if _DP_NEGATED_SWITCH_PREFIX_RE.search(low[: m.start()]):
+                    continue
+                if m.end() > best_end:
+                    best_end = m.end()
+                    best_locale = target_locale
+    return best_locale
+
 def detect_utterance_language(utterance: str, current_language: str = "en-US") -> str:  # pragma: no cover
     """Detect language from an utterance with contextual inertia on silence and numbers."""
     cleaned = re.sub(r"\[(?:pause|silence)\]", " ", str(utterance or ""), flags=re.IGNORECASE)
@@ -507,115 +780,9 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
 
     low = str(utterance or "").lower()
 
-    if any(
-        p in low
-        for p in (
-            "en français",
-            "parler en français",
-            "switch to french",
-            "french please",
-            "in french",
-            "passer au français",
-        )
-    ):
-        return "fr-CA"
-    if any(
-        p in low
-        for p in (
-            "in english",
-            "switch to english",
-            "parler en anglais",
-            "english please",
-            "passer à l'anglais",
-        )
-    ):
-        return "en-US"
-    if any(
-        p in low
-        for p in (
-            "en español",
-            "hablar en español",
-            "switch to spanish",
-            "spanish please",
-            "en espanol",
-        )
-    ):
-        return "es-US"
-    if any(
-        p in low
-        for p in (
-            "em português",
-            "em portugues",
-            "fala português",
-            "fala portugues",
-            "in portuguese",
-            "do you speak portuguese",
-            "switch to portuguese",
-            "portuguese please",
-        )
-    ):
-        return "pt-BR"
-    if any(
-        p in low
-        for p in (
-            "auf deutsch",
-            "sprechen sie deutsch",
-            "in german",
-            "do you speak german",
-            "switch to german",
-            "german please",
-        )
-    ):
-        return "de-DE"
-    if any(
-        p in low
-        for p in (
-            "in italiano",
-            "parla italiano",
-            "in italian",
-            "do you speak italian",
-            "switch to italian",
-            "italian please",
-        )
-    ):
-        return "it-IT"
-    if any(
-        p in low
-        for p in (
-            "in mandarin",
-            "in chinese",
-            "do you speak mandarin",
-            "do you speak chinese",
-            "mandarin please",
-            "switch to mandarin",
-        )
-    ):
-        return "zh-CN"
-    if any(
-        p in low
-        for p in ("in hindi", "do you speak hindi", "hindi please", "switch to hindi")
-    ):
-        return "hi-IN"
-    if any(
-        p in low
-        for p in ("in arabic", "do you speak arabic", "arabic please", "switch to arabic")
-    ):
-        return "ar-XA"
-    if any(
-        p in low
-        for p in (
-            "in japanese",
-            "do you speak japanese",
-            "japanese please",
-            "switch to japanese",
-        )
-    ):
-        return "ja-JP"
-    if any(
-        p in low
-        for p in ("in korean", "do you speak korean", "korean please", "switch to korean")
-    ):
-        return "ko-KR"
+    explicit_switch = _dp_match_explicit_switch(low)
+    if explicit_switch:
+        return explicit_switch
 
     if re.search(r"[\u0600-\u06ff]", utterance):
         return "ar-XA"
@@ -636,7 +803,7 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
         return "en-US"
 
     german_score = sum(1 for w in words if w in _DP_GERMAN_MARKERS) + (
-        1 if re.search(r"[äöß]", low) else 0
+        1 if re.search(r"[äöüß]", low) else 0
     )
     portuguese_score = sum(1 for w in words if w in _DP_PORTUGUESE_MARKERS) + (
         1 if re.search(r"[ãõ]", low) else 0
@@ -663,7 +830,18 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
         return "it-IT"
 
     non_place_text = " ".join(w for w in words if w not in _DP_QUEBEC_PLACE_TOKENS)
-    has_french_accents = bool(re.search(r"[éèêëàâùûîïôçœ]", non_place_text))
+    is_en_address_turn = resolve_locale(current_language) == "en-US" and (
+        bool(_DP_CANADIAN_POSTAL_RE.search(low))
+        or (
+            bool(_DP_STREET_NUMBER_RE.search(low))
+            and bool(_DP_STREET_ADDRESS_TOKENS.intersection(words))
+        )
+    )
+    has_french_accents = (
+        False
+        if is_en_address_turn
+        else bool(re.search(r"[éèêëàâùûîïôçœ]", non_place_text))
+    )
     french_words = sum(1 for w in words if w in _FRENCH_MARKERS)
     french_score = french_words + (1 if has_french_accents else 0)
 

@@ -147,3 +147,21 @@ def test_fake_catalogs_and_data_stores() -> None:
     assert "device_model" in FAKE_WARRANTY_DATA
     assert "internet" in FAKE_TROUBLESHOOTING_GUIDES
     assert FAKE_BILLING_LEDGER["account_id"] == "A1001"
+
+
+def test_read_count_duck_typed_adk_state_and_edge_cases() -> None:
+    class FakeAdkState:
+        def __init__(self, initial: dict[str, object]) -> None:
+            self._data = dict(initial)
+
+        def get(self, key: str, default: object = None) -> object:
+            return self._data.get(key, default)
+
+    adk_state = FakeAdkState({"attempts": 2, "float_str": "3.0", "flag": True, "inf": float("inf")})
+    assert not isinstance(adk_state, dict)
+    assert read_count(adk_state, "attempts") == 2  # type: ignore[arg-type]
+    assert read_count(adk_state, "float_str") == 3  # type: ignore[arg-type]
+    assert read_count(adk_state, "flag") == 0  # type: ignore[arg-type]
+    assert read_count(adk_state, "inf") == 0  # type: ignore[arg-type]
+    assert read_count(adk_state, "missing") == 0  # type: ignore[arg-type]
+    assert read_count(object(), "attempts") == 0  # type: ignore[arg-type]

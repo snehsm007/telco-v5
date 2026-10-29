@@ -54,6 +54,8 @@ import hashlib
 import re
 import sys
 
+LOGIN_CODE_LENGTH = 6  # pragma: no cover
+
 MAX_LOGIN_ATTEMPTS = 3  # pragma: no cover
 
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
@@ -796,11 +798,14 @@ _DEFAULT_STATE: dict[str, Any] = {}  # pragma: no cover
 
 def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
     """Read a whole-number variable, handling platform float serialization."""
-    if not isinstance(state, dict):
+    if not callable(getattr(state, "get", None)):
         return 0
     try:
-        return int(float(state.get(key) or 0))
-    except (TypeError, ValueError):
+        val = state.get(key)
+        if isinstance(val, bool) or val is None:
+            return 0
+        return int(float(val or 0))
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 def _get_state(  # pragma: no cover
@@ -1130,7 +1135,8 @@ def lookup_account_impl(  # pragma: no cover
 
     # Restricted caller check (BR-TV-002)
     digits = only_digits(id_val)
-    if digits in BLOCKED_CALLER_NUMBERS:
+    norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
+    if digits in BLOCKED_CALLER_NUMBERS or norm_digits in BLOCKED_CALLER_NUMBERS:
         state["is_blocked"] = True
         blocked_msg = spoken_line("blocked_caller_deflection", lang)
         state["last_tracking_id"] = reference
@@ -1315,9 +1321,9 @@ def manage_mfa_settings_impl(  # pragma: no cover
             state["auth_status"] = "pass"
             state["logged_in"] = True
             state["auth_failure_count"] = 0
-            if state.get("mfa_email_code_sent"):
+            if state.get("mfa_email_code_sent") and len(digits) == LOGIN_CODE_LENGTH:
                 state["mfa_email_verified"] = True
-            else:
+            elif len(digits) == LOGIN_CODE_LENGTH:
                 state["login_channel"] = "mfa_sms_verified"
 
     if state.get("auth_status") == "pass" and not state.get("account_id"):

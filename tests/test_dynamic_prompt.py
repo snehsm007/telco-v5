@@ -329,3 +329,105 @@ def test_native_turn1_german_portuguese_italian_classification() -> None:
     it_utt = "Buongiorno, parla italiano? Perché ho bisogno di aiuto."
     assert detect_utterance_language(it_utt, "en-US") == "it-IT"
 
+
+def test_quebec_street_addresses_on_english_calls_do_not_flip_to_french() -> None:
+    en_turns = [
+        "450 Rue Saint-André, Montréal, QC H2L 3V3",
+        "My address is 450 Boulevard Crémazie Est, Montréal, QC H2P 1E7",
+        "Check fiber availability at 800 Rue de la Gauchetière Ouest, Montréal",
+        "I am moving to 1250 Rue Bélanger, Montréal, QC H2S 1H9",
+        "Can you verify service at 550 Rue Saint-Denis, Montréal, QC H2J 2L5",
+        "Moving to 1200 Boulevard Saint-Martin Ouest, Laval, QC H7S 2E4",
+        "Check availability at 100 Rue Principale, Gatineau, QC J8X 2J7",
+        "Service address is 250 Rue King Ouest, Sherbrooke, QC J1H 1R1",
+        "Please check 1500 Boulevard Guillaume-Couture, Lévis, QC G6W 5M6",
+        "Looking for coverage at 200 Rue Racine Est, Chicoutimi, QC G7H 1R9",
+        "Moving to 50 Boulevard d'Youville, Châteauguay, QC J6J 4Z2",
+        "320 Rue Sainte-Thérèse, Saint-Jérôme, QC J7Z 1A2",
+        "75 Boulevard des Récollets, Trois-Rivières, Québec G9A 4N9",
+    ]
+    for utt in en_turns:
+        assert detect_utterance_language(utt, "en-US") == "en-US"
+        req = SimpleNamespace(
+            contents=[
+                SimpleNamespace(
+                    role="user",
+                    parts=[SimpleNamespace(text="Hi, I need to check internet availability.")],
+                ),
+                SimpleNamespace(role="user", parts=[SimpleNamespace(text=utt)]),
+            ]
+        )
+        assert detect_active_call_language({"language": "en-US"}, req) == "en-US"
+
+    # Bare Quebec street address on an active French session preserves fr-CA inertia
+    assert detect_utterance_language("450 Rue Saint-André, Montréal, QC H2L 3V3", "fr-CA") == "fr-CA"
+
+    # Genuine Turn-1 French utterances with Quebec street addresses or cities detect fr-CA
+    fr_twins = [
+        "Bonjour, j'habite au 450 rue Saint-André et ma facture est trop élevée",
+        "J'habite au 450 rue Saint-André, Montréal, QC H2L 3V3",
+        "J'aimerais vérifier la disponibilité au 800 rue de la Gauchetière Ouest",
+        "La télé est brisée depuis 2 jours à Montréal",
+    ]
+    for fr_utt in fr_twins:
+        assert detect_utterance_language(fr_utt, "en-US") == "fr-CA"
+
+
+def test_native_phrased_multiturn_switches_and_negation_guards() -> None:
+    assert detect_utterance_language("Peut-on continuer en anglais s'il vous plaît?", "fr-CA") == "en-US"
+    assert detect_utterance_language("Can you speak English?", "fr-CA") == "en-US"
+    assert detect_utterance_language("¿Podemos hablar en inglés por favor?", "es-US") == "en-US"
+    assert detect_utterance_language("¿Podemos hablar en ingles por favor?", "es-US") == "en-US"
+    assert detect_utterance_language("¿Habla inglés?", "es-US") == "en-US"
+    assert detect_utterance_language("Quiero hablar inglés por favor.", "es-US") == "en-US"
+    assert detect_utterance_language("In Spanish please.", "fr-CA") == "es-US"
+    assert detect_utterance_language("Can you speak Spanish?", "en-US") == "es-US"
+    assert detect_utterance_language("Peut-on parler en espagnol?", "fr-CA") == "es-US"
+    assert detect_utterance_language("Can we speak French?", "en-US") == "fr-CA"
+    assert detect_utterance_language("En francais s'il vous plait", "en-US") == "fr-CA"
+    assert detect_utterance_language("Sorry, I don't speak French, can you speak English?", "fr-CA") == "en-US"
+    assert detect_utterance_language("I don't speak French.", "en-US") == "en-US"
+    assert detect_utterance_language("No puedo hablar inglés, en español por favor.", "en-US") == "es-US"
+    assert detect_utterance_language("Non, en anglais s'il vous plaît.", "fr-CA") == "en-US"
+    assert detect_utterance_language("No, en español por favor.", "en-US") == "es-US"
+
+
+def test_turn1_pt_it_de_markers_and_spanish_negative_twins() -> None:
+    assert (
+        detect_utterance_language(
+            "Bom dia, quero pagar a minha conta de internet, por favor.", "en-US"
+        )
+        == "pt-BR"
+    )
+    assert (
+        detect_utterance_language(
+            "Oi, gostaria de cancelar o meu plano de celular.", "en-US"
+        )
+        == "pt-BR"
+    )
+    assert (
+        detect_utterance_language(
+            "Buenos días, quiero pagar mi cuenta de internet, por favor", "en-US"
+        )
+        == "es-US"
+    )
+    assert (
+        detect_utterance_language(
+            "Hola, me gustaría cancelar mi plan de celular", "en-US"
+        )
+        == "es-US"
+    )
+    assert (
+        detect_utterance_language(
+            "Salve, la mia connessione internet non funziona, potete aiutarmi?", "en-US"
+        )
+        == "it-IT"
+    )
+    assert (
+        detect_utterance_language(
+            "Hallo, mein Internet hat eine Störung, bitte helfen Sie mir.", "en-US"
+        )
+        == "de-DE"
+    )
+    assert detect_utterance_language("Ich möchte meinen Vertrag kündigen.", "en-US") == "de-DE"
+

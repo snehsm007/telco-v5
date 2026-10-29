@@ -46,3 +46,18 @@ def test_browse_plans_and_coverage_localization_spanish(monkeypatch) -> None:
     res = tool.browse_plans_and_coverage(category="internet", language="es-US")
     assert res["status"] == "ok"
     assert len(res["data"]["shortlisted_plans"]) > 0
+
+
+def test_browse_plans_and_coverage_french_comma_max_budget(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res_dot = tool.browse_plans_and_coverage(
+        category="internet", postal_code="H3Z 2Y7", max_budget="60.00", language="fr-CA"
+    )
+    res_comma = tool.browse_plans_and_coverage(
+        category="internet", postal_code="H3Z 2Y7", max_budget="60,00 $", language="fr-CA"
+    )
+    ids_dot = [p["id"] for p in res_dot["data"]["shortlisted_plans"]]
+    ids_comma = [p["id"] for p in res_comma["data"]["shortlisted_plans"]]
+    assert ids_comma == ids_dot == ["NET-STARTER"]
+    assert all(float(p["monthly_price"]) <= 60.0 for p in res_comma["data"]["shortlisted_plans"])

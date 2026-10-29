@@ -926,11 +926,14 @@ _DEFAULT_STATE: dict[str, Any] = {}  # pragma: no cover
 
 def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
     """Read a whole-number variable, handling platform float serialization."""
-    if not isinstance(state, dict):
+    if not callable(getattr(state, "get", None)):
         return 0
     try:
-        return int(float(state.get(key) or 0))
-    except (TypeError, ValueError):
+        val = state.get(key)
+        if isinstance(val, bool) or val is None:
+            return 0
+        return int(float(val or 0))
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 def _get_state(  # pragma: no cover
@@ -953,6 +956,54 @@ def _get_state(  # pragma: no cover
     ):
         _DEFAULT_STATE.clear()
     return _DEFAULT_STATE
+
+def normalize_money_str(amount: str | int | float | Decimal) -> str:  # pragma: no cover
+    """Parse human/ASR money input (including French decimal comma) into a canonical decimal string."""
+    if amount is None or isinstance(amount, bool):
+        raise ValueError(f"Unsupported amount: {amount!r}")
+    if isinstance(amount, float) and (amount != amount or amount in (float("inf"), float("-inf"))):
+        raise ValueError(f"Non-finite amount: {amount!r}")
+    if isinstance(amount, (int, float, Decimal)):
+        d = Decimal(str(amount))
+        if not d.is_finite():
+            raise ValueError(f"Non-finite amount: {amount!r}")
+        return str(d)
+    s = str(amount).strip()
+    if not s:
+        raise ValueError("Empty amount")
+    # Strip currency symbols and codes ($, CAD, USD, EUR) at edges
+    s = re.sub(r"(?i)\b(?:cad|usd|eur|dollars?)\b", "", s)
+    s = s.replace("$", "").replace("\u00a0", " ").strip()
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(" ", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif "," in s:
+        if re.fullmatch(r"[+-]?\d{1,3}(?:,\d{3})+", s):
+            # 1,000 -> 1000
+            s = s.replace(",", "")
+        elif re.search(r",\d{1,2}$", s):
+            # 15,00 or 9 876,50 -> comma as decimal separator
+            s = s.replace(" ", "")
+            idx = s.rfind(",")
+            s = s[:idx].replace(",", "") + "." + s[idx + 1 :]
+        else:
+            raise ValueError(f"Invalid comma amount: {amount!r}")
+    if not re.fullmatch(r"[+-]?\d+(?:\.\d+)?", s):
+        raise ValueError(f"Malformed numeric amount: {amount!r}")
+    return s
+
+def _parse_positive_money(val: Any) -> Decimal | None:  # pragma: no cover
+    """Parse positive money amount, returning Decimal or None on invalid input."""
+    try:
+        norm = normalize_money_str(val)
+        d = Decimal(norm)
+        if not d.is_finite() or d <= 0:
+            return None
+        return d
+    except Exception:
+        return None
 
 def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
@@ -1035,14 +1086,7 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
     cat = str(category or "internet").lower()
     catalog = FAKE_PLAN_CATALOG.get(cat, FAKE_PLAN_CATALOG["internet"])
 
-    max_b = None
-    if max_budget is not None and not isinstance(max_budget, bool) and str(max_budget).strip():
-        try:
-            val = Decimal(str(max_budget).replace("$", "").replace(",", "").strip())
-            if val.is_finite() and not val.is_nan():
-                max_b = val
-        except Exception:
-            max_b = None
+    max_b = _parse_positive_money(max_budget)
 
     shortlist = []
     for p in catalog:

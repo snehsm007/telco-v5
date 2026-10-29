@@ -349,3 +349,138 @@ def test_enforce_handover_utterance_paraphrased_and_secondary_language() -> None
         tool_args_list=({"reason": "secondary_language_live_agent", "language": "de-DE"},),
     )
     assert res_de == "Moment bitte, ich verbinde Sie."
+
+
+def test_speech_joint_4_last4_all_orders_en_fr_es() -> None:
+    params = {
+        "account_id": "ACC-8475",
+        "phone_last4": "0143",
+        "caller_provided_phone_last4": "0199",
+        "card_last4": "4242",
+        "bank_last4": "6789",
+        "declined_card_last4": "9999",
+    }
+    en_1 = "Your phone ending in 0199, account ending in 8475, Visa card ending in 4242, and bank account ending in 6789 are verified."
+    assert clean_agent_speech(en_1, params) == en_1
+
+    en_2 = "Your Visa ending in 4242, phone ending in 0199, bank ending in 6789, and account ending in 8475 are on file."
+    assert clean_agent_speech(en_2, params) == en_2
+
+    fr_1 = "Votre carte terminant par 4242, téléphone terminant par 0199, compte bancaire terminant par 6789 et compte terminant par 8475 sont actifs."
+    assert clean_agent_speech(fr_1, params) == fr_1
+
+    es_1 = "Su tarjeta terminada en 4242, teléfono terminado en 0199, banco que termina en 6789 y cuenta que termina en 8475 están listos."
+    assert clean_agent_speech(es_1, params) == es_1
+
+
+def test_speech_pad_vs_debit_card_and_word_boundaries() -> None:
+    params = {
+        "caller_provided_phone_last4": "0199",
+        "phone_last4": "0143",
+        "card_last4": "4242",
+        "bank_last4": "6789",
+        "account_id": "ACC-8475",
+    }
+    # PAD phrases without "bank" noun bind to bank_last4 (6789)
+    assert (
+        clean_agent_speech("Your pre-authorized debit ending in 0000 is set up.", params)
+        == "Your pre-authorized debit ending in 6789 is set up."
+    )
+    assert (
+        clean_agent_speech("Your bank account for pre-authorized debit ending in 0000 is active.", params)
+        == "Your bank account for pre-authorized debit ending in 6789 is active."
+    )
+    assert (
+        clean_agent_speech("Votre débit préautorisé se terminant par 0000 est confirmé.", params)
+        == "Votre débit préautorisé se terminant par 6789 est confirmé."
+    )
+    assert (
+        clean_agent_speech("Votre prélèvement préautorisé se terminant par 0000 est actif.", params)
+        == "Votre prélèvement préautorisé se terminant par 6789 est actif."
+    )
+    assert (
+        clean_agent_speech("Su débito preautorizado que termina en 0000 está activo.", params)
+        == "Su débito preautorizado que termina en 6789 está activo."
+    )
+    # Debit card phrases still bind to card_last4 (4242)
+    assert (
+        clean_agent_speech("Your debit card ending in 0000 was charged.", params)
+        == "Your debit card ending in 4242 was charged."
+    )
+    assert (
+        clean_agent_speech("Votre carte de débit se terminant par 0000 est active.", params)
+        == "Votre carte de débit se terminant par 4242 est active."
+    )
+    assert (
+        clean_agent_speech("Su tarjeta de débito terminada en 0000 está activa.", params)
+        == "Su tarjeta de débito terminada en 4242 está activa."
+    )
+    # Word boundaries: "cancelled" != "cell" and "keypad" != "pad"
+    assert (
+        clean_agent_speech("Your cancelled account ending in 8475 is closed.", params)
+        == "Your cancelled account ending in 8475 is closed."
+    )
+    assert (
+        clean_agent_speech("Use your phone keypad for the line ending in 0000.", params)
+        == "Use your phone keypad for the line ending in 0199."
+    )
+    assert (
+        clean_agent_speech("Thank you for your card payment. Your phone ending in 0000 is verified.", params)
+        == "Thank you for your card payment. Your phone ending in 0199 is verified."
+    )
+
+
+def test_speech_declined_card_and_iso_date_collision_guard() -> None:
+    params = {
+        "account_id": "ACC-8475",
+        "phone_last4": "2026",
+        "caller_provided_phone_last4": "0199",
+        "card_last4": "4242",
+        "bank_last4": "6789",
+        "declined_card_last4": "9999",
+    }
+    declined_txt = "Your Visa card ending in 9999 was declined, so we charged your card ending in 4242."
+    assert clean_agent_speech(declined_txt, params) == declined_txt
+
+    date_txt = "Your payment is scheduled for 2026-10-15 on your phone ending in 2026."
+    assert (
+        clean_agent_speech(date_txt, params)
+        == "Your payment is scheduled for 2026-10-15 on your phone ending in 0199."
+    )
+
+
+def test_enforce_handover_fraud_empathy_precedes_hold_line() -> None:
+    for loc, generic, emp_sub, hold_sub in (
+        (
+            "en-US",
+            "I'll connect you to a representative who can help. Please hold.",
+            "facing challenges",
+            "Please hold",
+        ),
+        (
+            "fr-CA",
+            "Je vais vous mettre en communication avec un représentant qui pourra vous aider. Veuillez patienter.",
+            "ces difficultés",
+            "Veuillez patienter",
+        ),
+        (
+            "es-US",
+            "Le comunicaré con un representante que pueda ayudarle. Por favor espere.",
+            "pasando por dificultades",
+            "Por favor espere",
+        ),
+    ):
+        out = enforce_handover_utterance(
+            generic,
+            called_tools=("handover_to_person",),
+            tool_args_list=({"reason": "fraud_escalation", "language": loc},),
+        )
+        assert emp_sub in out and hold_sub in out
+        assert out.index(emp_sub) < out.index(hold_sub)
+
+    lead_in_out = enforce_handover_utterance(
+        "I see unauthorized activity. I'll connect you to a representative who can help. Please hold.",
+        called_tools=("handover_to_person",),
+        tool_args_list=({"reason": "fraud_escalation", "language": "en-US"},),
+    )
+    assert lead_in_out.index("facing challenges") < lead_in_out.index("Please hold")

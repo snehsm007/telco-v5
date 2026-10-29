@@ -114,3 +114,54 @@ def test_verify_login_does_not_overwrite_caller_entered_card_last4(monkeypatch) 
     assert session.state["card_last4"] == "1111"
     assert session.state["bank_last4"] == "6789"
 
+
+
+def test_verify_login_adk_state_three_strike_lockout_and_no_bypass(monkeypatch) -> None:
+    class FakeAdkState:
+        def __init__(self, initial: dict[str, object]) -> None:
+            self._d = dict(initial)
+
+        def get(self, k: str, default: object = None) -> object:
+            return self._d.get(k, default)
+
+        def setdefault(self, k: str, default: object = None) -> object:
+            return self._d.setdefault(k, default)
+
+        def __getitem__(self, k: str) -> object:
+            return self._d[k]
+
+        def __setitem__(self, k: str, v: object) -> None:
+            self._d[k] = v
+
+        def __contains__(self, k: object) -> bool:
+            return k in self._d
+
+    st = FakeAdkState({"account_id": "A1001", "auth_status": "code_sent"})
+    assert not isinstance(st, dict)
+    monkeypatch.setattr(tool, "context", SimpleNamespace(state=st), raising=False)
+
+    r1 = tool.verify_login(code="000000")
+    assert r1["error"] == "WRONG_CODE" and r1["data"]["attempts_remaining"] == 2
+    r2 = tool.verify_login(code="000000")
+    assert r2["error"] == "WRONG_CODE" and r2["data"]["attempts_remaining"] == 1
+    r3 = tool.verify_login(code="839201")
+    assert r3["status"] == "error"
+    assert r3["error"] == "TOO_MANY_ATTEMPTS"
+    assert r3["data"]["logged_in"] is False
+    assert st.get("auth_status") == "locked"
+
+
+def test_verify_login_pin_after_email_code_sent_does_not_mark_email_verified(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "code_sent",
+            "mfa_email_code_sent": True,
+            "mfa_email_verified": False,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.verify_login(code="1234", method="pin")
+    assert reply["status"] == "ok"
+    assert session.state["mfa_email_verified"] is False
+    assert session.state["login_channel"] == "pin"

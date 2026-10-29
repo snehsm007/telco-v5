@@ -61,3 +61,28 @@ def test_manage_appointment_localization_spanish(monkeypatch) -> None:
     res = tool.manage_appointment(action="cancel", confirmed_cancel=False, language="es-US")
     assert res["status"] == "ok"
     assert "cancelar" in res["data"]["spoken_message"].lower()
+
+
+def test_manage_appointment_reschedule_numeric_and_spanish_window(monkeypatch) -> None:
+    import inspect
+
+    sig = inspect.signature(tool.manage_appointment)
+    assert sig.parameters["selected_slot"].annotation == (str | int | float)
+
+    session = SimpleNamespace(
+        state={"auth_status": "pass", "account_id": "A1001", "active_appointment_id": "APT-4021"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    for slot_arg in (2, "2", 2.0, "Slot 2"):
+        res = tool.manage_appointment(action="reschedule", selected_slot=slot_arg, language="en-US")
+        assert res["status"] == "ok"
+        assert res["data"]["slot_id"] == "SLOT-2"
+
+    res_es = tool.manage_appointment(action="reschedule", selected_slot="Tarde", language="es-US")
+    assert res_es["status"] == "ok"
+    assert res_es["data"]["slot_id"] == "SLOT-2"
+
+    res_s3 = tool.manage_appointment(action="reschedule", selected_slot=3, language="en-US")
+    assert res_s3["status"] == "ok"
+    assert res_s3["data"]["slot_id"] == "SLOT-3"

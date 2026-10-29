@@ -809,11 +809,14 @@ _DEFAULT_STATE: dict[str, Any] = {}  # pragma: no cover
 
 def read_count(state: dict[str, Any] | None, key: str) -> int:  # pragma: no cover
     """Read a whole-number variable, handling platform float serialization."""
-    if not isinstance(state, dict):
+    if not callable(getattr(state, "get", None)):
         return 0
     try:
-        return int(float(state.get(key) or 0))
-    except (TypeError, ValueError):
+        val = state.get(key)
+        if isinstance(val, bool) or val is None:
+            return 0
+        return int(float(val or 0))
+    except (TypeError, ValueError, OverflowError):
         return 0
 
 def _get_state(  # pragma: no cover
@@ -1128,7 +1131,8 @@ def lookup_account_impl(  # pragma: no cover
 
     # Restricted caller check (BR-TV-002)
     digits = only_digits(id_val)
-    if digits in BLOCKED_CALLER_NUMBERS:
+    norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
+    if digits in BLOCKED_CALLER_NUMBERS or norm_digits in BLOCKED_CALLER_NUMBERS:
         state["is_blocked"] = True
         blocked_msg = spoken_line("blocked_caller_deflection", lang)
         state["last_tracking_id"] = reference
@@ -1243,6 +1247,10 @@ def lookup_account_impl(  # pragma: no cover
         reference,
         language=lang,
     )
+
+LOGIN_CODE_LENGTH = 6  # pragma: no cover
+
+SECRET_PIN_LENGTH = 4  # pragma: no cover
 
 ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
     {"0000", "000000", "1111", "111111", "9999", "999999"}
@@ -1429,11 +1437,18 @@ def verify_login_impl(  # pragma: no cover
         state["bank_last4"] = "6789"
 
     was_mfa_sms = state.get("login_channel") == "mfa_sms"
-    is_email_auth = bool(state.get("mfa_email_code_sent")) or str(method or "").lower() == "email"
+    method_low = str(method or "").strip().lower()
+    is_email_auth = (
+        len(digits) == LOGIN_CODE_LENGTH
+        and method_low != "pin"
+        and (bool(state.get("mfa_email_code_sent")) or method_low == "email")
+    )
     if is_email_auth:
         state["mfa_email_verified"] = True
-    elif was_mfa_sms:
+    elif was_mfa_sms and len(digits) == LOGIN_CODE_LENGTH and method_low != "pin":
         state["login_channel"] = "mfa_sms_verified"
+    elif method_low == "pin" or len(digits) == SECRET_PIN_LENGTH:
+        state["login_channel"] = "pin"
     else:
         state["login_channel"] = "sms"
 

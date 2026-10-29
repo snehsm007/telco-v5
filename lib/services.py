@@ -478,7 +478,8 @@ def lookup_account_impl(
 
     # Restricted caller check (BR-TV-002)
     digits = only_digits(id_val)
-    if digits in BLOCKED_CALLER_NUMBERS:
+    norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
+    if digits in BLOCKED_CALLER_NUMBERS or norm_digits in BLOCKED_CALLER_NUMBERS:
         state["is_blocked"] = True
         blocked_msg = spoken_line("blocked_caller_deflection", lang)
         state["last_tracking_id"] = reference
@@ -883,11 +884,18 @@ def verify_login_impl(
         state["bank_last4"] = "6789"
 
     was_mfa_sms = state.get("login_channel") == "mfa_sms"
-    is_email_auth = bool(state.get("mfa_email_code_sent")) or str(method or "").lower() == "email"
+    method_low = str(method or "").strip().lower()
+    is_email_auth = (
+        len(digits) == LOGIN_CODE_LENGTH
+        and method_low != "pin"
+        and (bool(state.get("mfa_email_code_sent")) or method_low == "email")
+    )
     if is_email_auth:
         state["mfa_email_verified"] = True
-    elif was_mfa_sms:
+    elif was_mfa_sms and len(digits) == LOGIN_CODE_LENGTH and method_low != "pin":
         state["login_channel"] = "mfa_sms_verified"
+    elif method_low == "pin" or len(digits) == SECRET_PIN_LENGTH:
+        state["login_channel"] = "pin"
     else:
         state["login_channel"] = "sms"
 
@@ -920,7 +928,7 @@ def handover_to_person_impl(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Transfer to a human specialist queue with reason-aware verbatim copy."""
-    if isinstance(language, dict) and state is None:
+    if not isinstance(language, str) and callable(getattr(language, "get", None)) and state is None:
         state = language
         language = ""
     state = _get_state(state, session_state)
@@ -1126,16 +1134,64 @@ def process_bill_payment_impl(
         return error_reply("INVALID_INPUT", reference=reference, language=lang)
     amt_str = display_amount(amt_val)
 
-    provided_method = card_last4 or bank_last4
+    if isinstance(card_last4, bool) or isinstance(bank_last4, bool):
+        return error_reply("INVALID_INPUT", reference=reference, language=lang)
+    pm_low = str(payment_method or "").strip().lower()
+    has_card_arg = bool(str(card_last4 or "").strip())
+    has_bank_arg = bool(str(bank_last4 or "").strip())
+    has_card_word = any(w in pm_low for w in ("card", "carte", "tarjeta"))
+    is_bank = (
+        (has_bank_arg and not has_card_arg) or (
+            not has_card_arg
+            and (
+                any(
+                    w in pm_low
+                    for w in (
+                        "bank",
+                        "checking",
+                        "chequing",
+                        "savings",
+                        "pad",
+                        "dpa",
+                        "ach",
+                        "eft",
+                        "bancaire",
+                        "chèques",
+                        "cheques",
+                        "épargne",
+                        "epargne",
+                        "compte",
+                        "prélèvement",
+                        "prelevement",
+                        "bancaria",
+                        "banco",
+                        "corriente",
+                        "ahorros",
+                    )
+                )
+                or (
+                    any(w in pm_low for w in ("debit", "débit", "débito", "debito"))
+                    and not has_card_word
+                )
+            )
+        )
+    )
+    provided_method = bank_last4 if is_bank else (card_last4 or bank_last4)
     l4_parsed = _extract_last4(provided_method)
     if l4_parsed is None:
         return error_reply("INVALID_INPUT", reference=reference, language=lang)
-    l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or "4242")[-4:]
+    if is_bank:
+        l4 = l4_parsed or str(state.get("bank_last4") or "6789")[-4:]
+    else:
+        l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or "4242")[-4:]
 
     if l4 in DECLINED_CARD_LAST4:
         failures = read_count(state, "payment_failure_count") + 1
         state["payment_failure_count"] = failures
-        state["card_last4"] = ""
+        if is_bank:
+            state["bank_last4"] = ""
+        else:
+            state["card_last4"] = ""
         state["declined_card_last4"] = l4
         state["payment_declined_once"] = True
         if failures >= MAX_PAYMENT_ATTEMPTS:
@@ -1157,15 +1213,20 @@ def process_bill_payment_impl(
             language=lang,
             data={
                 "payment_failure_count": failures,
-                "card_last4": "",
+                "card_last4": "" if not is_bank else state.get("card_last4", ""),
                 "declined_card_last4": l4,
                 "payment_declined_once": True,
             },
         )
 
     state["payment_failure_count"] = 0
-    state["card_last4"] = l4
-    state["last_payment_method"] = str(payment_method or "card_on_file")
+    if is_bank:
+        state["bank_last4"] = l4
+        eff_method = str(payment_method or "bank") if (pm_low and pm_low != "card_on_file") else "bank"
+    else:
+        state["card_last4"] = l4
+        eff_method = str(payment_method or "card_on_file")
+    state["last_payment_method"] = eff_method
     state["current_balance"] = "0.00"
     state["past_due_balance"] = "0.00"
     state["is_suspended"] = False
@@ -1174,17 +1235,23 @@ def process_bill_payment_impl(
 
     conf = tracking_id("PAY", account_id, amt_str)
     state["last_tracking_id"] = conf
+    reply_data: dict[str, Any] = {
+        "payment_processed": True,
+        "amount_paid": amt_str,
+        "remaining_balance": "0.00",
+        "payment_method": eff_method if is_bank else payment_method,
+        "masked_last4": l4,
+        "confirmation_number": conf,
+        "service_restored": True,
+        "restoration_eta_minutes": 15,
+    }
+    if is_bank:
+        reply_data["bank_last4"] = l4
+        reply_data["card_last4"] = ""
+    else:
+        reply_data["card_last4"] = l4
     return ok_reply(
-        {
-            "payment_processed": True,
-            "amount_paid": amt_str,
-            "remaining_balance": "0.00",
-            "payment_method": payment_method,
-            "card_last4": l4,
-            "confirmation_number": conf,
-            "service_restored": True,
-            "restoration_eta_minutes": 15,
-        },
+        reply_data,
         conf,
         language=lang,
     )
@@ -1780,7 +1847,7 @@ def get_appointment_and_ticket_status_impl(
 
 def manage_appointment_impl(
     action: str = "reschedule",
-    selected_slot: str = "",
+    selected_slot: str | int | float = "",
     appointment_id: str | int | float = "",
     confirmed_cancel: str | int | float | bool = False,
     technician_en_route: str | int | float | bool = False,
@@ -1873,14 +1940,28 @@ def manage_appointment_impl(
         )
 
     # Reschedule
-    sel = str(selected_slot or "").strip().upper()
+    if isinstance(selected_slot, bool) or (
+        isinstance(selected_slot, float)
+        and (selected_slot != selected_slot or selected_slot in (float("inf"), float("-inf")))
+    ):
+        raw_sel = ""
+    else:
+        raw_sel = str(selected_slot or "").strip()
+    m_slot_num = re.fullmatch(
+        r"(?:(?:slot|option|opci[oó]n|cr[eé]neau|plage)[\s_#-]*)?([123])(?:\.0+)?",
+        raw_sel,
+        re.IGNORECASE,
+    )
+    sel = f"SLOT-{m_slot_num.group(1)}" if m_slot_num else raw_sel.upper()
+    sel_low = sel.lower()
     slot_match = None
     for s_item in FAKE_APPOINTMENTS_DATA["available_reschedule_slots"]:
         if sel and (
             sel in s_item["slot_id"]
-            or sel in s_item["date"]
-            or sel.lower() in s_item.get("window_en", "").lower()
-            or sel.lower() in s_item.get("window_fr", "").lower()
+            or (len(sel) >= 4 and sel in s_item["date"])
+            or sel_low in s_item.get("window_en", "").lower()
+            or sel_low in s_item.get("window_fr", "").lower()
+            or sel_low in s_item.get("window_es", "").lower()
         ):
             slot_match = s_item
             break
@@ -1947,14 +2028,7 @@ def browse_plans_and_coverage_impl(
     cat = str(category or "internet").lower()
     catalog = FAKE_PLAN_CATALOG.get(cat, FAKE_PLAN_CATALOG["internet"])
 
-    max_b = None
-    if max_budget is not None and not isinstance(max_budget, bool) and str(max_budget).strip():
-        try:
-            val = Decimal(str(max_budget).replace("$", "").replace(",", "").strip())
-            if val.is_finite() and not val.is_nan():
-                max_b = val
-        except Exception:
-            max_b = None
+    max_b = _parse_positive_money(max_budget)
 
     shortlist = []
     for p in catalog:
@@ -2479,9 +2553,9 @@ def manage_mfa_settings_impl(
             state["auth_status"] = "pass"
             state["logged_in"] = True
             state["auth_failure_count"] = 0
-            if state.get("mfa_email_code_sent"):
+            if state.get("mfa_email_code_sent") and len(digits) == LOGIN_CODE_LENGTH:
                 state["mfa_email_verified"] = True
-            else:
+            elif len(digits) == LOGIN_CODE_LENGTH:
                 state["login_channel"] = "mfa_sms_verified"
 
     if state.get("auth_status") == "pass" and not state.get("account_id"):

@@ -82,3 +82,14 @@ def test_lookup_account_populates_card_and_bank_last4(monkeypatch) -> None:
     assert session.state["card_last4"] == "4242"
     assert session.state["bank_last4"] == "6789"
 
+
+
+def test_lookup_account_blocked_caller_11_digit_nanp(monkeypatch) -> None:
+    for raw_blocked in ("+1 (900) 555-0199", "1-800-555-0000", 19005550199):
+        session = SimpleNamespace(state={})
+        monkeypatch.setattr(tool, "context", session, raising=False)
+        reply = tool.lookup_account(raw_blocked)
+        assert reply["status"] == "error"
+        assert reply["error"] == "PERMISSION_DENIED"
+        assert session.state["is_blocked"] is True
+        assert "account_id" not in session.state

@@ -91,3 +91,47 @@ def test_process_bill_payment_localization(monkeypatch) -> None:
     assert reply_fr["status"] == "ok"
     reply_es = tool.process_bill_payment(amount="50.00", language="es-US")
     assert reply_es["status"] == "ok"
+
+
+def test_process_bill_payment_bank_preserves_card_last4(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "current_balance": "85.50",
+            "card_last4": "4242",
+            "bank_last4": "6789",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    res_onfile = tool.process_bill_payment(amount="85.50", payment_method="bank")
+    assert res_onfile["status"] == "ok"
+    assert res_onfile["data"]["bank_last4"] == "6789"
+    assert res_onfile["data"]["card_last4"] == ""
+    assert session.state["card_last4"] == "4242"
+    assert session.state["bank_last4"] == "6789"
+
+    res_explicit = tool.process_bill_payment(
+        amount="85.50", payment_method="bank", bank_last4="001234561234"
+    )
+    assert res_explicit["status"] == "ok"
+    assert res_explicit["data"]["bank_last4"] == "1234"
+    assert res_explicit["data"]["card_last4"] == ""
+    assert session.state["card_last4"] == "4242"
+    assert session.state["bank_last4"] == "1234"
+
+    res_declined = tool.process_bill_payment(
+        amount="85.50", payment_method="bank", bank_last4="0000"
+    )
+    assert res_declined["status"] == "error"
+    assert res_declined["error"] == "PAYMENT_DECLINED"
+    assert session.state["card_last4"] == "4242"
+    assert session.state["bank_last4"] == ""
+
+    res_debit_card = tool.process_bill_payment(
+        amount="85.50", payment_method="debit_card", card_last4="8844"
+    )
+    assert res_debit_card["status"] == "ok"
+    assert res_debit_card["data"]["card_last4"] == "8844"
+    assert session.state["card_last4"] == "8844"

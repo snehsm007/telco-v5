@@ -61,16 +61,37 @@ def after_model_callback(
         if enforced_combined != combined_text:
             if len(spoken_indices) == 1:
                 new_last = clean_agent_speech(enforced_combined, state_dict)
-            else:
+                if new_last != getattr(parts[last_idx], "text", None):
+                    parts[last_idx].text = new_last
+                    changed = True
+            elif enforced_combined.startswith(combined_text):
                 suffix = enforced_combined[len(combined_text) :].strip()
                 base_last = str(getattr(parts[last_idx], "text", "") or "").rstrip()
                 new_last = clean_agent_speech(
-                    f"{base_last} {suffix}".strip() if suffix else enforced_combined,
+                    f"{base_last} {suffix}".strip() if suffix else base_last,
                     state_dict,
                 )
-            if new_last != getattr(parts[last_idx], "text", None):
-                parts[last_idx].text = new_last
-                changed = True
+                if new_last != getattr(parts[last_idx], "text", None):
+                    parts[last_idx].text = new_last
+                    changed = True
+            else:
+                first_idx = spoken_indices[0]
+                new_first = clean_agent_speech(enforced_combined, state_dict)
+                if new_first != getattr(parts[first_idx], "text", None):
+                    parts[first_idx].text = new_first
+                    changed = True
+                for extra_idx in reversed(spoken_indices[1:]):
+                    extra_part = parts[extra_idx]
+                    if (
+                        isinstance(parts, list)
+                        and getattr(extra_part, "function_call", None) is None
+                        and getattr(extra_part, "function_response", None) is None
+                        and getattr(extra_part, "inline_data", None) is None
+                    ):
+                        parts.pop(extra_idx)
+                    else:
+                        extra_part.text = ""
+                    changed = True
 
     if not spoken_indices:
         msg = enforce_handover_utterance(
@@ -107,7 +128,7 @@ import re
 import sys
 
 _LAST4_CONTEXT_RE = re.compile(  # pragma: no cover
-    r"((?:ending\s+in|terminant\s+par|termina\s+en|number\s+is|num[eé]ro\s+est|n[uú]mero\s+es)\s+)(\d{4})\b",
+    r"((?:ending\s+in|terminant\s+par|terminad?[oa]?\s+en|number\s+is|num[eé]ro\s+est|n[uú]mero\s+es)\s+)(\d{4})\b",
     re.IGNORECASE,
 )
 
@@ -129,6 +150,22 @@ _SP_BANK_KWS: tuple[str, ...] = (  # pragma: no cover
     "routing",
     "transit",
     "pad",
+    "dpa",
+    "pre-authorized",
+    "preauthorized",
+    "préautorisé",
+    "preautorise",
+    "prélèvement",
+    "prelevement",
+    "preautorizado",
+    "domiciliación",
+    "domiciliacion",
+    "automático",
+    "automatico",
+    "débit",
+    "debit",
+    "débito",
+    "debito",
 )
 
 _SP_CARD_KWS: tuple[str, ...] = (  # pragma: no cover
@@ -140,10 +177,36 @@ _SP_CARD_KWS: tuple[str, ...] = (  # pragma: no cover
     "amex",
     "crédit",
     "credit",
-    "débit",
-    "debit",
-    "débito",
-    "debito",
+)
+
+_SP_EXPLICIT_BANK_KWS: tuple[str, ...] = (  # pragma: no cover
+    "bank",
+    "banking",
+    "bancaire",
+    "bancaria",
+    "banco",
+    "checking",
+    "chequing",
+    "chèques",
+    "chèque",
+    "cheques",
+    "savings",
+    "épargne",
+    "ahorros",
+    "corriente",
+    "routing",
+    "transit",
+    "pad",
+    "dpa",
+    "pre-authorized",
+    "preauthorized",
+    "préautorisé",
+    "preautorise",
+    "prélèvement",
+    "prelevement",
+    "preautorizado",
+    "domiciliación",
+    "domiciliacion",
 )
 
 _SP_PHONE_KWS: tuple[str, ...] = (  # pragma: no cover
@@ -156,6 +219,20 @@ _SP_PHONE_KWS: tuple[str, ...] = (  # pragma: no cover
     "celular",
     "móvil",
 )
+
+def _sp_term_pos(segment: str, terms: tuple[str, ...]) -> int:  # pragma: no cover
+    """Return last word-start match offset of any term in segment, or -1."""
+    best = -1
+    for term in terms:
+        pat = (
+            rf"(?<!\w){re.escape(term)}(?!\w)"
+            if len(term) <= 3
+            else rf"(?<!\w){re.escape(term)}"
+        )
+        for match in re.finditer(pat, segment):
+            if match.start() > best:
+                best = match.start()
+    return best
 
 NUMBER_RUN_RE = re.compile(r"\(?\d+\)?(?:[-.]\(?\d+\)?|\s\(?\d{3,}\)?)*")  # pragma: no cover
 
@@ -197,6 +274,7 @@ def clean_agent_speech(  # pragma: no cover
     profile_last4 = str(session_params.get("phone_last4") or "").strip()
     card_last4 = str(session_params.get("card_last4") or "").strip()
     bank_last4 = str(session_params.get("bank_last4") or "").strip()
+    declined_last4 = str(session_params.get("declined_card_last4") or "").strip()
     acc_digits = re.sub(r"\D", "", str(session_params.get("account_id") or ""))
     account_last4 = acc_digits[-4:] if len(acc_digits) >= 4 else ""
 
@@ -204,7 +282,10 @@ def clean_agent_speech(  # pragma: no cover
     valid_profile = len(profile_last4) == 4 and profile_last4.isdigit()
     valid_card = len(card_last4) == 4 and card_last4.isdigit()
     valid_bank = len(bank_last4) == 4 and bank_last4.isdigit()
-    effective_phone_last4 = caller_last4 if valid_caller else (profile_last4 if valid_profile else "")
+    valid_declined = len(declined_last4) == 4 and declined_last4.isdigit()
+    effective_phone_last4 = (
+        caller_last4 if valid_caller else (profile_last4 if valid_profile else "")
+    )
 
     if valid_caller:
         if (
@@ -212,30 +293,54 @@ def clean_agent_speech(  # pragma: no cover
             and profile_last4 != caller_last4
             and profile_last4 != card_last4
             and profile_last4 != bank_last4
+            and profile_last4 != declined_last4
+            and profile_last4 != account_last4
             and profile_last4 in cleaned
         ):
-            cleaned = re.sub(rf"\b{re.escape(profile_last4)}\b", caller_last4, cleaned)
+            cleaned = re.sub(
+                rf"(?<![-$/.\d])\b{re.escape(profile_last4)}\b(?![-/\d]|\.\d)",
+                caller_last4,
+                cleaned,
+            )
 
-    if effective_phone_last4 or valid_card or valid_bank:
+    if effective_phone_last4 or valid_card or valid_bank or valid_declined:
 
         def _replace_non_card_last4(m: re.Match[str]) -> str:
-            prefix = cleaned[max(0, m.start() - 35) : m.start()].lower()
+            raw_prefix = cleaned[max(0, m.start() - 35) : m.start()].lower()
+            prev_end = max(
+                (pm.end() for pm in _LAST4_CONTEXT_RE.finditer(raw_prefix)),
+                default=0,
+            )
+            prefix = raw_prefix[prev_end:]
             cue = m.group(1).lower()
             digits4 = m.group(2)
 
-            card_pos = max((prefix.rfind(w) for w in _SP_CARD_KWS), default=-1)
-            bank_pos = max((prefix.rfind(w) for w in _SP_BANK_KWS), default=-1)
-            phone_pos = max((prefix.rfind(w) for w in _SP_PHONE_KWS), default=-1)
+            card_pos = _sp_term_pos(prefix, _SP_CARD_KWS)
+            bank_pos = _sp_term_pos(prefix, _SP_BANK_KWS)
+            if (
+                card_pos >= 0
+                and bank_pos >= 0
+                and _sp_term_pos(prefix, _SP_EXPLICIT_BANK_KWS) < 0
+            ):
+                bank_pos = -1
+            phone_pos = _sp_term_pos(prefix, _SP_PHONE_KWS)
             is_number_is_cue = any(
-                c in cue for c in ("number is", "numéro est", "número es")
+                c in cue
+                for c in (
+                    "number is",
+                    "numéro est",
+                    "numero est",
+                    "número es",
+                    "numero es",
+                )
             )
             explicit_phone_only = (
-                (is_number_is_cue or phone_pos >= 0)
-                and card_pos < 0
-                and bank_pos < 0
-            )
+                is_number_is_cue and card_pos < 0 and bank_pos < 0
+            ) or (phone_pos >= 0 and phone_pos > max(card_pos, bank_pos))
 
             if not explicit_phone_only:
+                if card_pos >= 0 and valid_declined and digits4 == declined_last4:
+                    return m.group(0)
                 if (valid_card and digits4 == card_last4) or (
                     valid_bank and digits4 == bank_last4
                 ):
@@ -246,6 +351,12 @@ def clean_agent_speech(  # pragma: no cover
                     if account_last4 and digits4 == account_last4:
                         return m.group(0)
 
+            if phone_pos >= 0 and phone_pos > max(card_pos, bank_pos):
+                return (
+                    f"{m.group(1)}{effective_phone_last4}"
+                    if effective_phone_last4
+                    else m.group(0)
+                )
             if card_pos >= 0 and card_pos > bank_pos:
                 return f"{m.group(1)}{card_last4}" if valid_card else m.group(0)
             if bank_pos >= 0 and bank_pos > card_pos:
@@ -272,6 +383,12 @@ _SP_FRAUD_TERMS: frozenset[str] = frozenset(  # pragma: no cover
         "sim_swap",
         "abuse",
     }
+)
+
+_SP_HOLD_TAILS: tuple[str, ...] = (  # pragma: no cover
+    "please hold",
+    "veuillez patienter",
+    "por favor espere",
 )
 
 _SP_SPECIALIST_TERMS: frozenset[str] = frozenset(  # pragma: no cover
@@ -523,12 +640,31 @@ def enforce_handover_utterance(  # pragma: no cover
         return text
 
     generic_line = spoken_line("live_agent_handoff", loc)
-    if (is_biz or is_specialist) and _norm_ws(existing) == _norm_ws(generic_line):
+    if (is_biz or is_specialist or is_fraud) and _norm_ws(existing) == _norm_ws(
+        generic_line
+    ):
         return " ".join(required_lines)
 
     norm_existing = _norm_ws(existing)
     missing = [line for line in required_lines if _norm_ws(line) not in norm_existing]
     if not missing:
         return text
+    empathy_line = spoken_line("empathy_protocol", loc) if is_fraud else ""
+    if (
+        is_fraud
+        and empathy_line in missing
+        and (
+            _norm_ws(generic_line) in norm_existing
+            or any(
+                hold_tail in norm_existing
+                for hold_tail in _SP_HOLD_TAILS
+            )
+        )
+    ):
+        other_missing = [line for line in missing if line != empathy_line]
+        merged = f"{empathy_line} {existing}"
+        if other_missing:
+            merged = f"{merged} {' '.join(other_missing)}"
+        return merged
     return f"{existing} {' '.join(missing)}"
 # --- END GENERATED SHARED BUNDLE ---
