@@ -1211,21 +1211,25 @@ def handover_to_person_impl(
     state["handoff_message"] = msg
     state["last_tracking_id"] = reference
 
+    reply_payload = {
+        "handoff_status": "completed_via_specialist_queue",
+        "handover_complete": True,
+        "target_queue": queue,
+        "queue_hours_status": queue_hours,
+        "reason": clean_reason,
+        "handoff_reason": clean_reason,
+        "language": resolved_lang,
+        "handoff_message": msg,
+        "spoken_message": msg,
+        "action_fulfilled": True,
+        "task_completed": True,
+        "user_goal_fulfilled": True,
+    }
+    if queue == "billing_specialist":
+        reply_payload["verbatim_key"] = "transfer_to_specialist"
+
     return ok_reply(
-        {
-            "handoff_status": "completed_via_specialist_queue",
-            "handover_complete": True,
-            "target_queue": queue,
-            "queue_hours_status": queue_hours,
-            "reason": clean_reason,
-            "handoff_reason": clean_reason,
-            "language": resolved_lang,
-            "handoff_message": msg,
-            "spoken_message": msg,
-            "action_fulfilled": True,
-            "task_completed": True,
-            "user_goal_fulfilled": True,
-        },
+        reply_payload,
         reference,
         language=resolved_lang,
     )
@@ -1800,6 +1804,8 @@ def process_refund_or_dispute_impl(
         ref = tracking_id("CRD", account_id, amt_disp)
         state["last_tracking_id"] = ref
         spoken_confirm = spoken_line("refund_confirmation_pattern", lang, amount=amt_disp, days=5)
+        conf_line = spoken_line("confirmation_number_line", lang, ref=ref, confirmation_number=ref)
+        full_confirm = f"{spoken_confirm} {conf_line}".strip()
         return ok_reply(
             {
                 "approved": True,
@@ -1811,8 +1817,8 @@ def process_refund_or_dispute_impl(
                 "credit_amount": amt_disp,
                 "settlement_days": 5,
                 "confirmation_number": ref,
-                "spoken_message": spoken_confirm,
-                "verbatim_confirmation": spoken_confirm,
+                "spoken_message": full_confirm,
+                "verbatim_confirmation": full_confirm,
             },
             ref,
             language=lang,
@@ -1834,6 +1840,8 @@ def process_refund_or_dispute_impl(
         ref = tracking_id("REF", account_id, amt_disp)
         state["last_tracking_id"] = ref
         spoken_confirm = spoken_line("refund_confirmation_pattern", lang, amount=amt_disp, days=5)
+        conf_line = spoken_line("confirmation_number_line", lang, ref=ref, confirmation_number=ref)
+        full_confirm = f"{spoken_confirm} {conf_line}".strip()
         return ok_reply(
             {
                 "approved": True,
@@ -1844,8 +1852,8 @@ def process_refund_or_dispute_impl(
                 "card_last4": state.get("card_last4", "4242"),
                 "settlement_days": 5,
                 "confirmation_number": ref,
-                "spoken_message": spoken_confirm,
-                "verbatim_confirmation": spoken_confirm,
+                "spoken_message": full_confirm,
+                "verbatim_confirmation": full_confirm,
             },
             ref,
             language=lang,
@@ -1865,6 +1873,8 @@ def process_refund_or_dispute_impl(
         ref = tracking_id("CRD", account_id, amt_disp)
         state["last_tracking_id"] = ref
         spoken_confirm = spoken_line("refund_confirmation_pattern", lang, amount=amt_disp, days=5)
+        conf_line = spoken_line("confirmation_number_line", lang, ref=ref, confirmation_number=ref)
+        full_confirm = f"{spoken_confirm} {conf_line}".strip()
         return ok_reply(
             {
                 "approved": True,
@@ -1873,8 +1883,8 @@ def process_refund_or_dispute_impl(
                 "credit_amount": amt_disp,
                 "settlement_days": 5,
                 "confirmation_number": ref,
-                "spoken_message": spoken_confirm,
-                "verbatim_confirmation": spoken_confirm,
+                "spoken_message": full_confirm,
+                "verbatim_confirmation": full_confirm,
             },
             ref,
             language=lang,
@@ -1883,7 +1893,8 @@ def process_refund_or_dispute_impl(
     tkt = tracking_id("DSP", account_id, amt_disp)
     state["dispute_ticket_id"] = tkt
     state["handoff_reason"] = "refund_threshold_exceeded"
-    state["handoff_message"] = spoken_line("transfer_to_specialist", lang)
+    specialist_msg = spoken_line("transfer_to_specialist", lang)
+    state["handoff_message"] = specialist_msg
     return ok_reply(
         {
             "approved": False,
@@ -1893,8 +1904,9 @@ def process_refund_or_dispute_impl(
             "must_escalate_immediately": True,
             "escalation_reason": "refund_threshold_exceeded",
             "target_queue": "billing_specialist",
-            "handoff_message": spoken_line("transfer_to_specialist", lang),
-            "spoken_message": spoken_line("transfer_to_specialist", lang),
+            "handoff_message": specialist_msg,
+            "spoken_message": specialist_msg,
+            "verbatim_key": "transfer_to_specialist",
         },
         tkt,
         language=lang,

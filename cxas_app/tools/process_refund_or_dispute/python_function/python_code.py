@@ -768,6 +768,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Votre remboursement de [amount] $ figurera sur votre prochain relevé d'ici [days] jours ouvrables.",
         "es-US": "Su reembolso de $[amount] aparecerá en su próximo estado de cuenta dentro de [days] días hábiles.",
     },
+    "confirmation_number_line": {
+        "en-US": "Your confirmation number is [ref].",
+        "fr-CA": "Votre numéro de confirmation est le [ref].",
+        "es-US": "Su número de confirmación es [ref].",
+    },
     "empathy_protocol": {
         "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
         "fr-CA": "Je suis vraiment désolé d'apprendre que vous rencontrez ces difficultés. Je veillerai à ce que nous traitions votre demande avec le plus grand soin.",
@@ -800,11 +805,14 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
     },
 }
 
-def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
+def spoken_line(key: str, language: str | None = "en-US", *args: object, **slots: object) -> str:  # pragma: no cover
     """Return the spoken template for key and language, formatting all placeholders."""
     locale = resolve_copy_locale(language)
     table = SPOKEN_LINES.get(key, {})
     template = table.get(locale) or table.get("en-US") or ""
+    if args and "ref" not in slots:
+        slots["ref"] = args[0]
+        slots["confirmation_number"] = args[0]
     for slot_name, slot_val in slots.items():
         if isinstance(slot_val, float) and slot_val.is_integer():
             val_str = str(int(slot_val))
@@ -816,6 +824,9 @@ def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> st
         else:
             val_str = str(slot_val)
         template = template.replace(f"[{slot_name}]", val_str).replace(f"{{{slot_name}}}", val_str)
+        if slot_name in ("ref", "confirmation_number"):
+            template = template.replace("[ref]", val_str).replace("{ref}", val_str)
+            template = template.replace("[confirmation_number]", val_str).replace("{confirmation_number}", val_str)
     return template
 
 def _check_mock_error(state: dict[str, Any], lang: str) -> dict[str, Any] | None:  # pragma: no cover
@@ -1876,6 +1887,8 @@ def process_refund_or_dispute_impl(  # pragma: no cover
         ref = tracking_id("CRD", account_id, amt_disp)
         state["last_tracking_id"] = ref
         spoken_confirm = spoken_line("refund_confirmation_pattern", lang, amount=amt_disp, days=5)
+        conf_line = spoken_line("confirmation_number_line", lang, ref=ref, confirmation_number=ref)
+        full_confirm = f"{spoken_confirm} {conf_line}".strip()
         return ok_reply(
             {
                 "approved": True,
@@ -1887,8 +1900,8 @@ def process_refund_or_dispute_impl(  # pragma: no cover
                 "credit_amount": amt_disp,
                 "settlement_days": 5,
                 "confirmation_number": ref,
-                "spoken_message": spoken_confirm,
-                "verbatim_confirmation": spoken_confirm,
+                "spoken_message": full_confirm,
+                "verbatim_confirmation": full_confirm,
             },
             ref,
             language=lang,
@@ -1910,6 +1923,8 @@ def process_refund_or_dispute_impl(  # pragma: no cover
         ref = tracking_id("REF", account_id, amt_disp)
         state["last_tracking_id"] = ref
         spoken_confirm = spoken_line("refund_confirmation_pattern", lang, amount=amt_disp, days=5)
+        conf_line = spoken_line("confirmation_number_line", lang, ref=ref, confirmation_number=ref)
+        full_confirm = f"{spoken_confirm} {conf_line}".strip()
         return ok_reply(
             {
                 "approved": True,
@@ -1920,8 +1935,8 @@ def process_refund_or_dispute_impl(  # pragma: no cover
                 "card_last4": state.get("card_last4", "4242"),
                 "settlement_days": 5,
                 "confirmation_number": ref,
-                "spoken_message": spoken_confirm,
-                "verbatim_confirmation": spoken_confirm,
+                "spoken_message": full_confirm,
+                "verbatim_confirmation": full_confirm,
             },
             ref,
             language=lang,
@@ -1941,6 +1956,8 @@ def process_refund_or_dispute_impl(  # pragma: no cover
         ref = tracking_id("CRD", account_id, amt_disp)
         state["last_tracking_id"] = ref
         spoken_confirm = spoken_line("refund_confirmation_pattern", lang, amount=amt_disp, days=5)
+        conf_line = spoken_line("confirmation_number_line", lang, ref=ref, confirmation_number=ref)
+        full_confirm = f"{spoken_confirm} {conf_line}".strip()
         return ok_reply(
             {
                 "approved": True,
@@ -1949,8 +1966,8 @@ def process_refund_or_dispute_impl(  # pragma: no cover
                 "credit_amount": amt_disp,
                 "settlement_days": 5,
                 "confirmation_number": ref,
-                "spoken_message": spoken_confirm,
-                "verbatim_confirmation": spoken_confirm,
+                "spoken_message": full_confirm,
+                "verbatim_confirmation": full_confirm,
             },
             ref,
             language=lang,
@@ -1959,7 +1976,8 @@ def process_refund_or_dispute_impl(  # pragma: no cover
     tkt = tracking_id("DSP", account_id, amt_disp)
     state["dispute_ticket_id"] = tkt
     state["handoff_reason"] = "refund_threshold_exceeded"
-    state["handoff_message"] = spoken_line("transfer_to_specialist", lang)
+    specialist_msg = spoken_line("transfer_to_specialist", lang)
+    state["handoff_message"] = specialist_msg
     return ok_reply(
         {
             "approved": False,
@@ -1969,8 +1987,9 @@ def process_refund_or_dispute_impl(  # pragma: no cover
             "must_escalate_immediately": True,
             "escalation_reason": "refund_threshold_exceeded",
             "target_queue": "billing_specialist",
-            "handoff_message": spoken_line("transfer_to_specialist", lang),
-            "spoken_message": spoken_line("transfer_to_specialist", lang),
+            "handoff_message": specialist_msg,
+            "spoken_message": specialist_msg,
+            "verbatim_key": "transfer_to_specialist",
         },
         tkt,
         language=lang,

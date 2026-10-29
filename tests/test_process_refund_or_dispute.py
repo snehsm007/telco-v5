@@ -13,6 +13,13 @@ def test_process_refund_or_dispute_happy_path(monkeypatch) -> None:
     assert reply["data"]["approved"] is True
     assert reply["data"]["applied_amount"] == "15.00"
     assert session.state["current_balance"] == "70.50"
+    ref = reply["data"]["confirmation_number"]
+    expected_confirm = (
+        f"Your refund of $15.00 will appear on your next statement within 5 business days. "
+        f"Your confirmation number is {ref}."
+    )
+    assert reply["data"]["verbatim_confirmation"] == expected_confirm
+    assert reply["data"]["spoken_message"] == expected_confirm
 
 
 def test_process_refund_or_dispute_context_as_dict(monkeypatch) -> None:
@@ -67,6 +74,27 @@ def test_process_refund_or_dispute_exceeds_cap(monkeypatch) -> None:
     assert reply["data"]["approved"] is False
     assert reply["data"]["exceeds_self_serve_cap"] is True
     assert reply["data"]["target_queue"] == "billing_specialist"
+    assert reply["data"]["verbatim_key"] == "transfer_to_specialist"
+    assert reply["data"]["spoken_message"] == (
+        "I'll connect you to a billing specialist now — they'll have everything we've already discussed."
+    )
+    assert reply["data"]["handoff_message"] == reply["data"]["spoken_message"]
+
+
+def test_process_refund_or_dispute_exceeds_cap_french(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass", "current_balance": "85.50", "language": "fr-CA"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.process_refund_or_dispute(amount="50.00", reason="trop élevé", language="fr-CA")
+    assert reply["status"] == "ok"
+    assert reply["data"]["approved"] is False
+    assert reply["data"]["exceeds_self_serve_cap"] is True
+    assert reply["data"]["verbatim_key"] == "transfer_to_specialist"
+    assert reply["data"]["spoken_message"] == (
+        "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté."
+    )
+    assert reply["data"]["handoff_message"] == reply["data"]["spoken_message"]
 
 
 def test_process_refund_or_dispute_not_authenticated(monkeypatch) -> None:
@@ -92,5 +120,40 @@ def test_process_refund_or_dispute_localization(monkeypatch) -> None:
     monkeypatch.setattr(tool, "context", session, raising=False)
     reply_fr = tool.process_refund_or_dispute(amount="10.00", language="fr-CA")
     assert reply_fr["status"] == "ok"
+    ref_fr = reply_fr["data"]["confirmation_number"]
+    expected_fr = (
+        f"Votre remboursement de 10.00 $ figurera sur votre prochain relevé d'ici 5 jours ouvrables. "
+        f"Votre numéro de confirmation est le {ref_fr}."
+    )
+    assert reply_fr["data"]["verbatim_confirmation"] == expected_fr
+    assert reply_fr["data"]["spoken_message"] == expected_fr
+
+    session_es = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass", "current_balance": "85.50"}
+    )
+    monkeypatch.setattr(tool, "context", session_es, raising=False)
     reply_es = tool.process_refund_or_dispute(amount="10.00", language="es-US")
     assert reply_es["status"] == "ok"
+    ref_es = reply_es["data"]["confirmation_number"]
+    expected_es = (
+        f"Su reembolso de $10.00 aparecerá en su próximo estado de cuenta dentro de 5 días hábiles. "
+        f"Su número de confirmación es {ref_es}."
+    )
+    assert reply_es["data"]["verbatim_confirmation"] == expected_es
+    assert reply_es["data"]["spoken_message"] == expected_es
+
+
+def test_handover_to_person_billing_specialist_verbatim_key() -> None:
+    from lib.services import handover_to_person_impl
+    state = {"account_id": "A1001", "auth_status": "pass"}
+    reply = handover_to_person_impl(
+        reason="refund_threshold_exceeded",
+        target_queue="billing_specialist",
+        language="en-US",
+        state=state,
+    )
+    assert reply["status"] == "ok"
+    assert reply["data"]["verbatim_key"] == "transfer_to_specialist"
+    assert reply["data"]["spoken_message"] == (
+        "I'll connect you to a billing specialist now — they'll have everything we've already discussed."
+    )
