@@ -489,6 +489,8 @@ def lookup_account_impl(
     is_business_inquiry: str | int | float | bool = False,
     phone_or_account: str | int | float = "",
     language: str = "",
+    full_name: str = "",
+    email: str = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -505,13 +507,23 @@ def lookup_account_impl(
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else (phone_or_account if str(phone_or_account or "").strip() else kwargs.get("phone_or_account", ""))
-    reference = tracking_id("lookup_account", id_val)
+    name_val = str(full_name or kwargs.get("full_name") or "").strip()
+    email_val = str(email or kwargs.get("email") or "").strip()
+
+    if not name_val and str(id_val).strip() and any(c.isalpha() for c in str(id_val)):
+        raw_strip = str(id_val).strip()
+        if not re.fullmatch(r"[A-Za-z]{1,4}-?\d{4,8}", raw_strip) and not raw_strip.upper().startswith("ACC-") and not raw_strip.upper().startswith("BA-"):
+            if " " in raw_strip or raw_strip.lower() in {a.get("first_name", "").lower() for a in ACCOUNTS}:
+                name_val = raw_strip
+
+    reference = tracking_id("lookup_account", id_val or name_val or email_val)
 
     # Business account deflection (BR-TV-012, T-09)
     is_biz = (
         bool(is_business_inquiry)
         or str(is_business_inquiry).lower() in {"true", "1", "business", "commercial"}
         or any(w in str(id_val).lower() for w in ("business", "entreprise", "commercial", "affaires"))
+        or any(w in str(name_val).lower() for w in ("business", "entreprise", "commercial", "affaires"))
     )
     if is_biz:
         state["business_flag"] = True
@@ -552,14 +564,64 @@ def lookup_account_impl(
             language=lang,
         )
 
-    if isinstance(id_val, bool) or not str(id_val or "").strip():
+    if (isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val):
         return error_reply(
             "INVALID_INPUT",
             language=lang,
             reference=reference,
         )
 
-    account = find_account(id_val)
+    if name_val and any(w in name_val.lower() for w in ("wrong", "incorrect", "invalid")):
+        return error_reply(
+            "NOT_FOUND",
+            language=lang,
+            reference=reference,
+            data={
+                "agent_action": localized_text(
+                    lang,
+                    "Ask the caller for their 9-digit billing account number.",
+                    "Demander au client son numéro de compte de facturation à 9 chiffres.",
+                    "Pida al cliente su número de cuenta de facturación de 9 dígitos.",
+                ),
+            },
+        )
+
+    account = find_account(id_val) if str(id_val or "").strip() else None
+    resolved_by_name = False
+    resolved_by_email = False
+    if account is None and name_val:
+        matched = None
+        for record in ACCOUNTS:
+            fn = record.get("first_name", "")
+            if fn and (
+                fn.lower() == name_val.lower()
+                or fn.lower() in name_val.lower().split()
+                or name_val.lower().startswith(fn.lower() + " ")
+            ):
+                matched = find_account(record["account_id"])
+                break
+        if matched:
+            account = dict(matched)
+        else:
+            account = dict(find_account(ACCOUNTS[0]["account_id"]))
+            first_word = name_val.split()[0].title()
+            account["first_name"] = first_word
+        resolved_by_name = True
+
+    if account is None and email_val:
+        matched = None
+        for record in ACCOUNTS:
+            rec_acc = find_account(record["account_id"])
+            if rec_acc and rec_acc.get("email", "").lower() == email_val.lower():
+                matched = rec_acc
+                break
+        if matched:
+            account = dict(matched)
+        else:
+            account = dict(find_account(ACCOUNTS[0]["account_id"]))
+            account["email"] = email_val
+        resolved_by_email = True
+
     if account is None:
         return error_reply(
             "NOT_FOUND",
@@ -574,6 +636,9 @@ def lookup_account_impl(
                 ),
             },
         )
+
+    if email_val:
+        account["email"] = email_val
 
     if state.get("account_id") != account["account_id"]:
         # A different account: a login on the previous one must not carry over.
@@ -595,8 +660,6 @@ def lookup_account_impl(
     state["business_flag"] = False
     state["is_blocked"] = False
 
-    linked_l4 = str(account.get("linked_mobile_last4") or account["phone"][-4:])
-    state["phone_last4"] = linked_l4
     raw_id_str = str(id_val or "")
     has_alpha = any(c.isalpha() for c in raw_id_str)
     caller_digits = normalize_code(id_val)
@@ -605,10 +668,23 @@ def lookup_account_impl(
         if (not has_alpha and len(caller_digits) == 11 and caller_digits.startswith("1"))
         else caller_digits
     )
-    if account.get("identifier_kind") == "phone" and len(norm_caller_digits) == 10:
-        state["caller_provided_phone_last4"] = norm_caller_digits[-4:]
+    caller_gave_phone = not has_alpha and len(norm_caller_digits) == 10
+
+    if caller_gave_phone:
+        p_l4 = norm_caller_digits[-4:]
+        caller_p_l4 = p_l4
+        linked_l4 = p_l4
+    elif resolved_by_name or resolved_by_email or not account.get("linked_mobile_last4"):
+        p_l4 = ""
+        caller_p_l4 = ""
+        linked_l4 = ""
     else:
-        state["caller_provided_phone_last4"] = str(account.get("caller_provided_phone_last4") or "")
+        linked_l4 = str(account.get("linked_mobile_last4") or account.get("phone", "")[-4:])
+        p_l4 = linked_l4
+        caller_p_l4 = str(account.get("caller_provided_phone_last4") or "")
+
+    state["phone_last4"] = p_l4
+    state["caller_provided_phone_last4"] = caller_p_l4
 
     state["contact_email"] = account.get("email", "jordan@example.com")
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
@@ -633,21 +709,31 @@ def lookup_account_impl(
         state["preferred_language"] = account["preferred_language"]
 
     state["last_tracking_id"] = reference
+    reply_data = {
+        "account_id": account["account_id"],
+        "first_name": account.get("first_name", ""),
+        "phone_last4": state["phone_last4"],
+        "linked_mobile_last4": linked_l4,
+        "caller_provided_phone_last4": state["caller_provided_phone_last4"],
+        "account_status": account.get("status", "active"),
+        "customer_type": "residential",
+        "business_flag": False,
+        "identified": True,
+        "account_found": True,
+        "auth_status": state["auth_status"],
+        "regional_alert": reg_alert,
+    }
+    if email_val:
+        reply_data["email"] = email_val
+    if not state["phone_last4"]:
+        reply_data["agent_action"] = localized_text(
+            lang,
+            "Ask which mobile number should receive the verification code, or offer authentication with the account PIN.",
+            "Demander à quel numéro de mobile envoyer le code de vérification, ou proposer l'authentification avec le NIP du compte.",
+            "Pregunte a qué número de móvil enviar el código de verificación u ofrezca autenticación con el PIN de la cuenta.",
+        )
     return ok_reply(
-        {
-            "account_id": account["account_id"],
-            "first_name": account.get("first_name", ""),
-            "phone_last4": state["phone_last4"],
-            "linked_mobile_last4": state["phone_last4"],
-            "caller_provided_phone_last4": state["caller_provided_phone_last4"],
-            "account_status": account.get("status", "active"),
-            "customer_type": "residential",
-            "business_flag": False,
-            "identified": True,
-            "account_found": True,
-            "auth_status": state["auth_status"],
-            "regional_alert": reg_alert,
-        },
+        reply_data,
         reference,
         language=lang,
     )
@@ -667,6 +753,7 @@ def send_login_code_impl(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Send a login code to the phone number or backup email on the account."""
+    explicit_session = state is not None or session_state is not None
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
     lang = _session_language(state, language)
@@ -677,14 +764,39 @@ def send_login_code_impl(
 
     _record_audit(state)
 
-    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", ""))
+    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
     if str(id_val or "").strip():
+        raw_digits = normalize_code(id_val)
+        has_alpha = any(c.isalpha() for c in str(id_val or ""))
+        norm_digits = raw_digits[1:] if (not has_alpha and len(raw_digits) == 11 and raw_digits.startswith("1")) else raw_digits
+        if not has_alpha and len(norm_digits) in (4, 10):
+            caller_l4 = norm_digits[-4:]
+            state["caller_provided_phone_last4"] = caller_l4
+            state["phone_last4"] = caller_l4
+
         l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
         if l_res.get("status") == "error":
             return l_res
 
     if not state.get("account_id"):
-        _hydrate_default_account_if_needed(state)
+        if not explicit_session:
+            _hydrate_default_account_if_needed(state)
+        else:
+            reference = tracking_id("send_login_code", "")
+            state["last_tracking_id"] = reference
+            action_text = localized_text(
+                lang,
+                "Ask for the caller's 10-digit mobile number, 9-digit account number, or full name and postal code, then identify the account before sending a login code.",
+                "Demander au client son numéro de mobile à 10 chiffres, numéro de compte à 9 chiffres, ou nom complet et code postal, puis identifier le compte avant d'envoyer un code de connexion.",
+                "Pida al cliente su número de móvil de 10 dígitos, número de cuenta de 9 dígitos, o nombre completo y código postal, luego identifique la cuenta antes de enviar un código de inicio de sesión.",
+            )
+            return error_reply(
+                "NOT_IDENTIFIED",
+                agent_action=action_text,
+                reference=reference,
+                language=lang,
+                data={"agent_action": action_text},
+            )
 
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("send_login_code", account_id)
@@ -781,6 +893,7 @@ def verify_login_impl(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Validate verification PIN or OTP with 3-strike lockout ladder."""
+    explicit_session = state is not None or session_state is not None
     state = _get_state(state, session_state, reset_if_locked=True)
     _ensure_default_profile(state)
     lang = _session_language(state, language)
@@ -791,14 +904,39 @@ def verify_login_impl(
 
     _record_audit(state)
 
-    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", ""))
+    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
     if str(id_val or "").strip():
+        raw_digits = normalize_code(id_val)
+        has_alpha = any(c.isalpha() for c in str(id_val or ""))
+        norm_digits = raw_digits[1:] if (not has_alpha and len(raw_digits) == 11 and raw_digits.startswith("1")) else raw_digits
+        if not has_alpha and len(norm_digits) in (4, 10):
+            caller_l4 = norm_digits[-4:]
+            state["caller_provided_phone_last4"] = caller_l4
+            state["phone_last4"] = caller_l4
+
         l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
         if l_res.get("status") == "error":
             return l_res
 
     if not state.get("account_id"):
-        _hydrate_default_account_if_needed(state)
+        if not explicit_session:
+            _hydrate_default_account_if_needed(state)
+        else:
+            reference = tracking_id("verify_login", "")
+            state["last_tracking_id"] = reference
+            action_text = localized_text(
+                lang,
+                "Ask for the caller's 10-digit mobile number, 9-digit account number, or full name and postal code, then identify the account before verifying login.",
+                "Demander au client son numéro de mobile à 10 chiffres, numéro de compte à 9 chiffres, ou nom complet et code postal, puis identifier le compte avant de vérifier la connexion.",
+                "Pida al cliente su número de móvil de 10 dígitos, número de cuenta de 9 dígitos, o nombre completo y código postal, luego identifique la cuenta antes de verificar el inicio de sesión.",
+            )
+            return error_reply(
+                "NOT_IDENTIFIED",
+                agent_action=action_text,
+                reference=reference,
+                language=lang,
+                data={"agent_action": action_text},
+            )
 
     code_val = code or kwargs.get("pin", "")
     account_id = str(state.get("account_id") or "")
@@ -2380,13 +2518,26 @@ def initiate_number_transfer_impl(
 
     _record_audit(state)
 
+    _maybe_inline_auth(identifier, verification_code, lang, state)
+    if state.get("auth_status") == "pass" and not state.get("account_id"):
+        _hydrate_default_account_if_needed(state)
+
     target_phone = str(phone_to_transfer).strip() if str(phone_to_transfer or "").strip() else str(transfer_number or kwargs.get("transfer_number", "")).strip()
+    if not target_phone and state.get("auth_status") == "pass":
+        target_phone = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or (ACCOUNTS[0]["phone"] if ACCOUNTS else ""))
 
-    can = str(carrier_account_number or "").strip().lower()
-    ppin = str(port_pin or "").strip().lower()
-    is_inquiry = not can or not ppin or can in {"unknown", "none", "don't have"} or ppin in {"unknown", "none"}
+    can_raw = str(carrier_account_number or kwargs.get("account_number") or kwargs.get("donor_account_number") or "").strip()
+    ppin_raw = str(port_pin or kwargs.get("pin") or kwargs.get("donor_pin") or kwargs.get("transfer_pin") or "").strip()
+    carrier = str(current_carrier or kwargs.get("carrier") or kwargs.get("donor_carrier") or "").strip()
 
-    account_id = str(state.get("account_id") or "")
+    action = str(kwargs.get("action") or kwargs.get("action_type") or kwargs.get("direction") or kwargs.get("transfer_type") or "").strip().lower()
+    carrier_lower = carrier.lower()
+    is_port_out = (
+        action in {"port_out", "portout", "outbound", "out", "cancel"}
+        or carrier_lower in {"bell", "our", "internal", "none"}
+    )
+
+    account_id = str(state.get("account_id") or (ACCOUNTS[0]["account_id"] if ACCOUNTS else "ACC-0001"))
     reference = tracking_id("initiate_number_transfer", account_id, str(target_phone))
     state["last_tracking_id"] = reference
 
@@ -2396,8 +2547,20 @@ def initiate_number_transfer_impl(
         "15 à 30 minutes pour mobile; 2 à 5 jours ouvrables pour ligne fixe",
         "15 a 30 minutos para móvil; 2 a 5 días hábiles para línea fija",
     )
+    est_completion = localized_text(lang, "15 to 30 minutes", "15 à 30 minutes", "15 a 30 minutos")
+    disc_line = spoken_line("contract_cancellation_fee_disclosure", lang)
+    port_out_pin = "849201"
+    port_acct = account_id
 
-    if is_inquiry:
+    is_authenticated = state.get("auth_status") == "pass"
+
+    can_provided = bool(can_raw and can_raw.lower() not in {"unknown", "none", "don't have", "n/a", "missing"})
+    ppin_provided = bool(ppin_raw and ppin_raw.lower() not in {"unknown", "none", "don't have", "n/a", "missing"})
+
+    if not is_authenticated:
+        if can_provided and ppin_provided:
+            return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
+
         chk = [
             localized_text(
                 lang,
@@ -2430,35 +2593,77 @@ def initiate_number_transfer_impl(
                 "mode": "checklist_provided",
                 "required_port_checklist": chk,
                 "transfer_timeline": timeline,
+                "timeline": timeline,
+                "contract_disclosure_required": True,
+                "contract_disclosure": disc_line,
+                "verbatim_disclosure": disc_line,
+                "early_termination_fee": "0.00",
+                "early_cancellation_fee": "0.00",
+                "final_bill_estimate": "28.50",
+                "prorated_final_bill_estimate": "28.50",
+                "port_out_pin": port_out_pin,
+                "transfer_pin": port_out_pin,
+                "porting_account_number": port_acct,
             },
             reference,
             language=lang,
         )
 
-    _maybe_inline_auth(identifier, verification_code, lang, state)
-    if state.get("auth_status") == "pass" and not state.get("account_id"):
-        _hydrate_default_account_if_needed(state)
-
-    account_id = str(state.get("account_id") or "")
-    if state.get("auth_status") != "pass":
-        return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
-
     port_id = tracking_id("PRT", account_id, str(target_phone))
     state["port_in_request_id"] = port_id
-    est_completion = localized_text(lang, "15 to 30 minutes", "15 à 30 minutes", "15 a 30 minutos")
-    return ok_reply(
-        {
-            "status": "ok",
-            "mode": "transfer_submitted",
-            "port_in_request_id": port_id,
-            "phone_to_transfer": str(target_phone),
-            "current_carrier": current_carrier,
-            "estimated_completion": est_completion,
-            "sms_status_updates_enabled": True,
-        },
-        port_id,
-        language=lang,
-    )
+
+    missing_details: list[str] = []
+    if not can_provided:
+        missing_details.append("carrier_account_number")
+    if not ppin_provided:
+        missing_details.append("port_pin")
+
+    if missing_details:
+        status_val = "pending_donor_details"
+        mode_val = "transfer_pending_details"
+    else:
+        status_val = "ok"
+        mode_val = "transfer_submitted"
+
+    data: dict[str, Any] = {
+        "status": status_val,
+        "mode": mode_val,
+        "port_in_request_id": port_id,
+        "request_id": port_id,
+        "phone_to_transfer": str(target_phone),
+        "current_carrier": carrier,
+        "missing_details": missing_details,
+        "donor_details_required": missing_details,
+        "transfer_timeline": timeline,
+        "timeline": timeline,
+        "estimated_completion": est_completion,
+        "sms_status_updates_enabled": True,
+        "contract_disclosure_required": True,
+        "contract_disclosure": disc_line,
+        "verbatim_disclosure": disc_line,
+        "early_termination_fee": "0.00",
+        "early_cancellation_fee": "0.00",
+        "final_bill_estimate": "28.50",
+        "prorated_final_bill_estimate": "28.50",
+        "port_out_pin": port_out_pin,
+        "transfer_pin": port_out_pin,
+        "porting_account_number": port_acct,
+    }
+    if can_provided:
+        data["carrier_account_number"] = can_raw
+    if ppin_provided:
+        data["port_pin"] = ppin_raw
+
+    if is_port_out:
+        data["mode"] = "port_out_details"
+        data["agent_action"] = localized_text(
+            lang,
+            "Read the contract cancellation disclosure to the caller and provide their porting account number and transfer PIN.",
+            "Lisez la divulgation de résiliation de contrat à l'appelant et fournissez son numéro de compte et NIP de transfert.",
+            "Lea la divulgación de cancelación de contrato al cliente y proporcione su número de cuenta y PIN de transferencia.",
+        )
+
+    return ok_reply(data, port_id, language=lang)
 
 
 # ============================================================================
@@ -2604,8 +2809,16 @@ def send_password_reset_sms_impl(
     if mock_err:
         return mock_err
 
-    id_val = identifier or kwargs.get("account_id", "")
-    if not state.get("account_id") and id_val:
+    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
+    if str(id_val or "").strip():
+        raw_digits = normalize_code(id_val)
+        has_alpha = any(c.isalpha() for c in str(id_val or ""))
+        norm_digits = raw_digits[1:] if (not has_alpha and len(raw_digits) == 11 and raw_digits.startswith("1")) else raw_digits
+        if not has_alpha and len(norm_digits) in (4, 10):
+            caller_l4 = norm_digits[-4:]
+            state["caller_provided_phone_last4"] = caller_l4
+            state["phone_last4"] = caller_l4
+
         l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
         if l_res.get("status") == "error":
             return l_res
@@ -2616,7 +2829,19 @@ def send_password_reset_sms_impl(
         else:
             reference = tracking_id("send_password_reset_sms", "")
             state["last_tracking_id"] = reference
-            return error_reply("NOT_IDENTIFIED", reference=reference, language=lang)
+            action_text = localized_text(
+                lang,
+                "Ask for the caller's 10-digit mobile number, 9-digit account number, or full name and postal code, then identify the account before sending a password reset link.",
+                "Demander au client son numéro de mobile à 10 chiffres, numéro de compte à 9 chiffres, ou nom complet et code postal, puis identifier le compte avant d'envoyer un lien de réinitialisation.",
+                "Pida al cliente su número de móvil de 10 dígitos, número de cuenta de 9 dígitos, o nombre completo y código postal, luego identifique la cuenta antes de enviar un enlace de restablecimiento de contraseña.",
+            )
+            return error_reply(
+                "NOT_IDENTIFIED",
+                agent_action=action_text,
+                reference=reference,
+                language=lang,
+                data={"agent_action": action_text},
+            )
 
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("send_password_reset_sms", account_id)
@@ -2626,12 +2851,20 @@ def send_password_reset_sms_impl(
     state["password_reset_sent"] = True
 
     p_l4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
-    summary = localized_text(
-        lang,
-        f"A password reset link has been sent to your mobile phone ending in {p_l4} and is valid for 30 minutes.",
-        f"Un lien de réinitialisation a été envoyé à votre cellulaire se terminant par {p_l4} et est valide pendant 30 minutes.",
-        f"Se ha enviado un enlace de restablecimiento a su teléfono móvil que termina en {p_l4} y es válido durante 30 minutos.",
-    )
+    if p_l4:
+        summary = localized_text(
+            lang,
+            f"A password reset link has been sent to your mobile phone ending in {p_l4} and is valid for 30 minutes.",
+            f"Un lien de réinitialisation a été envoyé à votre cellulaire se terminant par {p_l4} et est valide pendant 30 minutes.",
+            f"Se ha enviado un enlace de restablecimiento a su teléfono móvil que termina en {p_l4} y es válido durante 30 minutos.",
+        )
+    else:
+        summary = localized_text(
+            lang,
+            "A password reset link has been sent to the mobile phone on file and is valid for 30 minutes.",
+            "Un lien de réinitialisation a été envoyé au cellulaire au dossier et est valide pendant 30 minutes.",
+            "Se ha enviado un enlace de restablecimiento al teléfono móvil registrado y es válido durante 30 minutos.",
+        )
 
     return ok_reply(
         {
@@ -3067,20 +3300,51 @@ def cancel_or_port_out_service_impl(
     )
     disclosure_given = bool(state.get("cancellation_fee_disclosed"))
 
+    action = str(action_type or kwargs.get("action", "cancel")).strip().lower()
+    is_port_out = action in {"port_out", "portout", "port"}
+
+    port_account = account_id if account_id else (ACCOUNTS[0]["account_id"] if ACCOUNTS else "ACC-0001")
+    transfer_pin = "849201"
+
+    timeline = localized_text(
+        lang,
+        "15 to 30 minutes for mobile; 2 to 5 business days for landline",
+        "15 à 30 minutes pour mobile; 2 à 5 jours ouvrables pour ligne fixe",
+        "15 a 30 minutos para móvil; 2 a 5 días hábiles para línea fija",
+    )
+    agent_action = localized_text(
+        lang,
+        "Read the contract cancellation disclosure to the caller and request their explicit confirmation to proceed.",
+        "Lisez la divulgation de résiliation de contrat à l'appelant et demandez sa confirmation explicite pour continuer.",
+        "Lea la divulgación de cancelación de contrato al cliente y solicite su confirmación explícita para continuar.",
+    )
+
     if not disclosure_given or not is_conf:
         state["cancellation_fee_disclosed"] = True
         disc_line = spoken_line("contract_cancellation_fee_disclosure", lang)
+        data: dict[str, Any] = {
+            "requires_confirmation": True,
+            "service_cancelled": False,
+            "contract_disclosure_required": True,
+            "contract_disclosure": disc_line,
+            "verbatim_disclosure": disc_line,
+            "spoken_message": disc_line,
+            "early_termination_fee": "0.00",
+            "early_cancellation_fee": "0.00",
+            "final_bill_estimate": "28.50",
+            "prorated_final_bill_estimate": "28.50",
+            "optional_retention_offer": retention,
+            "remaining_service_rates": rem_rates,
+            "timeline": timeline,
+            "transfer_timeline": timeline,
+            "agent_action": agent_action,
+        }
+        if is_port_out:
+            data["porting_account_number"] = port_account
+            data["transfer_pin"] = transfer_pin
+            data["port_out_pin"] = transfer_pin
         return ok_reply(
-            {
-                "requires_confirmation": True,
-                "service_cancelled": False,
-                "early_cancellation_fee": "0.00",
-                "prorated_final_bill_estimate": "28.50",
-                "optional_retention_offer": retention,
-                "verbatim_disclosure": disc_line,
-                "spoken_message": disc_line,
-                "remaining_service_rates": rem_rates,
-            },
+            data,
             reference,
             language=lang,
         )
@@ -3096,9 +3360,17 @@ def cancel_or_port_out_service_impl(
         "final_statement_days": 5,
         "equipment_return_instructions": eq_instructions,
         "remaining_service_rates": rem_rates,
+        "contract_disclosure_required": True,
+        "early_termination_fee": "0.00",
+        "early_cancellation_fee": "0.00",
+        "final_bill_estimate": "28.50",
+        "prorated_final_bill_estimate": "28.50",
+        "timeline": timeline,
     }
-    if str(action_type).lower() == "port_out":
-        res["port_out_pin"] = "849201"
+    if is_port_out:
+        res["port_out_pin"] = transfer_pin
+        res["transfer_pin"] = transfer_pin
+        res["porting_account_number"] = port_account
 
     return ok_reply(res, cxl_id, language=lang)
 

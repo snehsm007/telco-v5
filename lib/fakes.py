@@ -189,8 +189,8 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
         return {
             "account_id": f"ACC-{norm_digits[-4:]}",
             "phone": norm_digits,
-            "linked_mobile_last4": ACCOUNTS[0]["phone"][-4:],
-            _k_p4: ACCOUNTS[0]["phone"][-4:],
+            "linked_mobile_last4": "",
+            _k_p4: "",
             _k_cp4: "",
             _k_a4: norm_digits[-4:],
             "billing_account": "BA-" + norm_digits[-6:],

@@ -179,3 +179,13 @@ def test_verify_login_pin_after_email_code_sent_does_not_mark_email_verified(mon
     assert reply["status"] == "ok"
     assert session.state["mfa_email_verified"] is False
     assert session.state["login_channel"] == "pin"
+
+
+def test_verify_login_unidentified_returns_error(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.verify_login(code="123456")
+    assert reply["status"] == "error"
+    assert reply["error"] == "NOT_IDENTIFIED"
+    assert "agent_action" in reply
+    assert "mobile number" in reply["agent_action"].lower() or "10-digit" in reply["agent_action"].lower()

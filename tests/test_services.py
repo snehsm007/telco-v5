@@ -140,8 +140,9 @@ def test_switching_accounts_clears_the_login() -> None:
 def test_send_login_code_works_with_or_without_prior_lookup() -> None:
     empty_state: dict[str, Any] = {}
     mid_flow = send_login_code_impl(state=empty_state)
-    assert mid_flow["status"] == "ok"
-    assert empty_state["auth_status"] == "code_sent"
+    assert mid_flow["status"] == "error"
+    assert mid_flow["error"] == "NOT_IDENTIFIED"
+    assert "agent_action" in mid_flow
 
     state: dict[str, Any] = {}
     lookup_account_impl(identifier=KNOWN_PHONE, state=state)
@@ -159,13 +160,16 @@ def test_no_second_login_on_the_same_call() -> None:
 
 
 def test_verify_login_direct_and_invalid_inputs() -> None:
-    direct_state: dict[str, Any] = {}
+    empty_state: dict[str, Any] = {}
+    assert verify_login_impl(code="1234", state=empty_state)["error"] == "NOT_IDENTIFIED"
+
+    direct_state: dict[str, Any] = {"account_id": "A1001"}
     direct_reply = verify_login_impl(code="1234", state=direct_state)
     assert direct_reply["status"] == "ok"
     assert direct_reply["data"]["logged_in"] is True
     assert direct_state["auth_status"] == "pass"
 
-    state: dict[str, Any] = {}
+    state: dict[str, Any] = {"account_id": "A1001"}
     assert verify_login_impl(code="12", state=state)["error"] == "CODE_NOT_RECEIVED"
     assert verify_login_impl(code="123456789012", state=state)["error"] == "INVALID_INPUT"
     assert verify_login_impl(code="0000", state=state)["error"] == "CODE_NOT_RECEIVED"
@@ -204,7 +208,7 @@ def test_wrong_codes_are_counted_until_login_is_refused() -> None:
 
 # Tests lenient retry contract on Attempt 2 and lockout on Attempt 3
 def test_lenient_retry_on_second_try_and_lockout_on_third() -> None:
-    state: dict[str, Any] = {}
+    state: dict[str, Any] = {"account_id": "A1001"}
     # Attempt 1 wrong code
     assert verify_login_impl(code="9999", state=state)["error"] == "WRONG_CODE"
     assert state["auth_failure_count"] == 1
@@ -215,7 +219,7 @@ def test_lenient_retry_on_second_try_and_lockout_on_third() -> None:
 
 
 def test_lockout_after_three_wrong_attempts() -> None:
-    state: dict[str, Any] = {}
+    state: dict[str, Any] = {"account_id": "A1001"}
     assert verify_login_impl(code="9999", state=state)["error"] == "WRONG_CODE"
     assert verify_login_impl(code="9999", state=state)["error"] == "WRONG_CODE"
     last = verify_login_impl(code="123456", state=state)
