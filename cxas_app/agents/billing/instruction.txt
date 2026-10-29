@@ -127,6 +127,7 @@ Clear, helpful, and reassuring. Walk callers through statements and payments usi
                 - billing_day: the requested billing day when specified
                 - action: enroll
                 - language: the active language code
+                If caller requests a new card, call {@TOOL: setup_autopay} with payment_method="new_card"; speak returned spoken_line, pass digits in card_digits, or offer payment_methods_on_file.
                 Confirm autopay activation and confirmation_number.
             </action>
         </step>
