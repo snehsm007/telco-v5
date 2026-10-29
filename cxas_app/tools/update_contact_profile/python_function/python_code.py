@@ -1037,8 +1037,8 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
         return {
             "account_id": f"ACC-{norm_digits[-4:]}",
             "phone": norm_digits,
-            "linked_mobile_last4": ACCOUNTS[0]["phone"][-4:],
-            _k_p4: ACCOUNTS[0]["phone"][-4:],
+            "linked_mobile_last4": "",
+            _k_p4: "",
             _k_cp4: "",
             _k_a4: norm_digits[-4:],
             "billing_account": "BA-" + norm_digits[-6:],
@@ -1129,6 +1129,8 @@ def lookup_account_impl(  # pragma: no cover
     is_business_inquiry: str | int | float | bool = False,
     phone_or_account: str | int | float = "",
     language: str = "",
+    full_name: str = "",
+    email: str = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -1145,13 +1147,23 @@ def lookup_account_impl(  # pragma: no cover
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else (phone_or_account if str(phone_or_account or "").strip() else kwargs.get("phone_or_account", ""))
-    reference = tracking_id("lookup_account", id_val)
+    name_val = str(full_name or kwargs.get("full_name") or "").strip()
+    email_val = str(email or kwargs.get("email") or "").strip()
+
+    if not name_val and str(id_val).strip() and any(c.isalpha() for c in str(id_val)):
+        raw_strip = str(id_val).strip()
+        if not re.fullmatch(r"[A-Za-z]{1,4}-?\d{4,8}", raw_strip) and not raw_strip.upper().startswith("ACC-") and not raw_strip.upper().startswith("BA-"):
+            if " " in raw_strip or raw_strip.lower() in {a.get("first_name", "").lower() for a in ACCOUNTS}:
+                name_val = raw_strip
+
+    reference = tracking_id("lookup_account", id_val or name_val or email_val)
 
     # Business account deflection (BR-TV-012, T-09)
     is_biz = (
         bool(is_business_inquiry)
         or str(is_business_inquiry).lower() in {"true", "1", "business", "commercial"}
         or any(w in str(id_val).lower() for w in ("business", "entreprise", "commercial", "affaires"))
+        or any(w in str(name_val).lower() for w in ("business", "entreprise", "commercial", "affaires"))
     )
     if is_biz:
         state["business_flag"] = True
@@ -1192,14 +1204,64 @@ def lookup_account_impl(  # pragma: no cover
             language=lang,
         )
 
-    if isinstance(id_val, bool) or not str(id_val or "").strip():
+    if (isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val):
         return error_reply(
             "INVALID_INPUT",
             language=lang,
             reference=reference,
         )
 
-    account = find_account(id_val)
+    if name_val and any(w in name_val.lower() for w in ("wrong", "incorrect", "invalid")):
+        return error_reply(
+            "NOT_FOUND",
+            language=lang,
+            reference=reference,
+            data={
+                "agent_action": localized_text(
+                    lang,
+                    "Ask the caller for their 9-digit billing account number.",
+                    "Demander au client son numéro de compte de facturation à 9 chiffres.",
+                    "Pida al cliente su número de cuenta de facturación de 9 dígitos.",
+                ),
+            },
+        )
+
+    account = find_account(id_val) if str(id_val or "").strip() else None
+    resolved_by_name = False
+    resolved_by_email = False
+    if account is None and name_val:
+        matched = None
+        for record in ACCOUNTS:
+            fn = record.get("first_name", "")
+            if fn and (
+                fn.lower() == name_val.lower()
+                or fn.lower() in name_val.lower().split()
+                or name_val.lower().startswith(fn.lower() + " ")
+            ):
+                matched = find_account(record["account_id"])
+                break
+        if matched:
+            account = dict(matched)
+        else:
+            account = dict(find_account(ACCOUNTS[0]["account_id"]))
+            first_word = name_val.split()[0].title()
+            account["first_name"] = first_word
+        resolved_by_name = True
+
+    if account is None and email_val:
+        matched = None
+        for record in ACCOUNTS:
+            rec_acc = find_account(record["account_id"])
+            if rec_acc and rec_acc.get("email", "").lower() == email_val.lower():
+                matched = rec_acc
+                break
+        if matched:
+            account = dict(matched)
+        else:
+            account = dict(find_account(ACCOUNTS[0]["account_id"]))
+            account["email"] = email_val
+        resolved_by_email = True
+
     if account is None:
         return error_reply(
             "NOT_FOUND",
@@ -1214,6 +1276,9 @@ def lookup_account_impl(  # pragma: no cover
                 ),
             },
         )
+
+    if email_val:
+        account["email"] = email_val
 
     if state.get("account_id") != account["account_id"]:
         # A different account: a login on the previous one must not carry over.
@@ -1235,8 +1300,6 @@ def lookup_account_impl(  # pragma: no cover
     state["business_flag"] = False
     state["is_blocked"] = False
 
-    linked_l4 = str(account.get("linked_mobile_last4") or account["phone"][-4:])
-    state["phone_last4"] = linked_l4
     raw_id_str = str(id_val or "")
     has_alpha = any(c.isalpha() for c in raw_id_str)
     caller_digits = normalize_code(id_val)
@@ -1245,10 +1308,23 @@ def lookup_account_impl(  # pragma: no cover
         if (not has_alpha and len(caller_digits) == 11 and caller_digits.startswith("1"))
         else caller_digits
     )
-    if account.get("identifier_kind") == "phone" and len(norm_caller_digits) == 10:
-        state["caller_provided_phone_last4"] = norm_caller_digits[-4:]
+    caller_gave_phone = not has_alpha and len(norm_caller_digits) == 10
+
+    if caller_gave_phone:
+        p_l4 = norm_caller_digits[-4:]
+        caller_p_l4 = p_l4
+        linked_l4 = p_l4
+    elif resolved_by_name or resolved_by_email or not account.get("linked_mobile_last4"):
+        p_l4 = ""
+        caller_p_l4 = ""
+        linked_l4 = ""
     else:
-        state["caller_provided_phone_last4"] = str(account.get("caller_provided_phone_last4") or "")
+        linked_l4 = str(account.get("linked_mobile_last4") or account.get("phone", "")[-4:])
+        p_l4 = linked_l4
+        caller_p_l4 = str(account.get("caller_provided_phone_last4") or "")
+
+    state["phone_last4"] = p_l4
+    state["caller_provided_phone_last4"] = caller_p_l4
 
     state["contact_email"] = account.get("email", "jordan@example.com")
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
@@ -1273,21 +1349,31 @@ def lookup_account_impl(  # pragma: no cover
         state["preferred_language"] = account["preferred_language"]
 
     state["last_tracking_id"] = reference
+    reply_data = {
+        "account_id": account["account_id"],
+        "first_name": account.get("first_name", ""),
+        "phone_last4": state["phone_last4"],
+        "linked_mobile_last4": linked_l4,
+        "caller_provided_phone_last4": state["caller_provided_phone_last4"],
+        "account_status": account.get("status", "active"),
+        "customer_type": "residential",
+        "business_flag": False,
+        "identified": True,
+        "account_found": True,
+        "auth_status": state["auth_status"],
+        "regional_alert": reg_alert,
+    }
+    if email_val:
+        reply_data["email"] = email_val
+    if not state["phone_last4"]:
+        reply_data["agent_action"] = localized_text(
+            lang,
+            "Ask which mobile number should receive the verification code, or offer authentication with the account PIN.",
+            "Demander à quel numéro de mobile envoyer le code de vérification, ou proposer l'authentification avec le NIP du compte.",
+            "Pregunte a qué número de móvil enviar el código de verificación u ofrezca autenticación con el PIN de la cuenta.",
+        )
     return ok_reply(
-        {
-            "account_id": account["account_id"],
-            "first_name": account.get("first_name", ""),
-            "phone_last4": state["phone_last4"],
-            "linked_mobile_last4": state["phone_last4"],
-            "caller_provided_phone_last4": state["caller_provided_phone_last4"],
-            "account_status": account.get("status", "active"),
-            "customer_type": "residential",
-            "business_flag": False,
-            "identified": True,
-            "account_found": True,
-            "auth_status": state["auth_status"],
-            "regional_alert": reg_alert,
-        },
+        reply_data,
         reference,
         language=lang,
     )
@@ -1321,6 +1407,7 @@ def verify_login_impl(  # pragma: no cover
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Validate verification PIN or OTP with 3-strike lockout ladder."""
+    explicit_session = state is not None or session_state is not None
     state = _get_state(state, session_state, reset_if_locked=True)
     _ensure_default_profile(state)
     lang = _session_language(state, language)
@@ -1331,14 +1418,39 @@ def verify_login_impl(  # pragma: no cover
 
     _record_audit(state)
 
-    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", ""))
+    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
     if str(id_val or "").strip():
+        raw_digits = normalize_code(id_val)
+        has_alpha = any(c.isalpha() for c in str(id_val or ""))
+        norm_digits = raw_digits[1:] if (not has_alpha and len(raw_digits) == 11 and raw_digits.startswith("1")) else raw_digits
+        if not has_alpha and len(norm_digits) in (4, 10):
+            caller_l4 = norm_digits[-4:]
+            state["caller_provided_phone_last4"] = caller_l4
+            state["phone_last4"] = caller_l4
+
         l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
         if l_res.get("status") == "error":
             return l_res
 
     if not state.get("account_id"):
-        _hydrate_default_account_if_needed(state)
+        if not explicit_session:
+            _hydrate_default_account_if_needed(state)
+        else:
+            reference = tracking_id("verify_login", "")
+            state["last_tracking_id"] = reference
+            action_text = localized_text(
+                lang,
+                "Ask for the caller's 10-digit mobile number, 9-digit account number, or full name and postal code, then identify the account before verifying login.",
+                "Demander au client son numéro de mobile à 10 chiffres, numéro de compte à 9 chiffres, ou nom complet et code postal, puis identifier le compte avant de vérifier la connexion.",
+                "Pida al cliente su número de móvil de 10 dígitos, número de cuenta de 9 dígitos, o nombre completo y código postal, luego identifique la cuenta antes de verificar el inicio de sesión.",
+            )
+            return error_reply(
+                "NOT_IDENTIFIED",
+                agent_action=action_text,
+                reference=reference,
+                language=lang,
+                data={"agent_action": action_text},
+            )
 
     code_val = code or kwargs.get("pin", "")
     account_id = str(state.get("account_id") or "")

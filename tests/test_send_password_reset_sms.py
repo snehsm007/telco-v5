@@ -91,3 +91,38 @@ def test_send_password_reset_sms_localization_fr_and_es(monkeypatch) -> None:
     reply_es = tool.send_password_reset_sms(language="es-US")
     assert reply_es["status"] == "ok"
     assert "enlace de restablecimiento" in reply_es["data"]["spoken_summary"]
+
+
+def test_send_password_reset_sms_honours_new_identifier_when_account_in_state(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "ACC-0199",
+            "phone_last4": "0199",
+            "caller_provided_phone_last4": "0199",
+            "auth_status": "pass",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    # Caller corrects: that's not my number, send to 514-555-0102
+    reply = tool.send_password_reset_sms(identifier="514-555-0102")
+    assert reply["status"] == "ok"
+    assert reply["data"]["destination_phone_last4"] == "0102"
+    assert "0102" in reply["data"]["spoken_summary"]
+    assert session.state["phone_last4"] == "0102"
+    assert session.state["caller_provided_phone_last4"] == "0102"
+
+
+def test_send_password_reset_sms_empty_phone_says_on_file(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "ACC-4651",
+            "phone_last4": "",
+            "caller_provided_phone_last4": "",
+            "auth_status": "pass",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.send_password_reset_sms()
+    assert reply["status"] == "ok"
+    assert reply["data"]["destination_phone_last4"] == ""
+    assert "on file" in reply["data"]["spoken_summary"]

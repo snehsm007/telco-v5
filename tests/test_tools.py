@@ -24,7 +24,7 @@ from lib.services import (
 
 
 def test_three_strike_login_lockout_and_direct_code_entry(monkeypatch) -> None:
-    session = SimpleNamespace(state={})
+    session = SimpleNamespace(state={"account_id": "A1001", "phone_last4": "0143"})
     for mod in (
         lookup_tool,
         send_code_tool,
@@ -45,12 +45,12 @@ def test_three_strike_login_lockout_and_direct_code_entry(monkeypatch) -> None:
     assert r3["error"] == "TOO_MANY_ATTEMPTS"
     assert r3["data"]["lockout_triggered"] is True
 
-    # Direct login without prior send_login_code on a fresh state
-    fresh = SimpleNamespace(state={})
+    # Direct login without prior send_login_code on an identified state
+    fresh = SimpleNamespace(state={"account_id": "A1001", "phone_last4": "0143"})
     monkeypatch.setattr(verify_login_tool, "context", fresh, raising=False)
     ok = verify_login_tool.verify_login("1234")
     assert ok["status"] == "ok" and ok["data"]["verified"] is True
-    assert verify_login(code="1234", state={})["status"] == "ok"
+    assert verify_login(code="1234", state={"account_id": "A1001"})["status"] == "ok"
 
 
 def test_domain_tool_wrappers_with_mock_context(monkeypatch) -> None:
