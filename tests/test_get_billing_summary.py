@@ -70,3 +70,21 @@ def test_get_billing_summary_localization(monkeypatch) -> None:
     assert reply_fr["status"] == "ok"
     reply_es = tool.get_billing_summary(language="es-US")
     assert reply_es["status"] == "ok"
+
+
+def test_get_billing_summary_restoration_facts_when_payment_covers_past_due(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass", "past_due_balance": "85.50"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.get_billing_summary()
+    assert reply["status"] == "ok"
+    data = reply["data"]
+    assert data["service_status"] == "eligible_for_restoration"
+    assert "restoration_hint" in data
+    assert "execute_suspend_restore" in data["restoration_hint"]
+    assert data["last_payment"]["covers_past_due"] is True
+    assert data["last_payment"]["amount"] == "85.50"
+    assert data["last_payment"]["posted_date"] == "2026-10-15"
+    assert data["last_payment"]["method_last4"] == "4242"
+

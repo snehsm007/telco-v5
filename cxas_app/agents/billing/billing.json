@@ -12,6 +12,7 @@
     "setup_payment_arrangement",
     "setup_autopay",
     "process_refund_or_dispute",
+    "execute_suspend_restore",
     "handover_to_person",
     "end_session"
   ],

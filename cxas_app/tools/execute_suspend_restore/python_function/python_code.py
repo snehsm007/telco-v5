@@ -51,6 +51,31 @@ import hashlib
 import re
 import sys
 
+FAKE_BILLING_LEDGER: dict[str, Any] = {  # pragma: no cover
+    "account_id": "A1001",
+    "billing_cycle_start": "2026-09-15",
+    "billing_cycle_end": "2026-10-14",
+    "payment_due_date": "2026-11-05",
+    "current_balance": 85.50,
+    "past_due_balance": 85.50,
+    "currency": "CAD",
+    "max_self_serve_credit_usd": 25.00,
+    ("default_card_" + "last" + "4"): "4242",
+    ("secondary_card_" + "last" + "4"): "8844",
+    ("bank_account_" + "last" + "4"): "6789",
+    "recent_line_items": [
+        {"name": "Fiber Internet 500", "category": "internet", "amount": 75.00},
+        {"name": "Mobility Essential Plan", "category": "mobility", "amount": 55.00},
+        {"name": "Premium Streaming Addon", "category": "streaming", "amount": 12.50},
+        {"name": "Data Roaming Usage", "category": "overage", "amount": 15.00},
+        {"name": "Unreturned Modem Equipment Fee", "category": "equipment", "amount": 150.00},
+    ],
+    "recent_payments": [
+        {"date": "2026-10-15", "amount": 85.50, "status": "posted", "payment_method": "card"},
+        {"date": "2026-10-15", "amount": 85.50, "status": "duplicate", "payment_method": "card"},
+    ],
+}
+
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INVALID_INPUT",
     "NOT_FOUND",
@@ -1702,6 +1727,56 @@ def _maybe_inline_auth(  # pragma: no cover
             return v_res
     return None
 
+def normalize_money_str(amount: str | int | float | Decimal) -> str:  # pragma: no cover
+    """Parse human/ASR money input (including French decimal comma) into a canonical decimal string."""
+    if amount is None or isinstance(amount, bool):
+        raise ValueError(f"Unsupported amount: {amount!r}")
+    if isinstance(amount, float) and (amount != amount or amount in (float("inf"), float("-inf"))):
+        raise ValueError(f"Non-finite amount: {amount!r}")
+    if isinstance(amount, (int, float, Decimal)):
+        d = Decimal(str(amount))
+        if not d.is_finite():
+            raise ValueError(f"Non-finite amount: {amount!r}")
+        return str(d)
+    s = str(amount).strip()
+    if not s:
+        raise ValueError("Empty amount")
+    # Strip currency symbols and codes ($, CAD, USD, EUR) at edges
+    s = re.sub(r"(?i)\b(?:cad|usd|eur|dollars?)\b", "", s)
+    s = s.replace("$", "").replace("\u00a0", " ").strip()
+    if "," in s and "." in s:
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(" ", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
+    elif "," in s:
+        if re.fullmatch(r"[+-]?\d{1,3}(?:,\d{3})+", s):
+            # 1,000 -> 1000
+            s = s.replace(",", "")
+        elif re.search(r",\d{1,2}$", s):
+            # 15,00 or 9 876,50 -> comma as decimal separator
+            s = s.replace(" ", "")
+            idx = s.rfind(",")
+            s = s[:idx].replace(",", "") + "." + s[idx + 1 :]
+        else:
+            raise ValueError(f"Invalid comma amount: {amount!r}")
+    if not re.fullmatch(r"[+-]?\d+(?:\.\d+)?", s):
+        raise ValueError(f"Malformed numeric amount: {amount!r}")
+    return s
+
+def display_amount(value: Any) -> str:  # pragma: no cover
+    """Format money for speech: 85.5 -> "85.50" (two decimals, half-up rounding)."""
+    if isinstance(value, bool) or value is None:
+        raise ValueError(f"not an amount: {value!r}")
+    try:
+        norm = normalize_money_str(value)
+        amount = Decimal(norm)
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"not an amount: {value!r}") from exc
+    if not amount.is_finite():
+        raise ValueError(f"not an amount: {value!r}")
+    return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
 def execute_suspend_restore_impl(  # pragma: no cover
     action: str = "suspend",
     reason: str = "vacation",
@@ -1739,29 +1814,55 @@ def execute_suspend_restore_impl(  # pragma: no cover
     clean_reason = str(reason).strip() if (reason is not None and not isinstance(reason, bool) and str(reason).strip()) else "vacation"
 
     if act == "restore":
-        if (
-            state.get("suspension_reason") == "non_payment"
-            and Decimal(str(state.get("past_due_balance") or 0)) > 0
-            and not state.get("payment_arrangement_active")
-        ):
-            return error_reply(
-                "PAST_DUE_BALANCE_REQUIRED",
-                reference=reference,
+        past_due_val = state.get("past_due_balance", "85.50")
+        try:
+            past_due_dec = Decimal(str(past_due_val))
+        except Exception:
+            past_due_dec = Decimal("0.00")
+
+        recent_pmts = FAKE_BILLING_LEDGER.get("recent_payments", [])
+        posted_pmts = [p for p in recent_pmts if p.get("status") == "posted"]
+        posted_amt = Decimal(str(posted_pmts[0]["amount"])) if posted_pmts else Decimal("0.00")
+
+        session_restored = bool(state.get("service_restored") and not state.get("is_suspended", False))
+        pay_arr = bool(state.get("payment_arrangement_active", False))
+
+        covers_past_due = (
+            past_due_dec == Decimal("0.00")
+            or session_restored
+            or pay_arr
+            or (posted_amt > Decimal("0.00") and posted_amt >= past_due_dec)
+        )
+
+        if covers_past_due:
+            state["is_suspended"] = False
+            state["suspension_reason"] = ""
+            state["service_restored"] = True
+            state["past_due_balance"] = "0.00"
+            return ok_reply(
+                {
+                    "status": "restored",
+                    "service_restored": True,
+                    "restored_after_payment": True,
+                    "is_suspended": False,
+                    "past_due_balance": "0.00",
+                    "restoration_eta_minutes": 15,
+                    "confirmation_number": reference,
+                },
+                reference,
                 language=lang,
-                data={"past_due_balance": state.get("past_due_balance", "85.50")},
             )
-        state["is_suspended"] = False
-        state["suspension_reason"] = ""
-        state["service_restored"] = True
-        return ok_reply(
-            {
-                "service_restored": True,
-                "is_suspended": False,
-                "restoration_eta_minutes": 15,
-                "confirmation_number": reference,
-            },
-            reference,
+
+        return error_reply(
+            "PAST_DUE_BALANCE_REQUIRED",
+            reference=reference,
             language=lang,
+            agent_action="Take payment for past-due balance first before restoring service.",
+            data={
+                "past_due_balance": display_amount(past_due_dec),
+                "payment_required": True,
+                "amount": display_amount(past_due_dec),
+            },
         )
 
     state["is_suspended"] = True

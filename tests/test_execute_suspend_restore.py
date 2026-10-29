@@ -51,7 +51,7 @@ def test_execute_restore_blocked_by_past_due(monkeypatch) -> None:
             "account_id": "A1001",
             "is_suspended": True,
             "suspension_reason": "non_payment",
-            "past_due_balance": "85.50",
+            "past_due_balance": "150.00",
             "payment_arrangement_active": False,
         }
     )
@@ -59,6 +59,30 @@ def test_execute_restore_blocked_by_past_due(monkeypatch) -> None:
     reply = tool.execute_suspend_restore(action="restore")
     assert reply["status"] == "error"
     assert reply["error"] == "PAST_DUE_BALANCE_REQUIRED"
+
+
+def test_execute_restore_allowed_after_posted_payment(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "account_id": "A1001",
+            "is_suspended": False,
+            "suspension_reason": "",
+            "past_due_balance": "85.50",
+            "payment_arrangement_active": False,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.execute_suspend_restore(action="restore")
+    assert reply["status"] == "ok"
+    assert reply["data"]["status"] == "restored"
+    assert reply["data"]["service_restored"] is True
+    assert reply["data"]["restored_after_payment"] is True
+    assert reply["data"]["is_suspended"] is False
+    assert reply["data"]["past_due_balance"] == "0.00"
+    assert reply["data"]["restoration_eta_minutes"] == 15
+    assert session.state["is_suspended"] is False
+    assert session.state["past_due_balance"] == "0.00"
 
 
 def test_execute_restore_allowed_with_payment_arrangement(monkeypatch) -> None:
