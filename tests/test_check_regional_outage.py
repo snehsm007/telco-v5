@@ -47,3 +47,28 @@ def test_check_regional_outage_localization_spanish(monkeypatch) -> None:
     res = tool.check_regional_outage(postal_code="K1A 0B1", language="es-US")
     assert res["status"] == "ok"
     assert res["data"]["outage_active"] is False
+
+
+def test_check_regional_outage_no_outage_offers_sms_guide_en(monkeypatch) -> None:
+    session = SimpleNamespace(state={"language": "en-US"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.check_regional_outage(postal_code="M5V 2T6", service_type="internet")
+    assert res["status"] == "ok"
+    assert res["data"]["outage_active"] is False
+    assert res["data"]["next_step"] == "offer_sms_troubleshooting_guide"
+    assert "spoken_message" in res["data"]
+    assert "troubleshooting steps to your mobile" in res["data"]["spoken_message"]
+    assert "run_troubleshooting_and_sms" in res["data"]["agent_action"]
+
+
+def test_check_regional_outage_no_outage_offers_sms_guide_fr(monkeypatch) -> None:
+    session = SimpleNamespace(state={"language": "fr-CA"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.check_regional_outage(postal_code="H2X 1Y8", service_type="internet", language="fr-CA")
+    assert res["status"] == "ok"
+    assert res["data"]["outage_active"] is False
+    assert res["data"]["next_step"] == "offer_sms_troubleshooting_guide"
+    assert "spoken_message" in res["data"]
+    assert "dépannage" in res["data"]["spoken_message"]
+    assert "run_troubleshooting_and_sms" in res["data"]["agent_action"]
+

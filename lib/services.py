@@ -2196,10 +2196,19 @@ def check_regional_outage_impl(
             language=lang,
         )
 
+    offer_line = spoken_line("outage_none_offer_sms", lang)
     return ok_reply(
         {
             "outage_active": False,
             "network_status": "normal",
+            "next_step": "offer_sms_troubleshooting_guide",
+            "spoken_message": offer_line,
+            "agent_action": localized_text(
+                lang,
+                "Say spoken_message; if the caller agrees call run_troubleshooting_and_sms with the on-file or stated mobile.",
+                "Dire spoken_message; si le client accepte, appeler run_troubleshooting_and_sms avec le numéro de mobile au dossier ou mentionné.",
+                "Diga spoken_message; si el cliente acepta, llame a run_troubleshooting_and_sms con el móvil registrado o mencionado.",
+            ),
             "next_step_guidance": localized_text(
                 lang,
                 "No network outage detected. Proceed with troubleshooting.",
@@ -3687,6 +3696,7 @@ setup_autopay = setup_autopay_impl
 process_refund_or_dispute = process_refund_or_dispute_impl
 check_regional_outage = check_regional_outage_impl
 run_troubleshooting_and_sms = run_troubleshooting_and_sms_impl
+send_sms_troubleshooting_guide = run_troubleshooting_and_sms_impl
 get_appointment_and_ticket_status = get_appointment_and_ticket_status_impl
 manage_appointment = manage_appointment_impl
 browse_plans_and_coverage = browse_plans_and_coverage_impl

@@ -779,6 +779,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Je constate qu'une panne est en cours dans votre secteur. Nous travaillons à la résoudre. Voulez-vous que je vous envoie un texto dès que le service sera rétabli?",
         "es-US": "Veo que hay una interrupción activa en su área. Estamos trabajando para resolverla. ¿Desea que le envíe un mensaje de texto cuando se restablezca el servicio?",
     },
+    "outage_none_offer_sms": {
+        "en-US": "There's no outage reported in your area. I can text step-by-step troubleshooting steps to your mobile — would you like that?",
+        "fr-CA": "Aucune panne n'est signalée dans votre secteur. Je peux vous envoyer les étapes de dépannage par texto sur votre mobile — le souhaitez-vous?",
+        "es-US": "No se reporta ninguna interrupción en su área. Puedo enviarle los pasos de resolución de problemas por mensaje de texto a su móvil — ¿le gustaría eso?",
+    },
     "transfer_to_specialist": {
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
         "fr-CA": "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté.",
@@ -1058,10 +1063,19 @@ def check_regional_outage_impl(  # pragma: no cover
             language=lang,
         )
 
+    offer_line = spoken_line("outage_none_offer_sms", lang)
     return ok_reply(
         {
             "outage_active": False,
             "network_status": "normal",
+            "next_step": "offer_sms_troubleshooting_guide",
+            "spoken_message": offer_line,
+            "agent_action": localized_text(
+                lang,
+                "Say spoken_message; if the caller agrees call run_troubleshooting_and_sms with the on-file or stated mobile.",
+                "Dire spoken_message; si le client accepte, appeler run_troubleshooting_and_sms avec le numéro de mobile au dossier ou mentionné.",
+                "Diga spoken_message; si el cliente acepta, llame a run_troubleshooting_and_sms con el móvil registrado o mencionado.",
+            ),
             "next_step_guidance": localized_text(
                 lang,
                 "No network outage detected. Proceed with troubleshooting.",
