@@ -109,12 +109,12 @@ def test_setup_autopay_payment_methods_on_file(monkeypatch) -> None:
     assert any(m.get("type") == "bank" and m.get("last4") == "6789" for m in methods)
 
 
-def test_setup_autopay_new_card_capture_required(monkeypatch) -> None:
+def test_setup_autopay_new_card_first_call_capture_required(monkeypatch) -> None:
     session = SimpleNamespace(
         state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
-    reply = tool.setup_autopay(payment_method="new_card")
+    reply = tool.setup_autopay(payment_method="new_card", card_last4="4321")
     assert reply["status"] == "error"
     assert reply["error"] == "CARD_CAPTURE_REQUIRED"
     assert "payment_methods_on_file" in reply["data"]
@@ -122,6 +122,58 @@ def test_setup_autopay_new_card_capture_required(monkeypatch) -> None:
     assert "security" in reply["data"]["spoken_line"].lower()
     assert "agent_action" in reply["data"]
     assert "keypad" in reply["data"]["agent_action"].lower()
+    assert session.state.get("card_capture_prompted") is True
+    assert session.state.get("preamble_spoken") is True
+    assert session.state.get("pending_card_last4") == "4321"
+
+
+def test_setup_autopay_new_card_second_call_completes_enrollment(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    # First call: prompts capture
+    r1 = tool.setup_autopay(payment_method="new_card", card_last4="4321")
+    assert r1["error"] == "CARD_CAPTURE_REQUIRED"
+
+    # Second call: simulated DTMF completion (agent passes card_digits="4321" or no digits)
+    r2 = tool.setup_autopay(payment_method="new_card", card_digits="4321", card_last4="4321")
+    assert r2["status"] == "ok"
+    assert r2["data"]["autopay_enrolled"] is True
+    assert r2["data"]["card_last4"] == "4321"
+    assert session.state["card_last4"] == "4321"
+    assert session.state["card_token"] == "tok_card_4321"
+    assert "spoken_summary" in r2["data"]
+    assert "4321" in r2["data"]["spoken_summary"]
+    assert "not ask for digits again" in r2["data"]["agent_action"].lower()
+
+
+def test_setup_autopay_new_card_second_call_no_digits_named_last4(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    # First call prompts capture
+    tool.setup_autopay(payment_method="new_card")
+    assert session.state["card_capture_prompted"] is True
+
+    # Second call caller names last-4 without digits
+    r2 = tool.setup_autopay(payment_method="new_card", card_last4="4321")
+    assert r2["status"] == "ok"
+    assert r2["data"]["card_last4"] == "4321"
+    assert session.state["card_last4"] == "4321"
+
+
+def test_setup_autopay_preamble_spoken_once(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242", "preamble_spoken": True}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    # Second reply omits the preamble
+    reply = tool.setup_autopay(payment_method="new_card")
+    assert reply["status"] == "error"
+    assert reply["error"] == "CARD_CAPTURE_REQUIRED"
+    assert reply["data"]["spoken_line"] == ""
 
 
 def test_setup_autopay_new_card_capture_required_french(monkeypatch) -> None:
@@ -141,7 +193,7 @@ def test_setup_autopay_new_card_invalid_digits(monkeypatch) -> None:
         state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
-    reply = tool.setup_autopay(payment_method="new_card", card_digits="1234")
+    reply = tool.setup_autopay(payment_method="new_card", card_digits="12345678")
     assert reply["status"] == "error"
     assert reply["error"] == "INVALID_CARD_DIGITS"
 

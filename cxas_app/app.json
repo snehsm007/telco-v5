@@ -172,6 +172,33 @@
       }
     },
     {
+      "name": "card_capture_prompted",
+      "description": "True when caller has been prompted to enter card digits on keypad.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
+      "name": "preamble_spoken",
+      "description": "True when PCI payment method preamble has been spoken in session.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
+      "name": "pending_card_last4",
+      "description": "Caller-stated last 4 digits of card awaiting keypad capture.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "declined_card_last4",
       "description": "Last 4 digits of card that was declined.",
       "schema": {
