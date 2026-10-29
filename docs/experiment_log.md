@@ -6,4 +6,6 @@ Gate 3 requires **Strict `3/3` >= 90% AND 100% Majority (`>=2/3`, zero `0/3` or 
 
 | Iteration | Date (UTC) | Commit | Mechanism / Change | Impact Verdict (`make smoke-impact`) | Strict `3/3` | Majority `>=2/3` | Individual | Decision / Keep? | Full Run ID & Notes |
 |---|---|---|---|---|---|---|---|---|---|
-| 0 | YYYY-MM-DD | `<sha>` | Kickstart baseline (`make kickstart`) | — | `0/0 (0%)` | `0/0 (0%)` | `0/0 (0%)` | baseline | `full-<sha>` |
+| 1 | 2026-10-29 | `32498c1` | Pass-1 visible 50-evaluation baseline (`make bench-full ENV=staging`) | — | `31/50 (62.0%)` | `44/50 (88.0%)` | `125/150 (83.3%)` | baseline | `full-32498c1` (`44f08f2f-ceb2-4682-ae8d-17cf35c72663`, `22dc33b6-f8d9-4c56-8741-cbb3a5bcf7e1`), holdout `12/20 (60.0%)` |
+| 2 | 2026-10-29 | `dbaceb3` | Asymmetric session language lock across 21 tools in `lib/services.py` | FULL (50 evals) | `33/50 (66.0%)` | `43/50 (86.0%)` | `123/150 (82.0%)` | KEPT | Lane B exp2 full runs `3cb7b2ec…`/`b2b7259c…` (33/50) and revised `c6f5481e…`/`244c499a…` (33/50 vs baseline 31/50, 0 tool errors; every non-3/3 judge reason is auth/C1, missing facts, port/catalog or DEF-01/03/04 noise, none language) |
+| 3 | 2026-10-29 | `818ead3` | Payment confirmation `spoken_summary`, `service_status: "active"`, `suspension_avoided` in `process_bill_payment_impl` | SMOKE (15 evals) | `7/15 (46.7%)` | `12/15 (80.0%)` | `34/45 (75.6%)` | KEPT | Lane A exp1 smoke `62ba64bb-e469-4f0b-9bfe-f379def85bde` (7/15: targets VE-18 3/3, VE-17 2/3 with miss an auth/C1 failure; all other misses attributable to A/C1/E4/DEF-04) |
