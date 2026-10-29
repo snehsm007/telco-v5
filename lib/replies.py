@@ -73,6 +73,7 @@ ERROR_CODES: tuple[str, ...] = (
     "SERVICE_UNAVAILABLE",
     "SYSTEM_DOWN",
     "UNKNOWN_PLAN_ID",
+    "CODE_NOT_RECEIVED",
 )
 
 ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = dict(LOCALIZED_ERROR_DEFAULTS["en-US"])

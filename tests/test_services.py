@@ -170,7 +170,10 @@ def test_verify_login_direct_and_invalid_inputs() -> None:
     assert direct_state["auth_status"] == "pass"
 
     state: dict[str, Any] = {"account_id": "A1001"}
-    assert verify_login_impl(code="12", state=state)["error"] == "INVALID_INPUT"
+    assert verify_login_impl(code="12", state=state)["error"] == "CODE_NOT_RECEIVED"
+    assert verify_login_impl(code="123456789012", state=state)["error"] == "INVALID_INPUT"
+    assert verify_login_impl(code="0000", state=state)["error"] == "CODE_NOT_RECEIVED"
+    assert state.get("auth_failure_count", 0) == 0
 
 
 # Kills MUTATION 3 and MUTATION 5
@@ -180,19 +183,19 @@ def test_wrong_codes_are_counted_until_login_is_refused() -> None:
     send_login_code_impl(state=state)
 
     # Attempt 1: wrong code
-    rep1 = verify_login_impl(code="000000", state=state)
+    rep1 = verify_login_impl(code="999999", state=state)
     assert rep1["error"] == "WRONG_CODE"
     assert rep1["data"]["attempts_left"] == 2
     assert state["auth_failure_count"] == 1
 
     # Attempt 2: wrong code
-    rep2 = verify_login_impl(code="000000", state=state)
+    rep2 = verify_login_impl(code="999999", state=state)
     assert rep2["error"] == "WRONG_CODE"
     assert rep2["data"]["attempts_left"] == 1
     assert state["auth_failure_count"] == 2
 
     # Attempt 3: wrong code -> LOCKOUT
-    rep3 = verify_login_impl(code="000000", state=state)
+    rep3 = verify_login_impl(code="999999", state=state)
     assert rep3["error"] == "TOO_MANY_ATTEMPTS"
     assert rep3["data"]["lockout_triggered"] is True
     assert state["auth_status"] == "locked"
@@ -207,7 +210,7 @@ def test_wrong_codes_are_counted_until_login_is_refused() -> None:
 def test_lenient_retry_on_second_try_and_lockout_on_third() -> None:
     state: dict[str, Any] = {"account_id": "A1001"}
     # Attempt 1 wrong code
-    assert verify_login_impl(code="0000", state=state)["error"] == "WRONG_CODE"
+    assert verify_login_impl(code="9999", state=state)["error"] == "WRONG_CODE"
     assert state["auth_failure_count"] == 1
 
     # Attempt 2 lenient retry with valid code succeeds!
@@ -217,8 +220,8 @@ def test_lenient_retry_on_second_try_and_lockout_on_third() -> None:
 
 def test_lockout_after_three_wrong_attempts() -> None:
     state: dict[str, Any] = {"account_id": "A1001"}
-    assert verify_login_impl(code="0000", state=state)["error"] == "WRONG_CODE"
-    assert verify_login_impl(code="0000", state=state)["error"] == "WRONG_CODE"
+    assert verify_login_impl(code="9999", state=state)["error"] == "WRONG_CODE"
+    assert verify_login_impl(code="9999", state=state)["error"] == "WRONG_CODE"
     last = verify_login_impl(code="123456", state=state)
     assert last["error"] == "TOO_MANY_ATTEMPTS"
     assert last["data"]["lockout_triggered"] is True

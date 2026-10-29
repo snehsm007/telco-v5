@@ -96,6 +96,7 @@ ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "SERVICE_UNAVAILABLE",
     "SYSTEM_DOWN",
     "UNKNOWN_PLAN_ID",
+    "CODE_NOT_RECEIVED",
 )
 
 class _StatusStr(str):  # pragma: no cover
@@ -266,6 +267,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "The requested plan or add-on ID was not found in the catalog.",
             "List the available plan IDs to the caller and ask them to select a valid plan.",
         ),
+        "CODE_NOT_RECEIVED": (
+            "No digits were received or recognized.",
+            "Say you did not receive any digits and ask the caller to say the code aloud.",
+        ),
     },
     "fr-CA": {
         "INVALID_INPUT": (
@@ -416,6 +421,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "L'identifiant de forfait ou d'option demandé est introuvable dans le catalogue.",
             "Indiquer les forfaits disponibles au client et lui demander de choisir un forfait valide.",
         ),
+        "CODE_NOT_RECEIVED": (
+            "Aucun chiffre n'a été reçu ou reconnu.",
+            "Dites que vous n'avez reçu aucun chiffre et demandez au client d'énoncer le code à voix haute.",
+        ),
     },
     "es-US": {
         "INVALID_INPUT": (
@@ -565,6 +574,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
         "UNKNOWN_PLAN_ID": (
             "El plan o paquete adicional solicitado no se encontró en el catálogo.",
             "Indique los planes disponibles al cliente y pídale que elija un plan válido.",
+        ),
+        "CODE_NOT_RECEIVED": (
+            "No se recibieron o reconocieron dígitos.",
+            "Diga que no recibió ningún dígito y pida al cliente que diga el código en voz alta.",
         ),
     },
 }
@@ -875,6 +888,40 @@ def _hydrate_default_account_if_needed(state: dict[str, Any]) -> None:  # pragma
     state.setdefault("current_balance", default_acc.get("current_balance", "85.50"))
     state.setdefault("past_due_balance", default_acc.get("past_due_balance", "85.50"))
 
+def normalize_code(value: Any) -> str:  # pragma: no cover
+    """Coerce ints, floats, and formatted strings into a clean digit string."""
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, int):
+        return str(abs(value))
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(abs(value)))
+        return re.sub(r"\D", "", str(value))
+    text = str(value).strip()
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        text = text.split(".", 1)[0]
+    return "".join(ch for ch in text if ch.isdigit())
+
+def is_placeholder_code(val: Any) -> bool:  # pragma: no cover
+    """Return True for placeholder or no-input codes ("", 0000, 000000, all-same-digit, < 4 digits)."""
+    if val is None or isinstance(val, bool):
+        return True
+    s = str(val).strip()
+    if not s:
+        return True
+    digits = normalize_code(s)
+    if len(digits) < 4:
+        return True
+    # Real wrong codes from ALWAYS_WRONG_LOGIN_CODES (e.g. 9999, 999999) must strike as wrong codes
+    if digits in {"9999", "999999"}:
+        return False
+    if len(set(digits)) == 1:
+        return True
+    return False
+
+_is_placeholder_code = is_placeholder_code  # pragma: no cover
+
 def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
@@ -948,21 +995,6 @@ def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:
 ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
     {"0000", "000000", "1111", "111111", "9999", "999999"}
 )
-
-def normalize_code(value: Any) -> str:  # pragma: no cover
-    """Coerce ints, floats, and formatted strings into a clean digit string."""
-    if value is None or isinstance(value, bool):
-        return ""
-    if isinstance(value, int):
-        return str(abs(value))
-    if isinstance(value, float):
-        if value.is_integer():
-            return str(int(abs(value)))
-        return re.sub(r"\D", "", str(value))
-    text = str(value).strip()
-    if re.fullmatch(r"[+-]?\d+\.0+", text):
-        text = text.split(".", 1)[0]
-    return "".join(ch for ch in text if ch.isdigit())
 
 def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int = 3) -> bool:  # pragma: no cover
     """Whether the fake login service accepts a code on this try (the login ladder)."""
@@ -1435,6 +1467,33 @@ def manage_mfa_settings_impl(  # pragma: no cover
 
     code_val = step_up_code or verification_code
     if str(code_val or "").strip():
+        if _is_placeholder_code(code_val):
+            failures = read_count(state, "auth_failure_count")
+            action_text = localized_text(
+                lang,
+                "Say you did not receive any digits and ask the caller to say the code aloud.",
+                "Dites que vous n'avez reçu aucun chiffre et demandez au client d'énoncer le code à voix haute.",
+                "Diga que no recibió ningún dígito y pida al cliente que diga el código en voz alta.",
+            )
+            msg_text = localized_text(
+                lang,
+                "No verification code digits were received or recognized.",
+                "Aucun chiffre de code de vérification n'a été reçu ou reconnu.",
+                "No se recibieron ni reconocieron dígitos del código de verificación.",
+            )
+            return error_reply(
+                "CODE_NOT_RECEIVED",
+                message=msg_text,
+                agent_action=action_text,
+                reference=reference,
+                data={
+                    "attempts": failures,
+                    "attempts_remaining": MAX_LOGIN_ATTEMPTS - failures,
+                    "attempts_left": MAX_LOGIN_ATTEMPTS - failures,
+                    "lockout_triggered": False,
+                },
+                language=lang,
+            )
         digits = normalize_code(code_val)
         failures = read_count(state, "auth_failure_count")
         if not login_code_accepted(digits, attempts=failures, max_attempts=MAX_LOGIN_ATTEMPTS):
@@ -1538,7 +1597,7 @@ def manage_mfa_settings_impl(  # pragma: no cover
             language=lang,
         )
 
-    if state.get("login_channel") == "mfa_sms_verified" or state.get("mfa_email_verified"):
+    if act == "disable":
         state["mfa_enabled"] = False
         return ok_reply(
             {
@@ -1555,15 +1614,11 @@ def manage_mfa_settings_impl(  # pragma: no cover
             language=lang,
         )
 
-    state["login_code_sent"] = True
-    state["login_channel"] = "mfa_sms"
     return ok_reply(
         {
-            "requires_sms_step_up": True,
-            "requires_step_up": True,
-            "step_up_channel": "sms",
             "mfa_updated": False,
-            "spoken_message": spoken_line("id_verification_otp", lang),
+            "mfa_enabled": bool(state.get("mfa_enabled")),
+            "preferred_mfa_channel": preferred_mfa_channel or "sms",
         },
         reference,
         language=lang,

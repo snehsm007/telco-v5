@@ -36,10 +36,15 @@ def test_three_strike_login_lockout_and_direct_code_entry(monkeypatch) -> None:
     ):
         monkeypatch.setattr(mod, "context", session, raising=False)
 
-    # 3 strikes with verify_login wrapper
-    r1 = verify_login_tool.verify_login("0000")
-    r2 = verify_login_tool.verify_login("0000")
-    r3 = verify_login_tool.verify_login("0000")
+    # Placeholder code does not consume strikes
+    r_place = verify_login_tool.verify_login("0000")
+    assert r_place["error"] == "CODE_NOT_RECEIVED"
+    assert r_place["data"]["attempts_remaining"] == 3
+
+    # 3 strikes with real wrong code in verify_login wrapper
+    r1 = verify_login_tool.verify_login("9999")
+    r2 = verify_login_tool.verify_login("9999")
+    r3 = verify_login_tool.verify_login("9999")
     assert r1["data"]["attempts_remaining"] == 2
     assert r2["data"]["attempts_remaining"] == 1
     assert r3["error"] == "TOO_MANY_ATTEMPTS"

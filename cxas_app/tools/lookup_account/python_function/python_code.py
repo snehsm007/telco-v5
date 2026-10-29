@@ -117,6 +117,7 @@ ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "SERVICE_UNAVAILABLE",
     "SYSTEM_DOWN",
     "UNKNOWN_PLAN_ID",
+    "CODE_NOT_RECEIVED",
 )
 
 class _StatusStr(str):  # pragma: no cover
@@ -287,6 +288,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "The requested plan or add-on ID was not found in the catalog.",
             "List the available plan IDs to the caller and ask them to select a valid plan.",
         ),
+        "CODE_NOT_RECEIVED": (
+            "No digits were received or recognized.",
+            "Say you did not receive any digits and ask the caller to say the code aloud.",
+        ),
     },
     "fr-CA": {
         "INVALID_INPUT": (
@@ -437,6 +442,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "L'identifiant de forfait ou d'option demandé est introuvable dans le catalogue.",
             "Indiquer les forfaits disponibles au client et lui demander de choisir un forfait valide.",
         ),
+        "CODE_NOT_RECEIVED": (
+            "Aucun chiffre n'a été reçu ou reconnu.",
+            "Dites que vous n'avez reçu aucun chiffre et demandez au client d'énoncer le code à voix haute.",
+        ),
     },
     "es-US": {
         "INVALID_INPUT": (
@@ -586,6 +595,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
         "UNKNOWN_PLAN_ID": (
             "El plan o paquete adicional solicitado no se encontró en el catálogo.",
             "Indique los planes disponibles al cliente y pídale que elija un plan válido.",
+        ),
+        "CODE_NOT_RECEIVED": (
+            "No se recibieron o reconocieron dígitos.",
+            "Diga que no recibió ningún dígito y pida al cliente que diga el código en voz alta.",
         ),
     },
 }

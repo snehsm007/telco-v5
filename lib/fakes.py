@@ -58,6 +58,24 @@ def normalize_code(value: Any) -> str:
     return "".join(ch for ch in text if ch.isdigit())
 
 
+def is_placeholder_code(val: Any) -> bool:
+    """Return True for placeholder or no-input codes ("", 0000, 000000, all-same-digit, < 4 digits)."""
+    if val is None or isinstance(val, bool):
+        return True
+    s = str(val).strip()
+    if not s:
+        return True
+    digits = normalize_code(s)
+    if len(digits) < 4:
+        return True
+    # Real wrong codes from ALWAYS_WRONG_LOGIN_CODES (e.g. 9999, 999999) must strike as wrong codes
+    if digits in {"9999", "999999"}:
+        return False
+    if len(set(digits)) == 1:
+        return True
+    return False
+
+
 def only_digits(text: Any) -> str:
     """Extract only the decimal digits from an identifier string."""
     return normalize_code(text)

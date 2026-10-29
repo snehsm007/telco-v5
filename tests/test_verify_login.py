@@ -46,9 +46,22 @@ def test_verify_login_wrong_code(monkeypatch) -> None:
         state={"account_id": "A1001", "auth_status": "code_sent", "auth_failure_count": 0.0}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
-    reply = tool.verify_login(code="000000")
+    reply = tool.verify_login(code="999999")
     assert reply["status"] == "error"
     assert reply["error"] == "WRONG_CODE"
+
+
+def test_verify_login_placeholder_codes_return_code_not_received_without_strike(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "code_sent", "auth_failure_count": 0.0}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    for placeholder in ("", "   ", "0000", "000000", "12", "123", "1111"):
+        reply = tool.verify_login(code=placeholder)
+        assert reply["status"] == "error"
+        assert reply["error"] == "CODE_NOT_RECEIVED"
+        assert "say" in reply["agent_action"].lower()
+        assert session.state["auth_failure_count"] == 0.0
 
 
 def test_verify_login_invalid_input(monkeypatch) -> None:
@@ -56,7 +69,8 @@ def test_verify_login_invalid_input(monkeypatch) -> None:
         state={"account_id": "A1001", "auth_status": "code_sent"}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
-    reply = tool.verify_login(code="12")
+    # Codes longer than 10 digits are invalid input
+    reply = tool.verify_login(code="1234567890123")
     assert reply["status"] == "error"
     assert reply["error"] == "INVALID_INPUT"
 
@@ -140,9 +154,9 @@ def test_verify_login_adk_state_three_strike_lockout_and_no_bypass(monkeypatch) 
     assert not isinstance(st, dict)
     monkeypatch.setattr(tool, "context", SimpleNamespace(state=st), raising=False)
 
-    r1 = tool.verify_login(code="000000")
+    r1 = tool.verify_login(code="999999")
     assert r1["error"] == "WRONG_CODE" and r1["data"]["attempts_remaining"] == 2
-    r2 = tool.verify_login(code="000000")
+    r2 = tool.verify_login(code="999999")
     assert r2["error"] == "WRONG_CODE" and r2["data"]["attempts_remaining"] == 1
     r3 = tool.verify_login(code="839201")
     assert r3["status"] == "error"

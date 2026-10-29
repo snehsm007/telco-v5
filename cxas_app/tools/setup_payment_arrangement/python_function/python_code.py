@@ -117,6 +117,7 @@ ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "SERVICE_UNAVAILABLE",
     "SYSTEM_DOWN",
     "UNKNOWN_PLAN_ID",
+    "CODE_NOT_RECEIVED",
 )
 
 class _StatusStr(str):  # pragma: no cover
@@ -287,6 +288,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "The requested plan or add-on ID was not found in the catalog.",
             "List the available plan IDs to the caller and ask them to select a valid plan.",
         ),
+        "CODE_NOT_RECEIVED": (
+            "No digits were received or recognized.",
+            "Say you did not receive any digits and ask the caller to say the code aloud.",
+        ),
     },
     "fr-CA": {
         "INVALID_INPUT": (
@@ -437,6 +442,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "L'identifiant de forfait ou d'option demandé est introuvable dans le catalogue.",
             "Indiquer les forfaits disponibles au client et lui demander de choisir un forfait valide.",
         ),
+        "CODE_NOT_RECEIVED": (
+            "Aucun chiffre n'a été reçu ou reconnu.",
+            "Dites que vous n'avez reçu aucun chiffre et demandez au client d'énoncer le code à voix haute.",
+        ),
     },
     "es-US": {
         "INVALID_INPUT": (
@@ -586,6 +595,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
         "UNKNOWN_PLAN_ID": (
             "El plan o paquete adicional solicitado no se encontró en el catálogo.",
             "Indique los planes disponibles al cliente y pídale que elija un plan válido.",
+        ),
+        "CODE_NOT_RECEIVED": (
+            "No se recibieron o reconocieron dígitos.",
+            "Diga que no recibió ningún dígito y pida al cliente que diga el código en voz alta.",
         ),
     },
 }
@@ -1417,6 +1430,25 @@ LOGIN_CODE_LENGTH = 6  # pragma: no cover
 
 SECRET_PIN_LENGTH = 4  # pragma: no cover
 
+def is_placeholder_code(val: Any) -> bool:  # pragma: no cover
+    """Return True for placeholder or no-input codes ("", 0000, 000000, all-same-digit, < 4 digits)."""
+    if val is None or isinstance(val, bool):
+        return True
+    s = str(val).strip()
+    if not s:
+        return True
+    digits = normalize_code(s)
+    if len(digits) < 4:
+        return True
+    # Real wrong codes from ALWAYS_WRONG_LOGIN_CODES (e.g. 9999, 999999) must strike as wrong codes
+    if digits in {"9999", "999999"}:
+        return False
+    if len(set(digits)) == 1:
+        return True
+    return False
+
+_is_placeholder_code = is_placeholder_code  # pragma: no cover
+
 ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
     {"0000", "000000", "1111", "111111", "9999", "999999"}
 )
@@ -1548,6 +1580,33 @@ def verify_login_impl(  # pragma: no cover
                 "escalation_reason": "auth_failure_handoff",
                 "handoff_message": spoken_line("live_agent_handoff", lang),
             },
+        )
+
+    if _is_placeholder_code(code_val):
+        action_text = localized_text(
+            lang,
+            "Say you did not receive any digits and ask the caller to say the code aloud.",
+            "Dites que vous n'avez reçu aucun chiffre et demandez au client d'énoncer le code à voix haute.",
+            "Diga que no recibió ningún dígito y pida al cliente que diga el código en voz alta.",
+        )
+        msg_text = localized_text(
+            lang,
+            "No verification code digits were received or recognized.",
+            "Aucun chiffre de code de vérification n'a été reçu ou reconnu.",
+            "No se recibieron ni reconocieron dígitos del código de verificación.",
+        )
+        return error_reply(
+            "CODE_NOT_RECEIVED",
+            message=msg_text,
+            agent_action=action_text,
+            reference=reference,
+            data={
+                "attempts": failures,
+                "attempts_remaining": MAX_LOGIN_ATTEMPTS - failures,
+                "attempts_left": MAX_LOGIN_ATTEMPTS - failures,
+                "lockout_triggered": False,
+            },
+            language=lang,
         )
 
     digits = normalize_code(code_val)

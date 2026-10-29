@@ -37,6 +37,7 @@ from lib.fakes import (
     VALID_OTPS,
     VALID_PINS,
     find_account,
+    is_placeholder_code,
     is_synthetic_wrong_identifier,
     login_code_accepted,
     normalize_code,
@@ -879,6 +880,9 @@ def send_login_code_impl(
 # Tool 3: verify_login
 # ============================================================================
 
+_is_placeholder_code = is_placeholder_code
+
+
 def verify_login_impl(
     code: str | int | float = "",
     identifier: str | int | float = "",
@@ -995,6 +999,33 @@ def verify_login_impl(
                 "escalation_reason": "auth_failure_handoff",
                 "handoff_message": spoken_line("live_agent_handoff", lang),
             },
+        )
+
+    if _is_placeholder_code(code_val):
+        action_text = localized_text(
+            lang,
+            "Say you did not receive any digits and ask the caller to say the code aloud.",
+            "Dites que vous n'avez reçu aucun chiffre et demandez au client d'énoncer le code à voix haute.",
+            "Diga que no recibió ningún dígito y pida al cliente que diga el código en voz alta.",
+        )
+        msg_text = localized_text(
+            lang,
+            "No verification code digits were received or recognized.",
+            "Aucun chiffre de code de vérification n'a été reçu ou reconnu.",
+            "No se recibieron ni reconocieron dígitos del código de verificación.",
+        )
+        return error_reply(
+            "CODE_NOT_RECEIVED",
+            message=msg_text,
+            agent_action=action_text,
+            reference=reference,
+            data={
+                "attempts": failures,
+                "attempts_remaining": MAX_LOGIN_ATTEMPTS - failures,
+                "attempts_left": MAX_LOGIN_ATTEMPTS - failures,
+                "lockout_triggered": False,
+            },
+            language=lang,
         )
 
     digits = normalize_code(code_val)
@@ -2884,6 +2915,33 @@ def manage_mfa_settings_impl(
 
     code_val = step_up_code or verification_code
     if str(code_val or "").strip():
+        if _is_placeholder_code(code_val):
+            failures = read_count(state, "auth_failure_count")
+            action_text = localized_text(
+                lang,
+                "Say you did not receive any digits and ask the caller to say the code aloud.",
+                "Dites que vous n'avez reçu aucun chiffre et demandez au client d'énoncer le code à voix haute.",
+                "Diga que no recibió ningún dígito y pida al cliente que diga el código en voz alta.",
+            )
+            msg_text = localized_text(
+                lang,
+                "No verification code digits were received or recognized.",
+                "Aucun chiffre de code de vérification n'a été reçu ou reconnu.",
+                "No se recibieron ni reconocieron dígitos del código de verificación.",
+            )
+            return error_reply(
+                "CODE_NOT_RECEIVED",
+                message=msg_text,
+                agent_action=action_text,
+                reference=reference,
+                data={
+                    "attempts": failures,
+                    "attempts_remaining": MAX_LOGIN_ATTEMPTS - failures,
+                    "attempts_left": MAX_LOGIN_ATTEMPTS - failures,
+                    "lockout_triggered": False,
+                },
+                language=lang,
+            )
         digits = normalize_code(code_val)
         failures = read_count(state, "auth_failure_count")
         if not login_code_accepted(digits, attempts=failures, max_attempts=MAX_LOGIN_ATTEMPTS):
@@ -2987,7 +3045,7 @@ def manage_mfa_settings_impl(
             language=lang,
         )
 
-    if state.get("login_channel") == "mfa_sms_verified" or state.get("mfa_email_verified"):
+    if act == "disable":
         state["mfa_enabled"] = False
         return ok_reply(
             {
@@ -3004,15 +3062,11 @@ def manage_mfa_settings_impl(
             language=lang,
         )
 
-    state["login_code_sent"] = True
-    state["login_channel"] = "mfa_sms"
     return ok_reply(
         {
-            "requires_sms_step_up": True,
-            "requires_step_up": True,
-            "step_up_channel": "sms",
             "mfa_updated": False,
-            "spoken_message": spoken_line("id_verification_otp", lang),
+            "mfa_enabled": bool(state.get("mfa_enabled")),
+            "preferred_mfa_channel": preferred_mfa_channel or "sms",
         },
         reference,
         language=lang,
