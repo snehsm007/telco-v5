@@ -11,20 +11,40 @@ def test_manage_mfa_settings_unauthenticated(monkeypatch) -> None:
     assert reply["error"] == "NOT_AUTHENTICATED"
 
 
+def test_manage_mfa_settings_placeholder_code_returns_code_not_received(monkeypatch) -> None:
+    session = SimpleNamespace(state={"auth_status": "none", "auth_failure_count": 0})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    r_short = tool.manage_mfa_settings(verification_code="12")
+    assert r_short["status"] == "error"
+    assert r_short["error"] == "CODE_NOT_RECEIVED"
+    assert session.state["auth_failure_count"] == 0
+
+    r_zero = tool.manage_mfa_settings(verification_code="0000")
+    assert r_zero["status"] == "error"
+    assert r_zero["error"] == "CODE_NOT_RECEIVED"
+    assert "say" in r_zero["agent_action"].lower()
+    assert session.state["auth_failure_count"] == 0
+
+    r_stepup = tool.manage_mfa_settings(step_up_code="000000")
+    assert r_stepup["status"] == "error"
+    assert r_stepup["error"] == "CODE_NOT_RECEIVED"
+    assert session.state["auth_failure_count"] == 0
+
+
 def test_manage_mfa_settings_wrong_code_and_lockout(monkeypatch) -> None:
     session = SimpleNamespace(state={"auth_status": "none", "auth_failure_count": 0})
     monkeypatch.setattr(tool, "context", session, raising=False)
 
-    r1 = tool.manage_mfa_settings(verification_code="0000")
+    r1 = tool.manage_mfa_settings(verification_code="9999")
     assert r1["status"] == "error"
     assert r1["error"] == "WRONG_CODE"
     assert r1["data"]["attempts_remaining"] == 2
 
-    r2 = tool.manage_mfa_settings(verification_code="0000")
+    r2 = tool.manage_mfa_settings(verification_code="9999")
     assert r2["status"] == "error"
     assert r2["error"] == "WRONG_CODE"
 
-    r3 = tool.manage_mfa_settings(verification_code="0000")
+    r3 = tool.manage_mfa_settings(verification_code="9999")
     assert r3["status"] == "error"
     assert r3["error"] == "TOO_MANY_ATTEMPTS"
     assert session.state["auth_status"] == "locked"
@@ -41,38 +61,27 @@ def test_manage_mfa_settings_case1_enable_mfa(monkeypatch) -> None:
     assert session.state["mfa_enabled"] is True
 
 
-def test_manage_mfa_settings_case2_disable_mfa_step1_sms_stepup(monkeypatch) -> None:
-    session = SimpleNamespace(state={"auth_status": "pass", "mfa_enabled": True})
+def test_manage_mfa_settings_case2_disable_mfa_session_auth_satisfies_stepup(monkeypatch) -> None:
+    # A login completed in this session satisfies step-up when lost_device is false
+    session = SimpleNamespace(state={"auth_status": "pass", "mfa_enabled": True, "login_channel": "pin"})
     monkeypatch.setattr(tool, "context", session, raising=False)
     reply = tool.manage_mfa_settings(action="disable")
-    assert reply["status"] == "ok"
-    assert reply["data"]["requires_sms_step_up"] is True
-    assert reply["data"]["mfa_updated"] is False
-    assert session.state.get("login_code_sent") is True
-
-
-def test_manage_mfa_settings_case2_disable_mfa_step2_confirmed(monkeypatch) -> None:
-    session = SimpleNamespace(
-        state={"auth_status": "pass", "mfa_enabled": True, "login_code_sent": True, "login_channel": "mfa_sms"}
-    )
-    monkeypatch.setattr(tool, "context", session, raising=False)
-    reply = tool.manage_mfa_settings(action="disable", step_up_code="123456")
     assert reply["status"] == "ok"
     assert reply["data"]["mfa_updated"] is True
     assert reply["data"]["mfa_enabled"] is False
     assert session.state["mfa_enabled"] is False
 
 
-def test_manage_mfa_settings_premature_disable_blocked(monkeypatch) -> None:
+def test_manage_mfa_settings_case2_disable_mfa_sms_session_satisfies_stepup(monkeypatch) -> None:
     session = SimpleNamespace(
         state={"auth_status": "pass", "mfa_enabled": True, "login_channel": "sms"}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
     reply = tool.manage_mfa_settings(action="disable")
     assert reply["status"] == "ok"
-    assert reply["data"]["requires_sms_step_up"] is True
-    assert reply["data"]["mfa_updated"] is False
-    assert session.state["mfa_enabled"] is True
+    assert reply["data"]["mfa_updated"] is True
+    assert reply["data"]["mfa_enabled"] is False
+    assert session.state["mfa_enabled"] is False
 
 
 def test_manage_mfa_settings_case3_lost_authenticator_email_stepup(monkeypatch) -> None:
