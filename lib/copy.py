@@ -200,7 +200,7 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "NOT_LOGGED_IN": (
             "The caller has not passed login.",
-            "Log the caller in with send_login_code and check_login_code, then retry.",
+            "Log the caller in with send_login_code and verify_login, then retry.",
         ),
         "CODE_NOT_SENT": (
             "No login code has been sent on this call.",
@@ -274,6 +274,50 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
             "This calling number is restricted from automated telephone service.",
             "Recite the deflection line and direct the caller to online self-support.",
         ),
+        "PERMISSION_DENIED": (
+            "Permission denied for this operation.",
+            "Explain that this operation is not permitted.",
+        ),
+        "MISSING_INPUT": (
+            "Required input information is missing.",
+            "Ask the caller to provide the required information.",
+        ),
+        "INVALID_FORMAT": (
+            "The format of the input is invalid.",
+            "Ask the caller to verify the format and try again.",
+        ),
+        "NOT_AUTHENTICATED": (
+            "The caller is not authenticated for this operation.",
+            "Verify the caller's identity with send_login_code and verify_login, then retry.",
+        ),
+        "PAST_DUE_BALANCE_REQUIRED": (
+            "A past due balance must be paid before service can be restored.",
+            "Offer to process a payment or set up a payment arrangement.",
+        ),
+        "REQUIRES_CONFIRMATION": (
+            "Caller confirmation is required before proceeding.",
+            "Ask the caller to confirm this action.",
+        ),
+        "BUSINESS_ACCOUNT_HANDOFF": (
+            "Business accounts must be transferred to the business solutions desk.",
+            "Transfer the caller to business solutions support.",
+        ),
+        "CONFIRMATION_REQUIRED": (
+            "Confirmation is required before this action can be completed.",
+            "Ask the caller to confirm the action.",
+        ),
+        "REQUIRES_ESCALATION": (
+            "This request requires escalation to a specialized team.",
+            "Transfer the caller to the appropriate team.",
+        ),
+        "MALFORMED_REQUEST": (
+            "The request is malformed.",
+            "Clarify the request with the caller.",
+        ),
+        "SERVICE_TYPE_REQUIRED": (
+            "A service type is required for this inquiry.",
+            "Ask the caller which service they are inquiring about.",
+        ),
         "INTERNAL_ERROR": (
             "An internal error occurred while processing the request.",
             "Apologize for the issue and hand the caller over to a person.",
@@ -302,7 +346,7 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "NOT_LOGGED_IN": (
             "Le client n'a pas validé son authentification.",
-            "Authentifier le client avec send_login_code et check_login_code, puis réessayer.",
+            "Authentifier le client avec send_login_code et verify_login, puis réessayer.",
         ),
         "CODE_NOT_SENT": (
             "Aucun code de vérification n'a été envoyé lors de cet appel.",
@@ -376,6 +420,50 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
             "Ce numéro de téléphone est restreint pour le service téléphonique automatisé.",
             "Énoncer le message de déviation et inviter le client à utiliser le soutien en ligne.",
         ),
+        "PERMISSION_DENIED": (
+            "Permission refusée pour cette opération.",
+            "Expliquer que cette opération n'est pas autorisée.",
+        ),
+        "MISSING_INPUT": (
+            "L'information requise est manquante.",
+            "Demander au client de fournir l'information nécessaire.",
+        ),
+        "INVALID_FORMAT": (
+            "Le format de l'information est invalide.",
+            "Demander au client de vérifier le format et de réessayer.",
+        ),
+        "NOT_AUTHENTICATED": (
+            "Le client n'est pas authentifié pour cette opération.",
+            "Vérifier l'identité du client avec send_login_code et verify_login, puis réessayer.",
+        ),
+        "PAST_DUE_BALANCE_REQUIRED": (
+            "Le solde en souffrance doit être réglé avant de rétablir le service.",
+            "Proposer d'effectuer un paiement ou de mettre en place une entente de paiement.",
+        ),
+        "REQUIRES_CONFIRMATION": (
+            "La confirmation du client est requise avant de continuer.",
+            "Demander au client de confirmer cette action.",
+        ),
+        "BUSINESS_ACCOUNT_HANDOFF": (
+            "Les comptes d'affaires doivent être transférés au service des solutions d'affaires.",
+            "Transférer le client au soutien aux entreprises.",
+        ),
+        "CONFIRMATION_REQUIRED": (
+            "Une confirmation est requise avant de compléter cette action.",
+            "Demander au client de confirmer l'action.",
+        ),
+        "REQUIRES_ESCALATION": (
+            "Cette demande nécessite une escalade vers une équipe spécialisée.",
+            "Transférer le client vers l'équipe appropriée.",
+        ),
+        "MALFORMED_REQUEST": (
+            "La demande est mal formulée.",
+            "Clarifier la demande avec le client.",
+        ),
+        "SERVICE_TYPE_REQUIRED": (
+            "Un type de service est requis pour cette demande.",
+            "Demander au client de quel service il s'agit.",
+        ),
         "INTERNAL_ERROR": (
             "Une erreur interne s'est produite lors du traitement.",
             "Présenter des excuses pour le problème et transférer le client à un agent.",
@@ -404,7 +492,7 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
         ),
         "NOT_LOGGED_IN": (
             "El cliente no ha completado el inicio de sesión.",
-            "Inicie la sesión con send_login_code y check_login_code, luego reintente.",
+            "Inicie la sesión con send_login_code y verify_login, luego reintente.",
         ),
         "CODE_NOT_SENT": (
             "No se ha enviado ningún código en esta llamada.",
@@ -477,6 +565,50 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
         "BLOCKED_CALLER": (
             "Este número de teléfono está restringido para el servicio telefónico automatizado.",
             "Exprese el mensaje de desvío y remita al cliente al soporte en línea.",
+        ),
+        "PERMISSION_DENIED": (
+            "Permiso denegado para esta operación.",
+            "Explique que esta operación no está permitida.",
+        ),
+        "MISSING_INPUT": (
+            "Falta información requerida.",
+            "Pida al cliente que proporcione la información requerida.",
+        ),
+        "INVALID_FORMAT": (
+            "El formato de la información es inválido.",
+            "Pida al cliente que verifique el formato y vuelva a intentarlo.",
+        ),
+        "NOT_AUTHENTICATED": (
+            "El cliente no está autenticado para esta operación.",
+            "Verifique la identidad del cliente con send_login_code y verify_login, luego reintente.",
+        ),
+        "PAST_DUE_BALANCE_REQUIRED": (
+            "El saldo vencido debe pagarse antes de restaurar el servicio.",
+            "Ofrezca procesar un pago o establecer un acuerdo de pago.",
+        ),
+        "REQUIRES_CONFIRMATION": (
+            "Se requiere la confirmación del cliente antes de continuar.",
+            "Pida al cliente que confirme esta acción.",
+        ),
+        "BUSINESS_ACCOUNT_HANDOFF": (
+            "Las cuentas comerciales deben ser transferidas a soluciones comerciales.",
+            "Transfiera al cliente al soporte de soluciones comerciales.",
+        ),
+        "CONFIRMATION_REQUIRED": (
+            "Se requiere confirmación antes de completar esta acción.",
+            "Pida al cliente que confirme la acción.",
+        ),
+        "REQUIRES_ESCALATION": (
+            "Esta solicitud requiere escalación a un equipo especializado.",
+            "Transfiera al cliente al equipo apropiado.",
+        ),
+        "MALFORMED_REQUEST": (
+            "La solicitud es defectuosa.",
+            "Aclare la solicitud con el cliente.",
+        ),
+        "SERVICE_TYPE_REQUIRED": (
+            "Se requiere un tipo de servicio para esta consulta.",
+            "Pregunte al cliente sobre qué servicio consulta.",
         ),
         "INTERNAL_ERROR": (
             "Ocurrió un error interno al procesar la solicitud.",

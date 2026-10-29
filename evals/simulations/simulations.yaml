@@ -1,10 +1,10 @@
 simulations:
-  - id: sim_request_with_login_en
+  - id: sim_billing_balance_with_login_en
     cuj: CUJ-02
     language: en-US
     priority: P0
     task: >-
-      You want a paper copy of your last statement mailed to you. Give your phone
+      You want to check your current account balance and due date. Give your phone
       number when asked, and read out your login code when asked.
     max_turns: 14
     user_facts:
@@ -13,5 +13,5 @@ simulations:
       - name: login_code
         value: "123456"
     rubrics:
-      - "The agent logs the caller in with a code before it submits the request."
-      - "The agent gives a reference number after it submits the request."
+      - "The agent logs the caller in with a code before providing billing information."
+      - "The agent states the current balance clearly."

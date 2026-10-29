@@ -1,7 +1,23 @@
+"""Tests for lib/fakes.py covering test data stores, account lookups, and login ladders."""
+
+from __future__ import annotations
+
 from lib.fakes import (
+    ACCOUNTS,
     ALWAYS_WRONG_LOGIN_CODES,
+    BLOCKED_CALLER_NUMBERS,
+    DECLINED_CARD_LAST4,
+    FAKE_ADDON_CATALOG,
+    FAKE_APPOINTMENTS_DATA,
+    FAKE_BILLING_LEDGER,
+    FAKE_PLAN_CATALOG,
+    FAKE_TROUBLESHOOTING_GUIDES,
+    FAKE_WARRANTY_DATA,
+    OUTAGE_POSTAL_PREFIXES,
     SPOKEN_LINES,
+    VALID_LOGIN_CODES,
     find_account,
+    is_synthetic_wrong_identifier,
     login_code_accepted,
     normalize_code,
     only_digits,
@@ -16,14 +32,20 @@ def test_only_digits_and_normalize_code() -> None:
     assert only_digits("(202) 555-0143") == "2025550143"
     assert only_digits("") == ""
     assert normalize_code(1234.0) == "1234"
+    assert normalize_code(12.34) == "1234"
     assert normalize_code("12-34") == "1234"
+    assert normalize_code("1234.000") == "1234"
+    assert normalize_code("+5678.0") == "5678"
     assert normalize_code(123456) == "123456"
     assert normalize_code(None) == ""
     assert normalize_code(True) == ""
+    assert normalize_code(False) == ""
 
 
 def test_read_count_and_locales() -> None:
     assert read_count({"a": 2.0}, "a") == 2
+    assert read_count({"a": "5"}, "a") == 5
+    assert read_count({"a": "not_a_number"}, "a") == 0
     assert read_count(None, "a") == 0
     assert resolve_locale("fr") == "fr-CA"
     assert resolve_locale("es-MX") == "es-US"
@@ -42,6 +64,11 @@ def test_known_account_by_phone_or_account_number() -> None:
     assert by_id["caller_provided_phone_last4"] == ""
     assert find_account("ACC-1001") == by_id
 
+    # Secondary account
+    acc2 = find_account("202-555-0198")
+    assert acc2 is not None and acc2["account_id"] == "ACC-1002"
+    assert acc2["first_name"] == "Taylor"
+
 
 def test_other_nine_or_ten_digit_numbers_get_a_made_up_record() -> None:
     record = find_account("303 555 0188")
@@ -51,21 +78,72 @@ def test_other_nine_or_ten_digit_numbers_get_a_made_up_record() -> None:
     assert nine_digit is not None and nine_digit["phone"] == "303555019"
 
 
+def test_custom_account_identifier_pattern() -> None:
+    custom = find_account("TEL-1234567")
+    assert custom is not None
+    assert custom["account_id"] == "TEL-1234567"
+    assert custom["identifier_kind"] == "account_id"
+
+
+def test_synthetic_wrong_identifiers() -> None:
+    assert find_account("wrong_number") is None
+    assert find_account("incorrect_id") is None
+    assert find_account("invalid_account") is None
+    assert find_account("1234567890") is None
+    assert find_account("5550000000") is None
+    assert find_account("2020000123") is None
+    assert find_account("2025559999") is None
+    assert find_account("2025551111") is None
+    assert is_synthetic_wrong_identifier("wrong", "1234567") is True
+    assert is_synthetic_wrong_identifier("1234", "1234") is True  # short digits
+
+
 def test_short_or_alpha_numbers_are_not_found() -> None:
     assert find_account("12345") is None
     assert find_account("ACC-12") is None
     assert find_account("ABC123456789") is None
     assert find_account("") is None
+    assert find_account(None) is None
 
 
 def test_login_ladder_for_codes_and_secret_pins() -> None:
-    assert login_code_accepted("123456")
+    # Any valid code on attempt 0
+    assert login_code_accepted("123456", attempts=0)
     assert login_code_accepted("314159", attempts=0)  # first try: any 4-10 digit code
-    assert not login_code_accepted("314159", attempts=1)  # second try: only known codes
-    assert login_code_accepted("123456", attempts=1)
-    assert not login_code_accepted("123456", attempts=2)  # last try: always wrong (lockout)
-    assert login_code_accepted("123456", attempts=2, max_attempts=5)
-    assert secret_pin_accepted("1234", attempts=1)
-    assert not secret_pin_accepted("1234", attempts=2)
+
+    # Lenient retry allows attempt 1
+    assert login_code_accepted("314159", attempts=1) is True
+    assert login_code_accepted("123456", attempts=1) is True
+
+    # Lockout on attempt 2 (max_attempts = 3)
+    assert login_code_accepted("314159", attempts=2) is False
+    assert login_code_accepted("123456", attempts=2) is False
+
+    # Higher max_attempts allows attempt 2
+    assert login_code_accepted("123456", attempts=2, max_attempts=5) is True
+
+    # Secret PIN uses same ladder
+    assert secret_pin_accepted("1234", attempts=0) is True
+    assert secret_pin_accepted("1234", attempts=1) is True
+    assert secret_pin_accepted("1234", attempts=2) is False
+
+    # Length constraints (< 4 or > 10 digits)
     assert not login_code_accepted("12")
+    assert not login_code_accepted("123456789012")
+
+    # Always wrong codes
     assert all(not login_code_accepted(code) for code in ALWAYS_WRONG_LOGIN_CODES)
+
+
+def test_fake_catalogs_and_data_stores() -> None:
+    assert len(ACCOUNTS) >= 2
+    assert len(BLOCKED_CALLER_NUMBERS) >= 2
+    assert "H3Z" in OUTAGE_POSTAL_PREFIXES
+    assert "0000" in DECLINED_CARD_LAST4
+    assert len(FAKE_PLAN_CATALOG["internet"]) >= 2
+    assert len(FAKE_PLAN_CATALOG["mobility"]) >= 2
+    assert len(FAKE_ADDON_CATALOG) >= 1
+    assert "active_appointment" in FAKE_APPOINTMENTS_DATA
+    assert "device_model" in FAKE_WARRANTY_DATA
+    assert "internet" in FAKE_TROUBLESHOOTING_GUIDES
+    assert FAKE_BILLING_LEDGER["account_id"] == "A1001"

@@ -52,7 +52,7 @@ def test_prompts_contain_no_literals_or_defect_ids() -> None:
         APP_DIR / "global_instruction.txt",
         *sorted((APP_DIR / "agents").rglob("instruction.txt")),
     ]
-    assert len(prompt_files) >= 3
+    assert len(prompt_files) >= 5
     for path in prompt_files:
         text = path.read_text(encoding="utf-8")
         assert not re.search(r"\b\d{4,}\b", text), f"{path} contains a 4+ digit number"
@@ -64,22 +64,22 @@ def test_prompts_contain_no_literals_or_defect_ids() -> None:
             assert acc_id not in text, f"{path} contains fake account ID {acc_id}"
 
 
-def test_router_and_specialist_subtask_structure_and_handover_pairing() -> None:
-    router_txt = (APP_DIR / "agents" / "router" / "instruction.txt").read_text(encoding="utf-8")
-    specialist_txt = (APP_DIR / "agents" / "specialist" / "instruction.txt").read_text(encoding="utf-8")
+def test_five_agent_tree_subtask_structure_and_handover_pairing() -> None:
+    agent_names = ("router", "billing", "tech_support", "sales_equipment", "account")
     global_txt = (APP_DIR / "global_instruction.txt").read_text(encoding="utf-8")
+    assert "{@TOOL: handover_to_person}" in global_txt
+    assert "handoff_message" in global_txt
 
-    router_subtasks = re.findall(r'<subtask name="([^"]+)">', router_txt)
-    assert router_subtasks and all(name.startswith("M1 ") for name in router_subtasks)
-    assert "first_name" not in router_txt
+    for name in agent_names:
+        agent_txt = (APP_DIR / "agents" / name / "instruction.txt").read_text(encoding="utf-8")
+        assert "{@TOOL: handover_to_person}" in agent_txt
+        assert "handoff_message" in agent_txt
+        subtasks = re.findall(r'<subtask name="([^"]+)">', agent_txt)
+        assert len(subtasks) >= 2, f"{name} should define at least 2 subtasks"
 
-    specialist_subtasks = re.findall(r'<subtask name="([^"]+)">', specialist_txt)
-    assert specialist_subtasks and all(name.startswith("M2 ") for name in specialist_subtasks)
-    assert 'step name="Caller Offers Code First"' in specialist_txt
-    assert 'step name="Code Not Received"' in specialist_txt
-    assert "{@TOOL: check_secret_pin}" in specialist_txt
-
-    for txt in (global_txt, router_txt, specialist_txt):
-        assert "{@TOOL: handover_to_person}" in txt
-        assert "{@TOOL: end_session}" in txt
-        assert "handoff_message" in txt
+        if name == "router":
+            assert all(s.startswith("M1 ") for s in subtasks)
+            assert "first_name" not in agent_txt
+        else:
+            assert "{@TOOL: verify_login}" in agent_txt
+            assert any("M2 " in s for s in subtasks)

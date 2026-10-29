@@ -2,7 +2,7 @@ tests:
   - id: tt_lookup_account_found
     tool: lookup_account
     args:
-      phone_or_account: "202 555 0143"
+      identifier: "202 555 0143"
     expected_status: ok
     expected_fields:
       first_name: Jordan
@@ -14,7 +14,7 @@ tests:
   - id: tt_lookup_account_not_found
     tool: lookup_account
     args:
-      phone_or_account: "123"
+      identifier: "123"
     expected_status: error
     expected_error: NOT_FOUND
   - id: tt_send_login_code_masks_the_destination
@@ -31,8 +31,8 @@ tests:
       destination_last4: "0143"
     expected_state:
       auth_status: code_sent
-  - id: tt_check_login_code_wrong_code
-    tool: check_login_code
+  - id: tt_verify_login_wrong_code
+    tool: verify_login
     args:
       code: "000000"
     initial_state:
@@ -43,10 +43,10 @@ tests:
     expected_error: WRONG_CODE
     expected_state:
       auth_failure_count: 1
-  - id: tt_check_secret_pin_ok
-    tool: check_secret_pin
+  - id: tt_verify_login_pin_ok
+    tool: verify_login
     args:
-      pin: "1234"
+      code: "1234"
     initial_state:
       account_id: A1001
       auth_status: none
@@ -56,37 +56,42 @@ tests:
       verified: true
     expected_state:
       auth_status: pass
-  - id: tt_submit_request_after_login
-    tool: submit_request
-    args:
-      summary: Mail a paper copy of the last statement
+  - id: tt_get_billing_summary_after_login
+    tool: get_billing_summary
+    args: {}
     setup:
       - tool: lookup_account
         args:
-          phone_or_account: "202 555 0143"
+          identifier: "202 555 0143"
         expected_fields:
           first_name: Jordan
       - tool: send_login_code
         args: {}
         expected_fields:
           sent: true
-      - tool: check_login_code
+      - tool: verify_login
         args:
           code: "123456"
         expected_fields:
           verified: true
     expected_status: ok
     expected_fields:
-      submitted: true
-  - id: tt_submit_request_needs_login
-    tool: submit_request
-    args:
-      summary: Mail a paper copy of the last statement
+      current_balance: "85.50"
+  - id: tt_get_billing_summary_needs_login
+    tool: get_billing_summary
+    args: {}
     initial_state:
       account_id: A1001
       auth_status: none
     expected_status: error
-    expected_error: NOT_LOGGED_IN
+    expected_error: NOT_AUTHENTICATED
+  - id: tt_check_regional_outage_active
+    tool: check_regional_outage
+    args:
+      postal_code: "H3Z 2Y7"
+    expected_status: ok
+    expected_fields:
+      outage_active: true
   - id: tt_handover_to_person_fr
     tool: handover_to_person
     args:
