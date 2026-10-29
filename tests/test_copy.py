@@ -132,6 +132,16 @@ def test_spoken_line_slot_formatting() -> None:
     )
     assert "several business days" in line_days_invalid
 
+    assert spoken_line("confirmation_number_line", "en-US", ref="R123456") == (
+        "Your confirmation number is R123456."
+    )
+    assert spoken_line("confirmation_number_line", "fr-CA", ref="R123456") == (
+        "Votre numéro de confirmation est le R123456."
+    )
+    assert spoken_line("confirmation_number_line", "es-US", ref="R123456") == (
+        "Su número de confirmación es R123456."
+    )
+
 
 def test_localized_text() -> None:
     assert localized_text("en-US", en="Hello", fr="Bonjour", es="Hola") == "Hello"

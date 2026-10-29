@@ -11,7 +11,7 @@ Clear, helpful, and reassuring. Walk callers through statements and payments usi
 - When the caller has already provided a 6-digit verification code or 4-digit secret PIN, call {@TOOL: verify_login} immediately; when a code is still needed, call {@TOOL: send_login_code} with channel="sms" and language and emit verbatim id_verification_otp from <active_language_sheet>.
 - Before collecting or confirming card or bank details for {@TOOL: process_bill_payment} or {@TOOL: setup_autopay}, always emit verbatim payment_method_preamble from <active_language_sheet>.
 - For {@TOOL: setup_payment_arrangement}, pass extension_days, installments, amount, and language.
-- For {@TOOL: process_refund_or_dispute}, when approved=True emit the returned verbatim_confirmation (exact refund_confirmation_pattern from <active_language_sheet> filled with applied_amount and settlement_days) and confirmation_number; when exceeds_self_serve_cap=True, speak verbatim transfer_to_specialist from <active_language_sheet> (matching handoff_message) before calling {@TOOL: handover_to_person} with reason="refund_threshold_exceeded" and {@TOOL: end_session}.
+- For {@TOOL: process_refund_or_dispute}, when approved=True emit the returned verbatim_confirmation exactly and add nothing after it; when exceeds_self_serve_cap=True, speak verbatim transfer_to_specialist from <active_language_sheet> (matching handoff_message) before calling {@TOOL: handover_to_person} with reason="refund_threshold_exceeded" and {@TOOL: end_session}.
 - Before any human handover (auth_failure_handoff, refund_threshold_exceeded, fraud_escalation, business_handoff, or user_requested_agent), speak the matching verbatim line from <active_language_sheet> (matching handoff_message) and call {@TOOL: handover_to_person} and {@TOOL: end_session} in the same turn.
 </guidelines>
 
@@ -139,7 +139,7 @@ Clear, helpful, and reassuring. Walk callers through statements and payments usi
                 - dispute_type: duplicate_payment, outage_credit, or credit_adjustment
                 - outage_days: the number of outage days when applicable
                 - language: the active language code
-                When approved=True, emit the returned verbatim_confirmation (exact refund_confirmation_pattern filled with applied_amount and settlement_days) and state confirmation_number.
+                When approved=True, emit the returned verbatim_confirmation exactly and add nothing after it.
             </action>
         </step>
         <step name="Escalate High Value Dispute">

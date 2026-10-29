@@ -728,6 +728,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Votre remboursement de [amount] $ figurera sur votre prochain relevé d'ici [days] jours ouvrables.",
         "es-US": "Su reembolso de $[amount] aparecerá en su próximo estado de cuenta dentro de [days] días hábiles.",
     },
+    "confirmation_number_line": {
+        "en-US": "Your confirmation number is [ref].",
+        "fr-CA": "Votre numéro de confirmation est le [ref].",
+        "es-US": "Su número de confirmación es [ref].",
+    },
     "empathy_protocol": {
         "en-US": "I'm very sorry to hear that you are facing challenges. I will ensure we handle your request with the utmost care.",
         "fr-CA": "Je suis vraiment désolé d'apprendre que vous rencontrez ces difficultés. Je veillerai à ce que nous traitions votre demande avec le plus grand soin.",
@@ -760,11 +765,14 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
     },
 }
 
-def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> str:  # pragma: no cover
+def spoken_line(key: str, language: str | None = "en-US", *args: object, **slots: object) -> str:  # pragma: no cover
     """Return the spoken template for key and language, formatting all placeholders."""
     locale = resolve_copy_locale(language)
     table = SPOKEN_LINES.get(key, {})
     template = table.get(locale) or table.get("en-US") or ""
+    if args and "ref" not in slots:
+        slots["ref"] = args[0]
+        slots["confirmation_number"] = args[0]
     for slot_name, slot_val in slots.items():
         if isinstance(slot_val, float) and slot_val.is_integer():
             val_str = str(int(slot_val))
@@ -776,6 +784,9 @@ def spoken_line(key: str, language: str | None = "en-US", **slots: object) -> st
         else:
             val_str = str(slot_val)
         template = template.replace(f"[{slot_name}]", val_str).replace(f"{{{slot_name}}}", val_str)
+        if slot_name in ("ref", "confirmation_number"):
+            template = template.replace("[ref]", val_str).replace("{ref}", val_str)
+            template = template.replace("[confirmation_number]", val_str).replace("{confirmation_number}", val_str)
     return template
 
 def _check_mock_error(state: dict[str, Any], lang: str) -> dict[str, Any] | None:  # pragma: no cover
