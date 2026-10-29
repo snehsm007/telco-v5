@@ -1728,6 +1728,15 @@ def process_bill_payment_impl(  # pragma: no cover
             },
         )
 
+    past_due_raw = str(state.get("past_due_balance") or "0.00").strip()
+    try:
+        past_due_dec = Decimal(past_due_raw)
+    except Exception:
+        past_due_dec = Decimal("0.00")
+    was_past_due = past_due_dec > Decimal("0.00")
+    was_suspended = bool(state.get("is_suspended", False))
+    suspension_avoided = was_past_due or was_suspended
+
     state["payment_failure_count"] = 0
     if is_bank:
         state["bank_last4"] = l4
@@ -1744,6 +1753,32 @@ def process_bill_payment_impl(  # pragma: no cover
 
     conf = tracking_id("PAY", account_id, amt_str)
     state["last_tracking_id"] = conf
+
+    if is_bank:
+        method_en = f"bank account ending in {l4}"
+        method_fr = f"compte bancaire se terminant par {l4}"
+        method_es = f"cuenta bancaria que termina en {l4}"
+    else:
+        method_en = f"card ending in {l4}"
+        method_fr = f"carte se terminant par {l4}"
+        method_es = f"tarjeta que termina en {l4}"
+
+    if suspension_avoided:
+        status_en = "your service is active and no suspension is pending."
+        status_fr = "votre service est actif et aucune suspension n'est en attente."
+        status_es = "su servicio está activo y no hay ninguna suspensión pendiente."
+    else:
+        status_en = "your service is active."
+        status_fr = "votre service est actif."
+        status_es = "su servicio está activo."
+
+    summary = localized_text(
+        lang,
+        f"Payment of ${amt_str} with the {method_en} processed, confirmation {conf}; remaining balance $0.00; {status_en}",
+        f"Paiement de {amt_str} $ avec la {method_fr} traité, confirmation {conf}; solde restant 0.00 $; {status_fr}",
+        f"Pago de ${amt_str} con la {method_es} procesado, confirmación {conf}; saldo restante $0.00; {status_es}",
+    )
+
     reply_data: dict[str, Any] = {
         "payment_processed": True,
         "amount_paid": amt_str,
@@ -1752,7 +1787,11 @@ def process_bill_payment_impl(  # pragma: no cover
         "masked_last4": l4,
         "confirmation_number": conf,
         "service_restored": True,
+        "service_status": "active",
+        "suspension_avoided": suspension_avoided,
         "restoration_eta_minutes": 15,
+        "spoken_summary": summary,
+        "spoken_message": summary,
     }
     if is_bank:
         reply_data["bank_last4"] = l4
