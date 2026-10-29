@@ -99,3 +99,31 @@ Group failing evaluations by shared root cause (not one entry per evaluation). F
 - **Fix & `file:line`**: Scenario conflict: unauthenticated caller cannot proceed with self-serve troubleshooting under PRD M4 security requirements. Handover is PRD-correct behavior. No agent code change.
 - **Alternatives considered**: Bypassing authentication would violate PRD M4 security policies.
 - **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as scenario design conflict (1/3 on smoke-db3068f, 3/3 on full-532d45d when caller authenticates).
+
+### DEF-08: VE-15 r3: same-turn router lookup_account(fr-CA) → account send_login_code(language=en-US) returned en-US copy
+- **Found by**: `VE-15` (`sim__manage_mfa_french_disable`) (`full-c8d6339`, `1/3`)
+- **Evidence**: `bench/runs/full-c8d6339.json` VE-15 r3
+- **Label**: `platform`
+- **Status**: `open`
+- **Root cause layer**: `agent_transfer`
+- **Diagnosis (all 3 judge metrics)**:
+  - *Expectations*: Slot 3 FAIL: Same-turn router `lookup_account(fr-CA)` → account `send_login_code(language=en-US)` returned en-US copy; the asymmetric lock is not yet visible across the agent transfer inside one turn.
+  - *User Goal*: Skipped via config (score -1)
+  - *Hallucination*: Skipped via config (score -1)
+- **Fix & `file:line`**: Asymmetric session language lock not yet visible across agent transfer inside one turn.
+- **Alternatives considered**: Recorded as noise / follow-up investigation.
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as same-turn agent-transfer language propagation noise (1/3 on full-c8d6339).
+
+### DEF-09: VE-12/VE-13: account agent toggles manage_mfa_settings disable→enable→disable in consecutive turns
+- **Found by**: `VE-12` (`sim__manage_mfa_auth_failure`) & `VE-13` (`sim__manage_mfa_disable`) (`full-c8d6339`)
+- **Evidence**: `bench/runs/full-c8d6339.json` VE-12 r2
+- **Label**: `agent`
+- **Status**: `open`
+- **Root cause layer**: `instruction`
+- **Diagnosis (all 3 judge metrics)**:
+  - *Expectations*: Account agent toggles `manage_mfa_settings` disable→enable→disable in consecutive turns (seen 4× in `full-c8d6339` VE-12 r2).
+  - *User Goal*: Skipped via config (score -1)
+  - *Hallucination*: Skipped via config (score -1)
+- **Fix & `file:line`**: Account agent instruction refinement for MFA toggle stability.
+- **Alternatives considered**: Service-side idempotency check vs prompt instruction.
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as agent instruction oscillation noise (seen 4× in full-c8d6339 VE-12 r2).
