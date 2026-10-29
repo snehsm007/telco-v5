@@ -74,6 +74,8 @@ ERROR_CODES: tuple[str, ...] = (
     "SYSTEM_DOWN",
     "UNKNOWN_PLAN_ID",
     "CODE_NOT_RECEIVED",
+    "CARD_CAPTURE_REQUIRED",
+    "INVALID_CARD_DIGITS",
 )
 
 ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = dict(LOCALIZED_ERROR_DEFAULTS["en-US"])
@@ -159,6 +161,7 @@ def ok_reply(
         "logged_in",
         "handoff_message",
         "spoken_message",
+        "spoken_line",
         "handoff_status",
         "action_fulfilled",
         "task_completed",
@@ -211,6 +214,7 @@ def error_reply(
         "logged_in",
         "handoff_message",
         "spoken_message",
+        "spoken_line",
         "handoff_status",
         "action_fulfilled",
         "task_completed",

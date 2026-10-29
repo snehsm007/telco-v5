@@ -338,6 +338,14 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
             "No digits were received or recognized.",
             "Say you did not receive any digits and ask the caller to say the code aloud.",
         ),
+        "CARD_CAPTURE_REQUIRED": (
+            "Payment card digits required. Key in 15 or 16 digits using your phone keypad.",
+            "Read the preamble verbatim, invite keypad entry once; if no digits arrive, offer the card or bank on file instead — never hand over for this.",
+        ),
+        "INVALID_CARD_DIGITS": (
+            "Card number must be 15 or 16 digits.",
+            "Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad.",
+        ),
     },
     "fr-CA": {
         "INVALID_INPUT": (
@@ -492,6 +500,14 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
             "Aucun chiffre n'a été reçu ou reconnu.",
             "Dites que vous n'avez reçu aucun chiffre et demandez au client d'énoncer le code à voix haute.",
         ),
+        "CARD_CAPTURE_REQUIRED": (
+            "Numéro de carte requis. Composez les 15 ou 16 chiffres à l'aide du clavier de votre téléphone.",
+            "Lisez le préambule mot à mot, invitez à composer les chiffres sur le clavier une fois; si aucun chiffre n'arrive, proposez la carte ou le compte au dossier — ne transférez jamais pour cela.",
+        ),
+        "INVALID_CARD_DIGITS": (
+            "Le numéro de carte doit comporter 15 ou 16 chiffres.",
+            "Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique.",
+        ),
     },
     "es-US": {
         "INVALID_INPUT": (
@@ -645,6 +661,14 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {
         "CODE_NOT_RECEIVED": (
             "No se recibieron o reconocieron dígitos.",
             "Diga que no recibió ningún dígito y pida al cliente que diga el código en voz alta.",
+        ),
+        "CARD_CAPTURE_REQUIRED": (
+            "Se requieren dígitos de la tarjeta. Ingrese los 15 o 16 dígitos en el teclado de su teléfono.",
+            "Lea el preámbulo textualmente, invite a ingresar dígitos una vez; si no llegan dígitos, ofrezca la tarjeta o cuenta registrada — nunca transfiera por esto.",
+        ),
+        "INVALID_CARD_DIGITS": (
+            "El número de tarjeta debe tener 15 o 16 dígitos.",
+            "Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico.",
         ),
     },
 }

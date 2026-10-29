@@ -9,6 +9,8 @@ def setup_autopay(
     last4: str | int | float = "",
     card_last4: str | int | float = "",
     bank_last4: str | int | float = "",
+    card_digits: str | int | float = "",
+    dtmf_digits: str | int | float = "",
     billing_day: str | int | float = 15,
     action: str = "enroll",
     identifier: str | int | float = "",
@@ -18,10 +20,12 @@ def setup_autopay(
     """Enroll or manage recurring autopay with card or bank account.
 
     Args:
-        payment_method: Payment method type ('card' or 'bank').
+        payment_method: Payment method type ('card', 'bank', 'card_on_file', 'bank_on_file', or 'new_card').
         last4: Last 4 digits of the payment method.
         card_last4: Last 4 digits of credit/debit card.
         bank_last4: Last 4 digits of bank checking account.
+        card_digits: Optional full card number or digits entered via keypad for new_card.
+        dtmf_digits: Optional DTMF keypad digits for new card entry.
         billing_day: Day of month for autopay charge (default 15).
         action: Management action ('enroll', 'update', or 'cancel').
         identifier: Optional phone or account number for inline lookup.
@@ -40,6 +44,8 @@ def setup_autopay(
         last4=last4,
         card_last4=card_last4,
         bank_last4=bank_last4,
+        card_digits=card_digits,
+        dtmf_digits=dtmf_digits,
         billing_day=billing_day,
         action=action,
         identifier=identifier,
@@ -101,6 +107,8 @@ ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "SYSTEM_DOWN",
     "UNKNOWN_PLAN_ID",
     "CODE_NOT_RECEIVED",
+    "CARD_CAPTURE_REQUIRED",
+    "INVALID_CARD_DIGITS",
 )
 
 class _StatusStr(str):  # pragma: no cover
@@ -275,6 +283,14 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "No digits were received or recognized.",
             "Say you did not receive any digits and ask the caller to say the code aloud.",
         ),
+        "CARD_CAPTURE_REQUIRED": (
+            "Payment card digits required. Key in 15 or 16 digits using your phone keypad.",
+            "Read the preamble verbatim, invite keypad entry once; if no digits arrive, offer the card or bank on file instead — never hand over for this.",
+        ),
+        "INVALID_CARD_DIGITS": (
+            "Card number must be 15 or 16 digits.",
+            "Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad.",
+        ),
     },
     "fr-CA": {
         "INVALID_INPUT": (
@@ -428,6 +444,14 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
         "CODE_NOT_RECEIVED": (
             "Aucun chiffre n'a été reçu ou reconnu.",
             "Dites que vous n'avez reçu aucun chiffre et demandez au client d'énoncer le code à voix haute.",
+        ),
+        "CARD_CAPTURE_REQUIRED": (
+            "Numéro de carte requis. Composez les 15 ou 16 chiffres à l'aide du clavier de votre téléphone.",
+            "Lisez le préambule mot à mot, invitez à composer les chiffres sur le clavier une fois; si aucun chiffre n'arrive, proposez la carte ou le compte au dossier — ne transférez jamais pour cela.",
+        ),
+        "INVALID_CARD_DIGITS": (
+            "Le numéro de carte doit comporter 15 ou 16 chiffres.",
+            "Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique.",
         ),
     },
     "es-US": {
@@ -583,6 +607,14 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "No se recibieron o reconocieron dígitos.",
             "Diga que no recibió ningún dígito y pida al cliente que diga el código en voz alta.",
         ),
+        "CARD_CAPTURE_REQUIRED": (
+            "Se requieren dígitos de la tarjeta. Ingrese los 15 o 16 dígitos en el teclado de su teléfono.",
+            "Lea el preámbulo textualmente, invite a ingresar dígitos una vez; si no llegan dígitos, ofrezca la tarjeta o cuenta registrada — nunca transfiera por esto.",
+        ),
+        "INVALID_CARD_DIGITS": (
+            "El número de tarjeta debe tener 15 o 16 dígitos.",
+            "Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico.",
+        ),
     },
 }
 
@@ -675,6 +707,7 @@ def error_reply(  # pragma: no cover
         "logged_in",
         "handoff_message",
         "spoken_message",
+        "spoken_line",
         "handoff_status",
         "action_fulfilled",
         "task_completed",
@@ -1151,6 +1184,7 @@ def ok_reply(  # pragma: no cover
         "logged_in",
         "handoff_message",
         "spoken_message",
+        "spoken_line",
         "handoff_status",
         "action_fulfilled",
         "task_completed",
@@ -1761,6 +1795,8 @@ def setup_autopay_impl(  # pragma: no cover
     last4: str | int | float = "",
     card_last4: str | int | float = "",
     bank_last4: str | int | float = "",
+    card_digits: str | int | float = "",
+    dtmf_digits: str | int | float = "",
     billing_day: str | int | float = 15,
     action: str = "enroll",
     identifier: str | int | float = "",
@@ -1793,28 +1829,104 @@ def setup_autopay_impl(  # pragma: no cover
 
     _record_audit(state)
 
+    def_c4 = str(state.get("card_last4") or "4242")[-4:]
+    sec_c4 = "8844"
+    def_b4 = str(state.get("bank_last4") or "6789")[-4:]
+    methods_on_file = [
+        {"type": "card", "last4": def_c4, "primary": True},
+        {"type": "card", "last4": sec_c4, "primary": False},
+        {"type": "bank", "last4": def_b4, "primary": False},
+    ]
+
     act = str(action or "enroll").lower()
     if act == "cancel":
         state["autopay_enrolled"] = False
-        return ok_reply({"autopay_enrolled": False, "cancelled": True}, reference, language=lang)
-
-    is_bank = any(w in str(payment_method).lower() for w in ("bank", "checking", "bancaire", "chèques", "compte"))
-    method_name = "bank" if is_bank else "card"
-
-    provided_digits = last4 or (bank_last4 if is_bank else card_last4) or ""
-    digits_parsed = _extract_last4(provided_digits)
-    if digits_parsed is None:
-        return error_reply("INVALID_INPUT", reference=reference, language=lang)
-    digits = digits_parsed or str(state.get("bank_last4" if is_bank else "card_last4") or ("6789" if is_bank else "4242"))[-4:]
-
-    if digits in DECLINED_CARD_LAST4:
-        state["card_last4"] = ""
-        return error_reply(
-            "PAYMENT_DECLINED",
-            reference=reference,
+        return ok_reply(
+            {"autopay_enrolled": False, "cancelled": True, "payment_methods_on_file": methods_on_file},
+            reference,
             language=lang,
-            data={"card_last4": "", "declined_card_last4": digits},
         )
+
+    pm = str(payment_method or "").strip().lower()
+    is_new_card = (
+        any(w in pm for w in ("new", "nouvelle", "nouveau", "nueva", "capture", "keypad", "clavier"))
+        or bool(str(card_digits or dtmf_digits or kwargs.get("card_number", "")).strip())
+    )
+
+    if is_new_card:
+        raw_digits = normalize_code(card_digits or dtmf_digits or kwargs.get("card_number", ""))
+        if not raw_digits:
+            pci_line = spoken_line("payment_method_preamble", lang)
+            action_text = localized_text(
+                lang,
+                "Read the preamble verbatim, invite keypad entry once; if no digits arrive, offer the card or bank on file instead — never hand over for this.",
+                "Lisez le préambule mot à mot, invitez à composer les chiffres sur le clavier une fois; si aucun chiffre n'arrive, proposez la carte ou le compte au dossier — ne transférez jamais pour cela.",
+                "Lea el preámbulo textualmente, invite a ingresar dígitos una vez; si no llegan dígitos, ofrezca la tarjeta o cuenta registrada — nunca transfiera por esto.",
+            )
+            rep = error_reply(
+                "CARD_CAPTURE_REQUIRED",
+                message=pci_line,
+                agent_action=action_text,
+                reference=reference,
+                language=lang,
+                data={
+                    "spoken_line": pci_line,
+                    "agent_action": action_text,
+                    "payment_methods_on_file": methods_on_file,
+                },
+            )
+            rep["spoken_line"] = pci_line
+            rep["payment_methods_on_file"] = methods_on_file
+            return rep
+
+        if len(raw_digits) not in (15, 16):
+            return error_reply(
+                "INVALID_CARD_DIGITS",
+                reference=reference,
+                language=lang,
+                data={
+                    "payment_methods_on_file": methods_on_file,
+                    "agent_action": localized_text(
+                        lang,
+                        "Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad.",
+                        "Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique.",
+                        "Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico.",
+                    ),
+                },
+            )
+
+        digits = raw_digits[-4:]
+        method_name = "card"
+        token = f"tok_card_{digits}"
+        state["card_last4"] = digits
+        state["card_token"] = token
+    else:
+        is_bank = any(w in pm for w in ("bank", "checking", "bancaire", "chèques", "compte", "6789"))
+        method_name = "bank" if is_bank else "card"
+
+        provided_digits = last4 or (bank_last4 if is_bank else card_last4) or ""
+        digits_parsed = _extract_last4(provided_digits)
+        if digits_parsed is None:
+            return error_reply("INVALID_INPUT", reference=reference, language=lang)
+        digits = digits_parsed or (def_b4 if is_bank else def_c4)
+
+        if digits in DECLINED_CARD_LAST4:
+            state["card_last4"] = ""
+            return error_reply(
+                "PAYMENT_DECLINED",
+                reference=reference,
+                language=lang,
+                data={
+                    "card_last4": "",
+                    "declined_card_last4": digits,
+                    "payment_methods_on_file": methods_on_file,
+                },
+            )
+
+        if is_bank:
+            state["bank_last4"] = digits
+        else:
+            state["card_last4"] = digits
 
     if billing_day == "":
         bday = 15
@@ -1822,11 +1934,6 @@ def setup_autopay_impl(  # pragma: no cover
         bday = _parse_int_in_range(billing_day, 1, 28)
         if bday is None:
             return error_reply("INVALID_INPUT", reference=reference, language=lang)
-
-    if is_bank:
-        state["bank_last4"] = digits
-    else:
-        state["card_last4"] = digits
 
     state["autopay_enrolled"] = True
     state["autopay_day"] = bday
@@ -1839,10 +1946,12 @@ def setup_autopay_impl(  # pragma: no cover
             "autopay_enrolled": True,
             "payment_method": method_name,
             "masked_last4": digits,
+            "card_last4": digits if method_name == "card" else state.get("card_last4", "4242"),
             "billing_day": bday,
             "autopay_discount_monthly": "5.00",
             "next_draft_date": f"2026-11-{bday:02d}",
             "confirmation_id": ref,
+            "payment_methods_on_file": methods_on_file,
         },
         ref,
         language=lang,

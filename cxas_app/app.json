@@ -163,6 +163,15 @@
       }
     },
     {
+      "name": "card_token",
+      "description": "Masked payment card token for enrolled card.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "declined_card_last4",
       "description": "Last 4 digits of card that was declined.",
       "schema": {
