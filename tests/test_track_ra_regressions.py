@@ -84,13 +84,13 @@ def test_browse_plans_fuzz_nan_and_address_alias() -> None:
 def test_commit_plan_card_last4_validation() -> None:
     st: dict = {"account_id": "A1001", "auth_status": "pass", "logged_in": True}
     # Integer card_last4 should not crash
-    res_int = commit_plan_or_order_impl(plan_id="NET-PLUS", card_last4=1234, state=st)
+    res_int = commit_plan_or_order_impl(plan_id="NET-PLUS", card_last4=1234, confirmed=True, state=st)
     assert res_int["status"] == "ok"
     assert res_int["data"]["plan_name"] == "Fiber Internet 500"
     assert res_int["data"]["new_monthly_price"] == "75.00"
 
     # Declined card 9999
-    res_dec = commit_plan_or_order_impl(plan_id="NET-PLUS", card_last4="9999", state=st)
+    res_dec = commit_plan_or_order_impl(plan_id="NET-PLUS", card_last4="9999", confirmed=True, state=st)
     assert res_dec["status"] == "error"
     assert res_dec["error"] == "CARD_DECLINED"
 

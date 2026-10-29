@@ -363,8 +363,11 @@ def test_all_22_tools_happy_and_error_paths() -> None:
     assert r14_err["status"] == "error"
 
     # 15. commit_plan_or_order
-    r15_ok = commit_plan_or_order_impl(plan_id="NET-PLUS", state=dict(authed))
+    r15_ok = commit_plan_or_order_impl(plan_id="NET-PLUS", confirmed=True, state=dict(authed))
     assert r15_ok["status"] == "ok"
+    r15_unconf = commit_plan_or_order_impl(plan_id="NET-PLUS", confirmed=False, state=dict(authed))
+    assert r15_unconf["status"] == "error"
+    assert r15_unconf["error"] == "REQUIRES_CONFIRMATION"
     r15_err = commit_plan_or_order_impl(state=unauthed)
     assert r15_err["status"] == "error"
 

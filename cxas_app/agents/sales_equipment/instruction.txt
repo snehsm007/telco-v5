@@ -117,7 +117,9 @@ Knowledgeable, safety-first, transparent, and concise. Present clear plan shortl
                 - order_type: plan_upgrade, addon, or device
                 - device_name: the device name when ordering hardware
                 - card_last4: the confirmed 4-digit card ending when applicable
+                - confirmed: true when the caller has explicitly confirmed the quote, otherwise false
                 - language: the active language code
+                When {@TOOL: commit_plan_or_order} returns REQUIRES_CONFIRMATION, read the returned quote_summary to the caller, obtain their explicit confirmation, and call again with confirmed=true.
                 Confirm the order reference, new plan or device details, delivery ETA, proration summary, and SMS receipt.
             </action>
         </step>

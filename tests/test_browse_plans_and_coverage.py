@@ -61,3 +61,34 @@ def test_browse_plans_and_coverage_french_comma_max_budget(monkeypatch) -> None:
     ids_comma = [p["id"] for p in res_comma["data"]["shortlisted_plans"]]
     assert ids_comma == ids_dot == ["NET-STARTER"]
     assert all(float(p["monthly_price"]) <= 60.0 for p in res_comma["data"]["shortlisted_plans"])
+
+
+def test_browse_plans_and_coverage_catalog_coherence_tax_speed_addons(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.browse_plans_and_coverage(category="internet", postal_code="H3Z 2Y7")
+    assert res["status"] == "ok"
+    plans = res["data"]["shortlisted_plans"]
+    assert len(plans) >= 2
+    for p in plans:
+        assert "estimated_tax" in p
+        assert "estimated_total_monthly" in p
+        assert "monthly_total_with_tax" in p
+        assert "download_speed" in p
+        assert "upload_speed" in p
+        assert "modem_compatibility" in p
+        assert "included_modem" in p
+        assert p["contract_required"] is False
+        price = float(p["monthly_price"])
+        tax = float(p["estimated_tax"])
+        total = float(p["monthly_total_with_tax"])
+        assert round(price + tax, 2) == round(total, 2)
+
+    # Addons must be present with contract_required: False
+    addons = res["data"].get("available_add_ons") or res["data"].get("add_ons")
+    assert addons is not None and len(addons) > 0
+    for a in addons:
+        assert a["contract_required"] is False
+        assert "estimated_tax" in a
+        assert "monthly_total_with_tax" in a
+
