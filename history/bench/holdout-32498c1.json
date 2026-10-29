@@ -1,0 +1,192 @@
+{
+  "label": "holdout-32498c1",
+  "timestamp": "2026-10-29T21:31:59Z",
+  "commit": "32498c1",
+  "git_sha": "32498c1",
+  "commits": [
+    "32498c1"
+  ],
+  "app_resource": "projects/google.com:nextgen-sandbox/locations/us/apps/25e84665-a03d-45b9-8212-23e314db5c14",
+  "app_versions": [
+    "(draft)"
+  ],
+  "evaluation_runs": [
+    "a8ad142e-a39d-4c6c-84c6-4355fd71eec1"
+  ],
+  "runs_per_eval": 3,
+  "is_full_run": false,
+  "is_holdout": true,
+  "eval_count": 20,
+  "evals": 20,
+  "strict_pass": 8,
+  "strict_pass_rate": 0.4,
+  "majority_pass": 13,
+  "majority_pass_rate": 0.65,
+  "individual_passed": 38,
+  "individual_total": 60,
+  "passes": 38,
+  "total": 60,
+  "p": 0.6333,
+  "predicted_strict_3_of_3": 5.08,
+  "avg_pass_turns": 4.21,
+  "avg_pass_tool_calls": 4.76,
+  "per_eval": {
+    "VE-01": {
+      "pass": 3,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 5.0,
+      "avg_pass_tool_calls": 5.0
+    },
+    "VE-02": {
+      "pass": 2,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 3.0,
+      "avg_pass_tool_calls": 5.0
+    },
+    "VE-03": {
+      "pass": 3,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 3.67,
+      "avg_pass_tool_calls": 3.33
+    },
+    "VE-04": {
+      "pass": 2,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 4.0,
+      "avg_pass_tool_calls": 5.5
+    },
+    "VE-05": {
+      "pass": 0,
+      "total": 3,
+      "infra": 0,
+      "verdict": "FAIL"
+    },
+    "VE-06": {
+      "pass": 1,
+      "total": 3,
+      "infra": 0,
+      "verdict": "FAIL",
+      "avg_pass_turns": 8.0,
+      "avg_pass_tool_calls": 7.0
+    },
+    "VE-07": {
+      "pass": 0,
+      "total": 3,
+      "infra": 0,
+      "verdict": "FAIL"
+    },
+    "VE-08": {
+      "pass": 3,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 1.0,
+      "avg_pass_tool_calls": 2.0
+    },
+    "VE-09": {
+      "pass": 1,
+      "total": 3,
+      "infra": 0,
+      "verdict": "FAIL",
+      "avg_pass_turns": 2.0,
+      "avg_pass_tool_calls": 4.0
+    },
+    "VE-10": {
+      "pass": 2,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 4.0,
+      "avg_pass_tool_calls": 5.0
+    },
+    "VE-11": {
+      "pass": 0,
+      "total": 3,
+      "infra": 0,
+      "verdict": "FAIL"
+    },
+    "VE-12": {
+      "pass": 3,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 1.0,
+      "avg_pass_tool_calls": 2.0
+    },
+    "VE-13": {
+      "pass": 1,
+      "total": 3,
+      "infra": 0,
+      "verdict": "FAIL",
+      "avg_pass_turns": 5.0,
+      "avg_pass_tool_calls": 6.0
+    },
+    "VE-14": {
+      "pass": 2,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 2.0,
+      "avg_pass_tool_calls": 4.0
+    },
+    "VE-15": {
+      "pass": 3,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 1.0,
+      "avg_pass_tool_calls": 2.0
+    },
+    "VE-16": {
+      "pass": 2,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 8.5,
+      "avg_pass_tool_calls": 5.5
+    },
+    "VE-17": {
+      "pass": 3,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 6.33,
+      "avg_pass_tool_calls": 7.0
+    },
+    "VE-18": {
+      "pass": 3,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 4.0,
+      "avg_pass_tool_calls": 5.67
+    },
+    "VE-19": {
+      "pass": 1,
+      "total": 3,
+      "infra": 0,
+      "verdict": "FAIL",
+      "avg_pass_turns": 9.0,
+      "avg_pass_tool_calls": 8.0
+    },
+    "VE-20": {
+      "pass": 3,
+      "total": 3,
+      "infra": 0,
+      "verdict": "PASS",
+      "avg_pass_turns": 4.0,
+      "avg_pass_tool_calls": 4.0
+    }
+  },
+  "tool_errors": 0,
+  "tool_error_pages_checked": 22,
+  "tool_error_samples": []
+}
