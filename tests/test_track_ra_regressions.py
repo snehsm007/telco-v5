@@ -53,12 +53,14 @@ def test_nanp_11_digit_phone_and_ban_lookup() -> None:
     assert st["caller_provided_phone_last4"] == "0143"
     assert st["phone_last4"] == "0143"
 
-    # 9-digit BAN -> synthetic BAN profile keeps linked mobile last4
+    # 9-digit BAN -> synthetic BAN profile keeps linked mobile last4 empty per BR-TV-017
     st_ban: dict = {}
     res_ban = lookup_account_impl(identifier="987654321", state=st_ban)
     assert res_ban["status"] == "ok"
     assert res_ban["data"]["account_id"] == "ACC-4321"
-    assert st_ban["phone_last4"] == "0143"
+    assert st_ban["phone_last4"] == ""
+    assert res_ban["data"]["linked_mobile_last4"] == ""
+    assert res_ban["data"]["phone_last4"] == ""
     assert st_ban["caller_provided_phone_last4"] == ""
 
     # Boolean is rejected

@@ -81,3 +81,24 @@ def test_send_login_code_localization(monkeypatch) -> None:
     session.state["auth_status"] = "none"
     reply_es = tool.send_login_code(language="es-US")
     assert reply_es["status"] == "ok"
+
+
+def test_send_login_code_unidentified_returns_error(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.send_login_code()
+    assert reply["status"] == "error"
+    assert reply["error"] == "NOT_IDENTIFIED"
+    assert "agent_action" in reply
+    assert "mobile number" in reply["agent_action"].lower() or "10-digit" in reply["agent_action"].lower()
+
+
+def test_send_login_code_accepts_caller_given_phone_and_records_last4(monkeypatch) -> None:
+    session = SimpleNamespace(state={"account_id": "ACC-4651", "phone_last4": ""})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.send_login_code(identifier="514-555-0199")
+    assert reply["status"] == "ok"
+    assert reply["data"]["sent"] is True
+    assert reply["data"]["destination_last4"] == "0199"
+    assert session.state["caller_provided_phone_last4"] == "0199"
+    assert session.state["phone_last4"] == "0199"
