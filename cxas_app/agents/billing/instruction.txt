@@ -101,6 +101,7 @@ Clear, helpful, and reassuring. Walk callers through statements and payments usi
                 - bank_last4: the 4-digit bank ending when paying by bank
                 - language: the active language code
                 Confirm the paid amount, confirmation_number, updated balance, and any restored service. On PAYMENT_DECLINED or CARD_DECLINED, explain the decline and request an alternative payment method.
+                Speak the returned spoken_summary to confirm the payment amount, card ending in card_last4, confirmation number, remaining balance, and active service status.
             </action>
         </step>
         <step name="Create Payment Arrangement">

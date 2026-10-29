@@ -135,3 +135,82 @@ def test_process_bill_payment_bank_preserves_card_last4(monkeypatch) -> None:
     assert res_debit_card["status"] == "ok"
     assert res_debit_card["data"]["card_last4"] == "8844"
     assert session.state["card_last4"] == "8844"
+
+
+def test_process_bill_payment_spoken_summary_and_suspension_avoided(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "current_balance": "85.50",
+            "past_due_balance": "85.50",
+            "card_last4": "4242",
+            "is_suspended": False,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.process_bill_payment(amount="85.50", card_last4="4242", language="en-US")
+    assert reply["status"] == "ok"
+    data = reply["data"]
+    assert data["service_status"] == "active"
+    assert data["suspension_avoided"] is True
+    assert "spoken_summary" in data
+    assert "spoken_message" in data
+    summary = data["spoken_summary"]
+    assert "Payment of $85.50 with the card ending in 4242 processed" in summary
+    assert f"confirmation {data['confirmation_number']}" in summary
+    assert "remaining balance $0.00" in summary
+    assert "your service is active and no suspension is pending." in summary
+    assert reply.get("spoken_message") == summary
+
+    # fr-CA localization
+    session.state["past_due_balance"] = "85.50"
+    session.state["is_suspended"] = True
+    reply_fr = tool.process_bill_payment(amount="85.50", card_last4="4242", language="fr-CA")
+    assert reply_fr["status"] == "ok"
+    data_fr = reply_fr["data"]
+    assert data_fr["suspension_avoided"] is True
+    assert data_fr["service_status"] == "active"
+    summary_fr = data_fr["spoken_summary"]
+    assert "Paiement de 85.50 $ avec la carte se terminant par 4242 traité" in summary_fr
+    assert "solde restant 0.00 $" in summary_fr
+    assert "votre service est actif et aucune suspension n'est en attente." in summary_fr
+
+
+def test_process_bill_payment_spoken_summary_not_past_due(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "current_balance": "50.00",
+            "past_due_balance": "0.00",
+            "card_last4": "1122",
+            "is_suspended": False,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.process_bill_payment(amount="50.00", card_last4="1122", language="en-US")
+    assert reply["status"] == "ok"
+    data = reply["data"]
+    assert data["service_status"] == "active"
+    assert data["suspension_avoided"] is False
+    assert "your service is active." in data["spoken_summary"]
+    assert "no suspension is pending" not in data["spoken_summary"]
+
+
+def test_process_bill_payment_bank_spoken_summary(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "current_balance": "85.50",
+            "past_due_balance": "85.50",
+            "bank_last4": "6789",
+            "is_suspended": False,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.process_bill_payment(amount="85.50", payment_method="bank", bank_last4="6789", language="en-US")
+    assert reply["status"] == "ok"
+    assert "bank account ending in 6789" in reply["data"]["spoken_summary"]
+
