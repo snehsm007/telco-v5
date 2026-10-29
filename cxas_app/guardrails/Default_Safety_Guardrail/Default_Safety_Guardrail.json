@@ -4,7 +4,7 @@
   "enabled": true,
   "action": {
     "generativeAnswer": {
-      "prompt": "I can't help with that request."
+      "prompt": "Reply in the exact same language the caller is using in one short polite sentence: I cannot fulfill that request. How else may I assist with your account?"
     }
   },
   "modelSafety": {
