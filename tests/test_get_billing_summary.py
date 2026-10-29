@@ -88,3 +88,88 @@ def test_get_billing_summary_restoration_facts_when_payment_covers_past_due(monk
     assert data["last_payment"]["posted_date"] == "2026-10-15"
     assert data["last_payment"]["method_last4"] == "4242"
 
+
+def test_get_billing_summary_reconciles_and_surfaces_payment_methods(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "current_balance": "85.50",
+            "card_last4": "4242",
+            "bank_last4": "6789",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.get_billing_summary()
+    assert reply["status"] == "ok"
+    data = reply["data"]
+
+    # Reconciliation fields
+    assert data["statement_total"] == "307.50"
+    assert data["payments_received"] == "171.00"
+    assert data["credits_applied"] == "51.00"
+    assert data["amount_due"] == "85.50"
+    assert data["current_balance"] == "85.50"
+    assert data["adjustments"] == [{"description": "Account credit", "amount": "-51.00"}]
+
+    from decimal import Decimal
+
+    stmt = Decimal(data["statement_total"])
+    pmts = Decimal(data["payments_received"])
+    creds = Decimal(data["credits_applied"])
+    due = Decimal(data["amount_due"])
+    assert stmt - pmts - creds == due == Decimal("85.50")
+
+    # Payment methods on file
+    methods = data["payment_methods_on_file"]
+    assert len(methods) == 3
+    assert methods[0] == {"type": "card", "last4": "4242", "primary": True}
+    assert methods[1] == {"type": "card", "last4": "8844"}
+    assert methods[2] == {"type": "bank", "last4": "6789"}
+
+    # Spoken summary
+    assert "spoken_summary" in data
+    assert "$85.50" in data["spoken_summary"]
+    assert "$307.50" in data["spoken_summary"]
+    assert "$171.00" in data["spoken_summary"]
+    assert "$51.00" in data["spoken_summary"]
+
+    # French localization
+    reply_fr = tool.get_billing_summary(language="fr-CA")
+    assert reply_fr["status"] == "ok"
+    fr_summary = reply_fr["data"]["spoken_summary"]
+    assert "85.50 $" in fr_summary or "85,50 $" in fr_summary
+    assert "307.50 $" in fr_summary or "307,50 $" in fr_summary
+
+
+def test_get_billing_summary_reconciliation_for_all_accounts(monkeypatch) -> None:
+    from decimal import Decimal
+    from lib.fakes import ACCOUNTS, find_account
+
+    test_accounts = [acc["account_id"] for acc in ACCOUNTS]
+    # Add synthesized account IDs as well
+    for sample_id in ("2025550198", "5145550199", "928374651"):
+        acct = find_account(sample_id)
+        if acct:
+            test_accounts.append(acct["account_id"])
+
+    for acct_id in test_accounts:
+        session = SimpleNamespace(
+            state={
+                "account_id": acct_id,
+                "auth_status": "pass",
+                "current_balance": "85.50",
+            }
+        )
+        monkeypatch.setattr(tool, "context", session, raising=False)
+        reply = tool.get_billing_summary()
+        assert reply["status"] == "ok"
+        data = reply["data"]
+        stmt = Decimal(str(data["statement_total"]))
+        pmts = Decimal(str(data["payments_received"]))
+        creds = Decimal(str(data["credits_applied"]))
+        due = Decimal(str(data["amount_due"]))
+        bal = Decimal(str(data["current_balance"]))
+        assert stmt - pmts - creds == due == bal
+
+
