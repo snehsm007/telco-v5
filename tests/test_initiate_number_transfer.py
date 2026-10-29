@@ -56,3 +56,44 @@ def test_initiate_number_transfer_localization_spanish(monkeypatch) -> None:
     assert res["status"] == "ok"
     assert res["data"]["mode"] == "checklist_provided"
     assert len(res["data"]["required_port_checklist"]) == 4
+
+
+def test_initiate_number_transfer_authenticated_missing_donor_details(monkeypatch) -> None:
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "ACC-0199"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.initiate_number_transfer(
+        phone_to_transfer="514-555-0199",
+        current_carrier="Rogers",
+    )
+    assert res["status"] == "ok"
+    data = res["data"]
+    assert data["status"] == "pending_donor_details"
+    assert "port_in_request_id" in data
+    assert "carrier_account_number" in data["missing_details"]
+    assert "port_pin" in data["missing_details"]
+    assert data["contract_disclosure_required"] is True
+    assert data["early_termination_fee"] == "0.00"
+    assert data["final_bill_estimate"] == "28.50"
+    assert data["porting_account_number"] == "ACC-0199"
+    assert data["transfer_pin"] == "849201"
+
+
+def test_initiate_number_transfer_port_out_facts(monkeypatch) -> None:
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "ACC-0199"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.initiate_number_transfer(
+        phone_to_transfer="514-555-0199",
+        current_carrier="Bell",
+    )
+    assert res["status"] == "ok"
+    data = res["data"]
+    assert data["mode"] == "port_out_details"
+    assert data["contract_disclosure_required"] is True
+    assert data["early_termination_fee"] == "0.00"
+    assert data["final_bill_estimate"] == "28.50"
+    assert data["porting_account_number"] == "ACC-0199"
+    assert data["transfer_pin"] == "849201"
+    assert data["port_out_pin"] == "849201"
+    assert "agent_action" in data
+
+

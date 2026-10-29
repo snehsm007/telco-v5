@@ -83,6 +83,11 @@ def test_port_out_step2_provides_port_out_pin(monkeypatch) -> None:
     assert reply["status"] == "ok"
     assert reply["data"]["service_cancelled"] is True
     assert reply["data"]["port_out_pin"] == "849201"
+    assert reply["data"]["transfer_pin"] == "849201"
+    assert reply["data"]["porting_account_number"] == "A1001"
+    assert reply["data"]["contract_disclosure_required"] is True
+    assert reply["data"]["early_termination_fee"] == "0.00"
+    assert reply["data"]["final_bill_estimate"] == "28.50"
 
 
 def test_cancel_or_port_out_inline_auth(monkeypatch) -> None:
@@ -124,3 +129,27 @@ def test_cancel_disclosure_localization_fr_and_es(monkeypatch) -> None:
     reply_es = tool.cancel_or_port_out_service(action_type="cancel", language="es-US")
     assert reply_es["status"] == "ok"
     assert "cancelación anticipada" in reply_es["data"]["verbatim_disclosure"]
+
+
+def test_port_out_step1_unconfirmed_returns_facts_and_disclosures(monkeypatch) -> None:
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "ACC-0199"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.cancel_or_port_out_service(
+        service_line="mobile",
+        action_type="port_out",
+        confirmed=False,
+    )
+    assert reply["status"] == "ok"
+    data = reply["data"]
+    assert data["requires_confirmation"] is True
+    assert data["service_cancelled"] is False
+    assert data["contract_disclosure_required"] is True
+    assert "early cancellation fee" in data["verbatim_disclosure"]
+    assert data["early_termination_fee"] == "0.00"
+    assert data["final_bill_estimate"] == "28.50"
+    assert data["porting_account_number"] == "ACC-0199"
+    assert data["transfer_pin"] == "849201"
+    assert "timeline" in data
+    assert "agent_action" in data
+
+

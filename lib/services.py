@@ -2258,13 +2258,26 @@ def initiate_number_transfer_impl(
 
     _record_audit(state)
 
+    _maybe_inline_auth(identifier, verification_code, lang, state)
+    if state.get("auth_status") == "pass" and not state.get("account_id"):
+        _hydrate_default_account_if_needed(state)
+
     target_phone = str(phone_to_transfer).strip() if str(phone_to_transfer or "").strip() else str(transfer_number or kwargs.get("transfer_number", "")).strip()
+    if not target_phone and state.get("auth_status") == "pass":
+        target_phone = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or (ACCOUNTS[0]["phone"] if ACCOUNTS else ""))
 
-    can = str(carrier_account_number or "").strip().lower()
-    ppin = str(port_pin or "").strip().lower()
-    is_inquiry = not can or not ppin or can in {"unknown", "none", "don't have"} or ppin in {"unknown", "none"}
+    can_raw = str(carrier_account_number or kwargs.get("account_number") or kwargs.get("donor_account_number") or "").strip()
+    ppin_raw = str(port_pin or kwargs.get("pin") or kwargs.get("donor_pin") or kwargs.get("transfer_pin") or "").strip()
+    carrier = str(current_carrier or kwargs.get("carrier") or kwargs.get("donor_carrier") or "").strip()
 
-    account_id = str(state.get("account_id") or "")
+    action = str(kwargs.get("action") or kwargs.get("action_type") or kwargs.get("direction") or kwargs.get("transfer_type") or "").strip().lower()
+    carrier_lower = carrier.lower()
+    is_port_out = (
+        action in {"port_out", "portout", "outbound", "out", "cancel"}
+        or carrier_lower in {"bell", "our", "internal", "none"}
+    )
+
+    account_id = str(state.get("account_id") or (ACCOUNTS[0]["account_id"] if ACCOUNTS else "ACC-0001"))
     reference = tracking_id("initiate_number_transfer", account_id, str(target_phone))
     state["last_tracking_id"] = reference
 
@@ -2274,8 +2287,20 @@ def initiate_number_transfer_impl(
         "15 à 30 minutes pour mobile; 2 à 5 jours ouvrables pour ligne fixe",
         "15 a 30 minutos para móvil; 2 a 5 días hábiles para línea fija",
     )
+    est_completion = localized_text(lang, "15 to 30 minutes", "15 à 30 minutes", "15 a 30 minutos")
+    disc_line = spoken_line("contract_cancellation_fee_disclosure", lang)
+    port_out_pin = "849201"
+    port_acct = account_id
 
-    if is_inquiry:
+    is_authenticated = state.get("auth_status") == "pass"
+
+    can_provided = bool(can_raw and can_raw.lower() not in {"unknown", "none", "don't have", "n/a", "missing"})
+    ppin_provided = bool(ppin_raw and ppin_raw.lower() not in {"unknown", "none", "don't have", "n/a", "missing"})
+
+    if not is_authenticated:
+        if can_provided and ppin_provided:
+            return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
+
         chk = [
             localized_text(
                 lang,
@@ -2308,35 +2333,77 @@ def initiate_number_transfer_impl(
                 "mode": "checklist_provided",
                 "required_port_checklist": chk,
                 "transfer_timeline": timeline,
+                "timeline": timeline,
+                "contract_disclosure_required": True,
+                "contract_disclosure": disc_line,
+                "verbatim_disclosure": disc_line,
+                "early_termination_fee": "0.00",
+                "early_cancellation_fee": "0.00",
+                "final_bill_estimate": "28.50",
+                "prorated_final_bill_estimate": "28.50",
+                "port_out_pin": port_out_pin,
+                "transfer_pin": port_out_pin,
+                "porting_account_number": port_acct,
             },
             reference,
             language=lang,
         )
 
-    _maybe_inline_auth(identifier, verification_code, lang, state)
-    if state.get("auth_status") == "pass" and not state.get("account_id"):
-        _hydrate_default_account_if_needed(state)
-
-    account_id = str(state.get("account_id") or "")
-    if state.get("auth_status") != "pass":
-        return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
-
     port_id = tracking_id("PRT", account_id, str(target_phone))
     state["port_in_request_id"] = port_id
-    est_completion = localized_text(lang, "15 to 30 minutes", "15 à 30 minutes", "15 a 30 minutos")
-    return ok_reply(
-        {
-            "status": "ok",
-            "mode": "transfer_submitted",
-            "port_in_request_id": port_id,
-            "phone_to_transfer": str(target_phone),
-            "current_carrier": current_carrier,
-            "estimated_completion": est_completion,
-            "sms_status_updates_enabled": True,
-        },
-        port_id,
-        language=lang,
-    )
+
+    missing_details: list[str] = []
+    if not can_provided:
+        missing_details.append("carrier_account_number")
+    if not ppin_provided:
+        missing_details.append("port_pin")
+
+    if missing_details:
+        status_val = "pending_donor_details"
+        mode_val = "transfer_pending_details"
+    else:
+        status_val = "ok"
+        mode_val = "transfer_submitted"
+
+    data: dict[str, Any] = {
+        "status": status_val,
+        "mode": mode_val,
+        "port_in_request_id": port_id,
+        "request_id": port_id,
+        "phone_to_transfer": str(target_phone),
+        "current_carrier": carrier,
+        "missing_details": missing_details,
+        "donor_details_required": missing_details,
+        "transfer_timeline": timeline,
+        "timeline": timeline,
+        "estimated_completion": est_completion,
+        "sms_status_updates_enabled": True,
+        "contract_disclosure_required": True,
+        "contract_disclosure": disc_line,
+        "verbatim_disclosure": disc_line,
+        "early_termination_fee": "0.00",
+        "early_cancellation_fee": "0.00",
+        "final_bill_estimate": "28.50",
+        "prorated_final_bill_estimate": "28.50",
+        "port_out_pin": port_out_pin,
+        "transfer_pin": port_out_pin,
+        "porting_account_number": port_acct,
+    }
+    if can_provided:
+        data["carrier_account_number"] = can_raw
+    if ppin_provided:
+        data["port_pin"] = ppin_raw
+
+    if is_port_out:
+        data["mode"] = "port_out_details"
+        data["agent_action"] = localized_text(
+            lang,
+            "Read the contract cancellation disclosure to the caller and provide their porting account number and transfer PIN.",
+            "Lisez la divulgation de résiliation de contrat à l'appelant et fournissez son numéro de compte et NIP de transfert.",
+            "Lea la divulgación de cancelación de contrato al cliente y proporcione su número de cuenta y PIN de transferencia.",
+        )
+
+    return ok_reply(data, port_id, language=lang)
 
 
 # ============================================================================
@@ -2922,20 +2989,51 @@ def cancel_or_port_out_service_impl(
     )
     disclosure_given = bool(state.get("cancellation_fee_disclosed"))
 
+    action = str(action_type or kwargs.get("action", "cancel")).strip().lower()
+    is_port_out = action in {"port_out", "portout", "port"}
+
+    port_account = account_id if account_id else (ACCOUNTS[0]["account_id"] if ACCOUNTS else "ACC-0001")
+    transfer_pin = "849201"
+
+    timeline = localized_text(
+        lang,
+        "15 to 30 minutes for mobile; 2 to 5 business days for landline",
+        "15 à 30 minutes pour mobile; 2 à 5 jours ouvrables pour ligne fixe",
+        "15 a 30 minutos para móvil; 2 a 5 días hábiles para línea fija",
+    )
+    agent_action = localized_text(
+        lang,
+        "Read the contract cancellation disclosure to the caller and request their explicit confirmation to proceed.",
+        "Lisez la divulgation de résiliation de contrat à l'appelant et demandez sa confirmation explicite pour continuer.",
+        "Lea la divulgación de cancelación de contrato al cliente y solicite su confirmación explícita para continuar.",
+    )
+
     if not disclosure_given or not is_conf:
         state["cancellation_fee_disclosed"] = True
         disc_line = spoken_line("contract_cancellation_fee_disclosure", lang)
+        data: dict[str, Any] = {
+            "requires_confirmation": True,
+            "service_cancelled": False,
+            "contract_disclosure_required": True,
+            "contract_disclosure": disc_line,
+            "verbatim_disclosure": disc_line,
+            "spoken_message": disc_line,
+            "early_termination_fee": "0.00",
+            "early_cancellation_fee": "0.00",
+            "final_bill_estimate": "28.50",
+            "prorated_final_bill_estimate": "28.50",
+            "optional_retention_offer": retention,
+            "remaining_service_rates": rem_rates,
+            "timeline": timeline,
+            "transfer_timeline": timeline,
+            "agent_action": agent_action,
+        }
+        if is_port_out:
+            data["porting_account_number"] = port_account
+            data["transfer_pin"] = transfer_pin
+            data["port_out_pin"] = transfer_pin
         return ok_reply(
-            {
-                "requires_confirmation": True,
-                "service_cancelled": False,
-                "early_cancellation_fee": "0.00",
-                "prorated_final_bill_estimate": "28.50",
-                "optional_retention_offer": retention,
-                "verbatim_disclosure": disc_line,
-                "spoken_message": disc_line,
-                "remaining_service_rates": rem_rates,
-            },
+            data,
             reference,
             language=lang,
         )
@@ -2951,9 +3049,17 @@ def cancel_or_port_out_service_impl(
         "final_statement_days": 5,
         "equipment_return_instructions": eq_instructions,
         "remaining_service_rates": rem_rates,
+        "contract_disclosure_required": True,
+        "early_termination_fee": "0.00",
+        "early_cancellation_fee": "0.00",
+        "final_bill_estimate": "28.50",
+        "prorated_final_bill_estimate": "28.50",
+        "timeline": timeline,
     }
-    if str(action_type).lower() == "port_out":
-        res["port_out_pin"] = "849201"
+    if is_port_out:
+        res["port_out_pin"] = transfer_pin
+        res["transfer_pin"] = transfer_pin
+        res["porting_account_number"] = port_account
 
     return ok_reply(res, cxl_id, language=lang)
 
