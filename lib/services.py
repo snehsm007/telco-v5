@@ -1242,14 +1242,65 @@ def get_billing_summary_impl(
     autopay = bool(state.get("autopay_enrolled", False))
     pay_arr = bool(state.get("payment_arrangement_active", False))
     line_items = FAKE_BILLING_LEDGER.get("recent_line_items", [])
+    recent_pmts = FAKE_BILLING_LEDGER.get("recent_payments", [])
+
+    try:
+        past_due_dec = Decimal(str(past_due))
+    except Exception:
+        past_due_dec = Decimal("0.00")
+
+    posted_pmts = [p for p in recent_pmts if p.get("status") == "posted"]
+    last_pmt_amt_str = str(posted_pmts[0].get("amount", "85.50")) if posted_pmts else "85.50"
+    last_pmt_date = str(posted_pmts[0].get("date", "2026-10-15")) if posted_pmts else "2026-10-15"
+    last_pmt_method = str(state.get("last_payment_method") or (posted_pmts[0].get("payment_method", "card") if posted_pmts else "card"))
+
+    try:
+        last_pmt_dec = Decimal(str(last_pmt_amt_str))
+    except Exception:
+        last_pmt_dec = Decimal("0.00")
+
+    method_l4 = bank_l4 if ("bank" in last_pmt_method.lower()) else card_l4
+
+    session_restored = bool(state.get("service_restored") and not is_susp)
+    covers_past_due = (
+        past_due_dec == Decimal("0.00")
+        or session_restored
+        or pay_arr
+        or (last_pmt_dec > Decimal("0.00") and last_pmt_dec >= past_due_dec)
+    )
+
+    last_payment = {
+        "amount": display_amount(last_pmt_dec),
+        "posted_date": last_pmt_date,
+        "method_last4": method_l4,
+        "covers_past_due": covers_past_due,
+    }
+
+    if covers_past_due:
+        service_status = "eligible_for_restoration"
+        restoration_hint = (
+            f"A payment of ${display_amount(last_pmt_dec)} posted on {last_pmt_date} covers the past-due balance. "
+            "If the caller reports their service is suspended or not working after paying, "
+            "execute service restoration immediately via execute_suspend_restore(action='restore') "
+            "without troubleshooting or requiring another payment."
+        )
+    elif is_susp:
+        service_status = "suspended"
+        restoration_hint = "Payment of past due balance is required before service restoration can be executed."
+    else:
+        service_status = "active"
+        restoration_hint = ""
 
     return ok_reply(
         {
             "current_balance": display_amount(bal),
             "past_due_balance": display_amount(past_due),
             "due_date": "2026-11-05",
-            "last_payment_amount": "85.50",
-            "last_payment_date": "2026-10-15",
+            "last_payment_amount": display_amount(last_pmt_dec),
+            "last_payment_date": last_pmt_date,
+            "last_payment": last_payment,
+            "service_status": service_status,
+            "restoration_hint": restoration_hint,
             "autopay_enrolled": autopay,
             "payment_arrangement_active": pay_arr,
             "card_on_file_last4": card_l4,
@@ -1257,7 +1308,7 @@ def get_billing_summary_impl(
             "is_suspended": is_susp,
             "suspension_reason": susp_reason,
             "recent_charges": line_items,
-            "recent_payments": FAKE_BILLING_LEDGER.get("recent_payments", []),
+            "recent_payments": recent_pmts,
             "duplicate_payment_amount": "85.50",
             "daily_outage_proration_rate": "2.85",
         },
@@ -3060,29 +3111,55 @@ def execute_suspend_restore_impl(
     clean_reason = str(reason).strip() if (reason is not None and not isinstance(reason, bool) and str(reason).strip()) else "vacation"
 
     if act == "restore":
-        if (
-            state.get("suspension_reason") == "non_payment"
-            and Decimal(str(state.get("past_due_balance") or 0)) > 0
-            and not state.get("payment_arrangement_active")
-        ):
-            return error_reply(
-                "PAST_DUE_BALANCE_REQUIRED",
-                reference=reference,
+        past_due_val = state.get("past_due_balance", "85.50")
+        try:
+            past_due_dec = Decimal(str(past_due_val))
+        except Exception:
+            past_due_dec = Decimal("0.00")
+
+        recent_pmts = FAKE_BILLING_LEDGER.get("recent_payments", [])
+        posted_pmts = [p for p in recent_pmts if p.get("status") == "posted"]
+        posted_amt = Decimal(str(posted_pmts[0]["amount"])) if posted_pmts else Decimal("0.00")
+
+        session_restored = bool(state.get("service_restored") and not state.get("is_suspended", False))
+        pay_arr = bool(state.get("payment_arrangement_active", False))
+
+        covers_past_due = (
+            past_due_dec == Decimal("0.00")
+            or session_restored
+            or pay_arr
+            or (posted_amt > Decimal("0.00") and posted_amt >= past_due_dec)
+        )
+
+        if covers_past_due:
+            state["is_suspended"] = False
+            state["suspension_reason"] = ""
+            state["service_restored"] = True
+            state["past_due_balance"] = "0.00"
+            return ok_reply(
+                {
+                    "status": "restored",
+                    "service_restored": True,
+                    "restored_after_payment": True,
+                    "is_suspended": False,
+                    "past_due_balance": "0.00",
+                    "restoration_eta_minutes": 15,
+                    "confirmation_number": reference,
+                },
+                reference,
                 language=lang,
-                data={"past_due_balance": state.get("past_due_balance", "85.50")},
             )
-        state["is_suspended"] = False
-        state["suspension_reason"] = ""
-        state["service_restored"] = True
-        return ok_reply(
-            {
-                "service_restored": True,
-                "is_suspended": False,
-                "restoration_eta_minutes": 15,
-                "confirmation_number": reference,
-            },
-            reference,
+
+        return error_reply(
+            "PAST_DUE_BALANCE_REQUIRED",
+            reference=reference,
             language=lang,
+            agent_action="Take payment for past-due balance first before restoring service.",
+            data={
+                "past_due_balance": display_amount(past_due_dec),
+                "payment_required": True,
+                "amount": display_amount(past_due_dec),
+            },
         )
 
     state["is_suspended"] = True

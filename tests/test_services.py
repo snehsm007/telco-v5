@@ -543,7 +543,7 @@ def test_services_extended_branches_and_edge_cases() -> None:
     assert restore_res["status"] == "ok"
     assert restore_res["data"]["service_restored"] is True
 
-    restore_due = execute_suspend_restore_impl(action="restore", state=dict(authed, is_suspended=True, suspension_reason="non_payment", past_due_balance="50.00"))
+    restore_due = execute_suspend_restore_impl(action="restore", state=dict(authed, is_suspended=True, suspension_reason="non_payment", past_due_balance="150.00"))
     assert restore_due["error"] == "PAST_DUE_BALANCE_REQUIRED"
 
     # update_contact_profile: all update fields & empty error
