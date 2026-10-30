@@ -3399,6 +3399,7 @@ def manage_warranty_claim_impl(
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("manage_warranty_claim", account_id, str(issue_description))
     state["last_tracking_id"] = reference
+    unit_condition = localized_text(lang, "brand-new unit", "appareil neuf", "unidad completamente nueva")
 
     # Priority 1: Swollen battery hazard override
     desc_low = str(issue_description or "").lower()
@@ -3415,7 +3416,15 @@ def manage_warranty_claim_impl(
             {
                 "safety_hazard": True,
                 "claim_status": "urgent_safety_replacement",
+                "warranty_covered": True,
+                "warranty_active": True,
+                "in_warranty": True,
                 "device_model": FAKE_WARRANTY_DATA["device_model"],
+                "purchase_date": FAKE_WARRANTY_DATA["purchase_date"],
+                "warranty_months": FAKE_WARRANTY_DATA["warranty_months"],
+                "warranty_coverage_end": FAKE_WARRANTY_DATA["coverage_end_date"],
+                "coverage_end_date": FAKE_WARRANTY_DATA["coverage_end_date"],
+                "replacement_unit_condition": unit_condition,
                 "urgent_safety_instructions": instructions,
                 "expedited_replacement_eta": eta_text,
                 "do_not_mail_warning": True,
@@ -3451,8 +3460,14 @@ def manage_warranty_claim_impl(
                 "requires_damage_check": True,
                 "claim_submitted": False,
                 "warranty_active": True,
+                "warranty_covered": True,
+                "in_warranty": True,
                 "device_model": FAKE_WARRANTY_DATA["device_model"],
+                "purchase_date": FAKE_WARRANTY_DATA["purchase_date"],
+                "warranty_months": FAKE_WARRANTY_DATA["warranty_months"],
                 "warranty_coverage_end": FAKE_WARRANTY_DATA["coverage_end_date"],
+                "coverage_end_date": FAKE_WARRANTY_DATA["coverage_end_date"],
+                "replacement_unit_condition": unit_condition,
                 "spoken_message": prompt_msg,
             },
             reference,
@@ -3476,9 +3491,16 @@ def manage_warranty_claim_impl(
     return ok_reply(
         {
             "warranty_covered": True,
+            "warranty_active": True,
+            "in_warranty": True,
             "claim_status": "approved",
             "warranty_claim_id": claim_id,
             "device_model": FAKE_WARRANTY_DATA["device_model"],
+            "purchase_date": FAKE_WARRANTY_DATA["purchase_date"],
+            "warranty_months": FAKE_WARRANTY_DATA["warranty_months"],
+            "warranty_coverage_end": FAKE_WARRANTY_DATA["coverage_end_date"],
+            "coverage_end_date": FAKE_WARRANTY_DATA["coverage_end_date"],
+            "replacement_unit_condition": unit_condition,
             "replacement_eta_days": 2,
             "return_window_days": 14,
             "prepaid_label_sent": True,

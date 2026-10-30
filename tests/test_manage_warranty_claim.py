@@ -11,6 +11,11 @@ def test_manage_warranty_claim_swollen_battery_safety_override(monkeypatch) -> N
     assert res["status"] == "ok"
     assert res["data"]["safety_hazard"] is True
     assert res["data"]["claim_status"] == "urgent_safety_replacement"
+    assert res["data"]["warranty_covered"] is True
+    assert res["data"]["in_warranty"] is True
+    assert res["data"]["purchase_date"] == "2026-03-15"
+    assert res["data"]["warranty_coverage_end"] == "2027-03-15"
+    assert "brand-new" in res["data"]["replacement_unit_condition"]
     assert "battery" in res["data"]["urgent_safety_instructions"].lower()
     assert session.state["warranty_claim_id"] == res["data"]["warranty_claim_id"]
 
@@ -21,6 +26,8 @@ def test_manage_warranty_claim_swollen_battery_french_localization(monkeypatch) 
     res = tool.manage_warranty_claim(issue_description="La batterie est gonflée", language="fr-CA")
     assert res["status"] == "ok"
     assert res["data"]["safety_hazard"] is True
+    assert res["data"]["warranty_covered"] is True
+    assert "neuf" in res["data"]["replacement_unit_condition"]
     assert "batterie" in res["data"]["urgent_safety_instructions"].lower()
 
 
@@ -37,6 +44,8 @@ def test_manage_warranty_claim_requires_damage_screening(monkeypatch) -> None:
     res = tool.manage_warranty_claim(issue_description="The screen flickers occasionally")
     assert res["status"] == "ok"
     assert res["data"]["requires_damage_check"] is True
+    assert res["data"]["warranty_covered"] is True
+    assert res["data"]["warranty_coverage_end"] == "2027-03-15"
     assert session.state["warranty_damage_checked"] is True
 
 
@@ -62,6 +71,8 @@ def test_manage_warranty_claim_approved_with_dict_context(monkeypatch) -> None:
     )
     assert res["status"] == "ok"
     assert res["data"]["warranty_covered"] is True
+    assert res["data"]["warranty_coverage_end"] == "2027-03-15"
+    assert "brand-new" in res["data"]["replacement_unit_condition"]
     assert res["data"]["claim_status"] == "approved"
     assert "warranty_claim_id" in res["data"]
 
@@ -72,4 +83,6 @@ def test_manage_warranty_claim_localization_spanish(monkeypatch) -> None:
     res = tool.manage_warranty_claim(issue_description="Humo saliendo de la batería (smoke)", language="es-US")
     assert res["status"] == "ok"
     assert res["data"]["safety_hazard"] is True
+    assert res["data"]["warranty_covered"] is True
+    assert "nueva" in res["data"]["replacement_unit_condition"]
     assert "batería" in res["data"]["urgent_safety_instructions"].lower()
