@@ -2138,9 +2138,9 @@ def get_billing_summary_impl(  # pragma: no cover
 
     billing_action = localized_text(
         lang,
-        "A caller-named payment method is confirmed and used; offer payment methods on file only if the caller has not named one.",
-        "Un mode de paiement nommé par le client est confirmé et utilisé ; ne proposez les modes de paiement au dossier que si le client n'en a pas nommé.",
-        "El método de pago indicado por el cliente se confirma y utiliza; ofrezca los métodos registrados solo si el cliente no indicó ninguno.",
+        "A caller-named payment method or specified card ending is confirmed and used; offer payment methods on file only if the caller has not named one. When the caller states their saved card has a different ending, accept and charge that card ending.",
+        "Un mode de paiement ou terminaison de carte nommé par le client est confirmé et utilisé ; ne proposez les modes de paiement au dossier que si le client n'en a pas nommé. Si le client indique une terminaison de carte différente, acceptez et débitez cette carte.",
+        "El método de pago o terminación de tarjeta indicado por el cliente se confirma y utiliza; ofrezca los métodos registrados solo si el cliente no indicó ninguno. Si el cliente indica una terminación de tarjeta diferente, acepte y cargue esa tarjeta.",
     )
 
     rep = ok_reply(
