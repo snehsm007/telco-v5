@@ -2895,6 +2895,11 @@ def browse_plans_and_coverage_impl(
         a_copy["estimated_tax"] = str(a_tax)
         a_copy["estimated_total_monthly"] = str(a_total)
         a_copy["monthly_total_with_tax"] = str(a_total)
+        if a.get("category") == "tv" or a.get("id") == "ADDON-SPORTS":
+            a_copy["included_channels"] = "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD"
+            a_copy["combined_monthly_with_tv_starter"] = "43.00"
+            a_copy["combined_monthly_with_tv_starter_before_tax"] = "43.00"
+            a_copy["combined_monthly_with_tv_starter_with_tax"] = "49.45"
         addons_enriched.append(a_copy)
 
     state["shortlisted_plan_ids"] = ",".join(p["id"] for p in shortlist)
@@ -2908,17 +2913,24 @@ def browse_plans_and_coverage_impl(
         "Mes a mes sin contrato anual, cargo de activación de $0",
     )
 
+    browse_payload = {
+        "category": cat,
+        "shortlisted_plans": shortlist,
+        "available_add_ons": addons_enriched,
+        "add_ons": addons_enriched,
+        "fiber_coverage_available": True,
+        "five_g_coverage_available": True,
+        "throttled_speed_after_cap": "512 kbps",
+        "contract_term": contract_term,
+    }
+    if cat == "tv":
+        browse_payload["included_channels"] = "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD"
+        browse_payload["combined_monthly_with_tv_starter"] = "43.00"
+        browse_payload["combined_monthly_with_tv_starter_before_tax"] = "43.00"
+        browse_payload["combined_monthly_with_tv_starter_with_tax"] = "49.45"
+
     return ok_reply(
-        {
-            "category": cat,
-            "shortlisted_plans": shortlist,
-            "available_add_ons": addons_enriched,
-            "add_ons": addons_enriched,
-            "fiber_coverage_available": True,
-            "five_g_coverage_available": True,
-            "throttled_speed_after_cap": "512 kbps",
-            "contract_term": contract_term,
-        },
+        browse_payload,
         ref,
         language=lang,
     )
@@ -3028,6 +3040,22 @@ def commit_plan_or_order_impl(
         f"{plan_name}: ${price_disp}/mes más ${tax_disp} de impuestos estimados (${total_disp} total mensual). Contrato: {contract_term}. Entrega/activación: {eff_date}.",
     )
 
+    quote_data = {
+        "plan_id": chosen_plan_id,
+        "plan_name": plan_name,
+        "monthly_price": price_disp,
+        "estimated_tax": tax_disp,
+        "monthly_total_with_tax": total_disp,
+        "contract_term": contract_term,
+        "delivery_eta": eff_date,
+        "quote_summary": quote_summary,
+    }
+    if chosen_plan_id == "ADDON-SPORTS" or (plan_info and plan_info.get("category") == "tv"):
+        quote_data["included_channels"] = "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD"
+        quote_data["combined_monthly_with_tv_starter"] = "43.00"
+        quote_data["combined_monthly_with_tv_starter_before_tax"] = "43.00"
+        quote_data["combined_monthly_with_tv_starter_with_tax"] = "49.45"
+
     if not _is_truthy_bool(confirmed):
         action_text = localized_text(
             lang,
@@ -3040,16 +3068,7 @@ def commit_plan_or_order_impl(
             message=quote_summary,
             agent_action=action_text,
             reference=reference,
-            data={
-                "plan_id": chosen_plan_id,
-                "plan_name": plan_name,
-                "monthly_price": price_disp,
-                "estimated_tax": tax_disp,
-                "monthly_total_with_tax": total_disp,
-                "contract_term": contract_term,
-                "delivery_eta": eff_date,
-                "quote_summary": quote_summary,
-            },
+            data=quote_data,
             language=lang,
         )
 
@@ -3065,24 +3084,31 @@ def commit_plan_or_order_impl(
         "Los demás servicios del paquete permanecen sin cambios.",
     )
 
+    order_payload = {
+        "order_id": order_ref,
+        "order_type": order_type or "plan_upgrade",
+        "plan_id": chosen_plan_id,
+        "plan_name": plan_name,
+        "new_monthly_price": price_disp,
+        "estimated_tax": tax_disp,
+        "monthly_total_with_tax": total_disp,
+        "contract_term": contract_term,
+        "quote_summary": quote_summary,
+        "effective_date": eff_date,
+        "throttled_speed_after_cap": "512 kbps",
+        "remaining_bundle_summary": bundle_summary,
+        "shipping_address_on_file": state.get("service_address", "123 Maple Avenue, Montreal, QC"),
+        "sms_receipt_sent": True,
+        "destination_phone_last4": p_l4,
+    }
+    if chosen_plan_id == "ADDON-SPORTS" or (plan_info and plan_info.get("category") == "tv"):
+        order_payload["included_channels"] = "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD"
+        order_payload["combined_monthly_with_tv_starter"] = "43.00"
+        order_payload["combined_monthly_with_tv_starter_before_tax"] = "43.00"
+        order_payload["combined_monthly_with_tv_starter_with_tax"] = "49.45"
+
     return ok_reply(
-        {
-            "order_id": order_ref,
-            "order_type": order_type or "plan_upgrade",
-            "plan_id": chosen_plan_id,
-            "plan_name": plan_name,
-            "new_monthly_price": price_disp,
-            "estimated_tax": tax_disp,
-            "monthly_total_with_tax": total_disp,
-            "contract_term": contract_term,
-            "quote_summary": quote_summary,
-            "effective_date": eff_date,
-            "throttled_speed_after_cap": "512 kbps",
-            "remaining_bundle_summary": bundle_summary,
-            "shipping_address_on_file": state.get("service_address", "123 Maple Avenue, Montreal, QC"),
-            "sms_receipt_sent": True,
-            "destination_phone_last4": p_l4,
-        },
+        order_payload,
         order_ref,
         language=lang,
     )
