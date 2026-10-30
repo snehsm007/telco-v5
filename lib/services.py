@@ -15,6 +15,7 @@ from typing import Any
 
 from lib.copy import (
     SPOKEN_LINES,
+    get_current_plan_info,
     localize_catalog_copy,
     localized_text,
     resolve_copy_locale,
@@ -2948,6 +2949,8 @@ def browse_plans_and_coverage_impl(
     ref = tracking_id("browse_plans_and_coverage", cat, pc)
     state["last_tracking_id"] = ref
 
+    current_plan = get_current_plan_info(cat, lang)
+
     contract_term = localized_text(
         lang,
         "Month-to-month, no annual contract, $0 activation fee",
@@ -2957,6 +2960,10 @@ def browse_plans_and_coverage_impl(
 
     browse_payload = {
         "category": cat,
+        "current_plan": current_plan,
+        "current_plan_name": current_plan["plan_name"],
+        "current_plan_price": current_plan["monthly_price"],
+        "current_plan_speed": current_plan.get("speed", ""),
         "shortlisted_plans": shortlist,
         "available_add_ons": addons_enriched,
         "add_ons": addons_enriched,

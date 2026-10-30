@@ -39,7 +39,7 @@ Knowledgeable, safety-first, transparent, and concise. Present clear plan shortl
                 - service_address: the caller's street address when provided
                 - max_budget: the caller's monthly budget ceiling when stated
                 - language: the active language code
-                Present a concise shortlist of matching plans with exact monthly prices and key features from tool output. For work-from-home inquiries, quote low latency, jitter, uptime, and recommended tiers from technical_specifications; never offer business account transfer for residential internet.
+                When the caller asks about their current plan or rate, quote plan_name, monthly_price, and speed from current_plan in tool output before presenting upgrade options. Present a concise shortlist of matching plans with exact monthly prices and key features from tool output. For work-from-home inquiries, quote low latency, jitter, uptime, and recommended tiers from technical_specifications; never offer business account transfer for residential internet.
             </action>
         </step>
         <step name="Provide Number Transfer Checklist">
