@@ -32,6 +32,25 @@ def test_detect_utterance_language_empty_and_digits_inertia() -> None:
     assert detect_utterance_language("... --- ...", "en-US") == "en-US"
 
 
+def test_detect_utterance_language_dtmf_digit_selection() -> None:
+    # Standalone DTMF digit 2 selects French
+    assert detect_utterance_language("2", "en-US") == "fr-CA"
+    assert detect_utterance_language(" 2 ", "en-US") == "fr-CA"
+    assert detect_utterance_language("2.", "en-US") == "fr-CA"
+    assert detect_utterance_language("2#", "en-US") == "fr-CA"
+    assert detect_utterance_language("User: 2", "en-US") == "fr-CA"
+    assert detect_utterance_language("[dtmf: 2]", "en-US") == "fr-CA"
+    assert detect_utterance_language("[keypad: 2]", "en-US") == "fr-CA"
+    assert detect_utterance_language("option 2", "en-US") == "fr-CA"
+    assert detect_utterance_language("touche 2", "en-US") == "fr-CA"
+
+    # Standalone DTMF digit 1 selects English
+    assert detect_utterance_language("1", "en-US") == "en-US"
+    assert detect_utterance_language("User: 1", "en-US") == "en-US"
+    assert detect_utterance_language("[dtmf: 1]", "en-US") == "en-US"
+    assert detect_utterance_language("option 1", "en-US") == "en-US"
+
+
 def test_detect_utterance_language_explicit_switches() -> None:
     # French
     assert detect_utterance_language("je voudrais parler en français", "en-US") == "fr-CA"
