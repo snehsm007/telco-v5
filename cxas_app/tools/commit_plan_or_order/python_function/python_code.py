@@ -2207,10 +2207,16 @@ def commit_plan_or_order_impl(  # pragma: no cover
     )
 
     if not _is_truthy_bool(confirmed):
+        action_text = localized_text(
+            lang,
+            "read the quote and get an explicit yes, then call again with confirmed=true",
+            "lisez le devis et obtenez un accord explicite, puis rappelez avec confirmed=true",
+            "lea la cotización y obtenga un sí explícito, luego llame nuevamente con confirmed=true",
+        )
         return error_reply(
             "REQUIRES_CONFIRMATION",
             message=quote_summary,
-            agent_action="read the quote and get an explicit yes, then call again with confirmed=true",
+            agent_action=action_text,
             reference=reference,
             data={
                 "plan_id": chosen_plan_id,
