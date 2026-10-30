@@ -223,3 +223,26 @@ def test_send_login_code_email_spoken_phrases_locales(monkeypatch) -> None:
     assert res_es["data"]["masked_email"] == "u***@example.com"
     assert "comienza con 'u'" in res_es["data"]["spoken_message"]
     assert "comenzando con u" in res_es["data"]["agent_action"]
+
+
+def test_send_login_code_caller_stated_email_override(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "ACC-5678",
+            "phone_last4": "5678",
+            "contact_email": "user@example.com",
+            "auth_status": "none",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.send_login_code(
+        channel="email",
+        identifier="jl.dubois@example.fr",
+        language="fr-CA",
+    )
+    assert reply["status"] == "ok"
+    assert reply["data"]["channel"] == "email"
+    assert reply["data"]["masked_email"] == "j***@example.fr"
+    assert "commençant par « j »" in reply["data"]["spoken_message"]
+    assert session.state["contact_email"] == "jl.dubois@example.fr"
+

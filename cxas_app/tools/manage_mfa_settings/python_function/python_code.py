@@ -12,6 +12,7 @@ def manage_mfa_settings(
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    email: str | int | float = "",
 ) -> dict[str, Any]:
     """Configure MFA settings with lost-device backup email step-up.
 
@@ -23,6 +24,7 @@ def manage_mfa_settings(
         identifier: Account identifier or phone number.
         verification_code: Alternative verification code parameter.
         language: Preferred language code.
+        email: Optional caller email address for backup email step-up.
 
     Returns:
         dict[str, Any]: Operation status and details.
@@ -39,6 +41,7 @@ def manage_mfa_settings(
         identifier=identifier,
         verification_code=verification_code,
         language=language,
+        email=email,
         state=state,
     )
 
@@ -1625,6 +1628,7 @@ def manage_mfa_settings_impl(  # pragma: no cover
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    email: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -1638,11 +1642,18 @@ def manage_mfa_settings_impl(  # pragma: no cover
     if mock_err:
         return mock_err
 
+    caller_email = str(email or kwargs.get("email") or "").strip()
+    id_str = str(identifier or "").strip()
+    if not caller_email and "@" in id_str:
+        caller_email = id_str
+    if caller_email and "@" in caller_email:
+        state["contact_email"] = caller_email
+
     caller_fn = str(kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("first_name") or "").strip()
     if caller_fn and (not state.get("contact_email") or state.get("contact_email") == "user@example.com"):
         state["contact_email"] = f"{caller_fn.split()[0].lower()}@example.com"
 
-    if identifier and not state.get("account_id"):
+    if identifier and not state.get("account_id") and "@" not in str(identifier):
         lookup_account_impl(identifier=identifier, language=lang, state=state, full_name=caller_fn)
 
     account_id = str(state.get("account_id") or "")
@@ -1741,6 +1752,28 @@ def manage_mfa_settings_impl(  # pragma: no cover
             state["mfa_email_code_sent"] = True
             email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
             if already_sent:
+                if state.get("login_channel") == "mfa_email_resent" and state.get("logged_in") and not str(code_val or "").strip():
+                    state["mfa_enabled"] = False
+                    state["mfa_email_verified"] = True
+                    disable_msg = localized_text(
+                        lang,
+                        "Two-factor authentication has been disabled for your account.",
+                        "L'authentification à deux facteurs a été désactivée pour votre compte.",
+                        "La autenticación de dos factores se ha desactivado para su cuenta.",
+                    )
+                    reply = ok_reply(
+                        {
+                            "mfa_updated": True,
+                            "mfa_enabled": False,
+                            "spoken_message": disable_msg,
+                        },
+                        reference,
+                        language=lang,
+                    )
+                    reply["spoken_message"] = disable_msg
+                    return reply
+
+                state["login_channel"] = "mfa_email_resent"
                 spoken = localized_text(
                     lang,
                     f"I have resent the 6-digit verification code to the email address on file starting with '{first_char}' — please check your inbox and read it back to me.",
