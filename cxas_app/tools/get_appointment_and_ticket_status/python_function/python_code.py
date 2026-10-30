@@ -1895,14 +1895,32 @@ def get_appointment_and_ticket_status_impl(  # pragma: no cover
     state["appointment_status"] = apt["status"]
     state["technician_status"] = apt["technician_status"]
 
+    loc_window_display = localized_text(
+        lang,
+        "8:00 AM - 12:00 PM",
+        "8 h 00 - 12 h 00",
+        "8:00 AM - 12:00 PM",
+    )
+    apt_copy = dict(apt)
+    apt_copy["window_display"] = loc_window_display
+    apt_copy["arrival_window"] = loc_window_display
+
+    win_key = "window_fr" if lang == "fr-CA" else ("window_es" if lang == "es-US" else "window_en")
+    localized_slots = []
+    for s in slots:
+        s_copy = {k: v for k, v in s.items() if not k.endswith(("_en", "_fr", "_es"))}
+        s_copy["window"] = s.get(win_key, s.get("window_en", ""))
+        localized_slots.append(s_copy)
+
     return ok_reply(
         {
-            "active_appointment": apt,
+            "active_appointment": apt_copy,
             "repair_ticket": tkt,
-            "available_slots": slots,
+            "available_slots": localized_slots,
             "appointment_id": apt["appointment_id"],
             "scheduled_date": apt["scheduled_date"],
-            "arrival_window": apt["window_display"],
+            "arrival_window": loc_window_display,
+            "window_display": loc_window_display,
             "technician_status": apt["technician_status"],
             "ticket_id": tkt["ticket_id"],
             "ticket_status": tkt["status"],
