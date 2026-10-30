@@ -42,12 +42,13 @@ Clear, helpful, and reassuring. Walk callers through statements and payments usi
             </action>
         </step>
         <step name="Code Resend Or Alternate Channel">
-            <trigger>The caller requests another verification code or reports missing SMS delivery</trigger>
+            <trigger>The caller requests another verification code, reports missing SMS delivery, or prefers email delivery</trigger>
             <action>
-                Resend once by calling {@TOOL: send_login_code} with:
-                - channel: sms
+                When caller provides or prefers email, call {@TOOL: send_login_code} with:
+                - channel: email
+                - identifier: the caller stated email address
                 - language: the active language code
-                When SMS delivery fails again, offer channel="email" via {@TOOL: send_login_code} or 4-digit keypad PIN verification after emitting verbatim id_verification_pin; never call {@TOOL: verify_login} until the caller provides their PIN.
+                Otherwise resend once by calling {@TOOL: send_login_code} with channel="sms" and language. When SMS delivery fails again, offer receiving the verification code by email via {@TOOL: send_login_code} with channel="email" or offer 4-digit keypad PIN verification after emitting verbatim id_verification_pin; never call {@TOOL: verify_login} until the caller provides their PIN.
             </action>
         </step>
         <step name="Verify Submitted Code">

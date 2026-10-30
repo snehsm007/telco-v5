@@ -15,7 +15,7 @@ def send_login_code(
     Call this when a task tool returned error NOT_LOGGED_IN or authentication is needed.
 
     Args:
-        identifier: Optional phone or account number if not already in session.
+        identifier: Optional phone, account number, or email address if not already in session.
         channel: Delivery channel for the code (e.g. 'sms' or 'email').
         resend: Whether to re-dispatch a new code even if previously sent.
         language: BCP-47 language tag (e.g. en-US, fr-CA, es-US).
@@ -28,6 +28,10 @@ def send_login_code(
     state = getattr(ctx, "state", None) if ctx is not None else None
     if state is None and isinstance(ctx, dict):
         state = ctx
+    id_str = str(identifier or "").strip()
+    if "@" in id_str and state is not None and isinstance(state, dict):
+        state["contact_email"] = id_str
+        identifier = ""
     return send_login_code_impl(
         identifier=identifier,
         channel=channel,
