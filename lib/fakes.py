@@ -38,7 +38,7 @@ VALID_LOGIN_CODES: frozenset[str] = VALID_OTPS | VALID_PINS
 DECLINED_CARD_LAST4: frozenset[str] = frozenset({"0000", "9999"})
 
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})
-OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")
+OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z2Y7",)
 SALES_TAX_RATE: float = 0.15
 
 

@@ -1053,7 +1053,7 @@ def _session_language(state: dict[str, Any] | None, language: Any = "") -> str: 
 
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
 
-OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")  # pragma: no cover
+OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z2Y7",)  # pragma: no cover
 
 def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma: no cover
     """Return True when an identifier is intentionally invalid or synthetic wrong."""
@@ -1505,7 +1505,7 @@ def lookup_account_impl(  # pragma: no cover
     reg_alert = ""
     if pc:
         state["postal_code"] = pc
-        if any(pc.replace(" ", "").startswith(p) for p in OUTAGE_POSTAL_PREFIXES):
+        if pc.replace(" ", "") in OUTAGE_POSTAL_PREFIXES:
             reg_alert = spoken_line("service_alert_banner", lang)
             state["regional_alert"] = reg_alert
 
