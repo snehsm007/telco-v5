@@ -685,6 +685,15 @@
       }
     },
     {
+      "name": "troubleshooting_sms_attempts",
+      "description": "Counter of troubleshooting SMS dispatch attempts.",
+      "schema": {
+        "type": "INTEGER",
+        "default": 0,
+        "required": []
+      }
+    },
+    {
       "name": "tv_sub_type",
       "description": "Current television package tier.",
       "schema": {
