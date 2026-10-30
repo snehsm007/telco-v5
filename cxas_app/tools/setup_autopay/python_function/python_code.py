@@ -16,6 +16,10 @@ def setup_autopay(
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    bank_account: str | int | float = "",
+    account_number: str | int | float = "",
+    transit_number: str | int | float = "",
+    institution_number: str | int | float = "",
 ) -> dict[str, Any]:
     """Enroll or manage recurring autopay with card or bank account.
 
@@ -31,6 +35,10 @@ def setup_autopay(
         identifier: Optional phone or account number for inline lookup.
         verification_code: Optional one-time code for inline authentication.
         language: BCP-47 language tag (e.g. en-US, fr-CA, es-US).
+        bank_account: Optional bank account number.
+        account_number: Optional account number.
+        transit_number: Optional 5-digit bank transit number.
+        institution_number: Optional 3-digit financial institution number.
 
     Returns:
         dict: Autopay enrollment confirmation details or status.
@@ -51,6 +59,10 @@ def setup_autopay(
         identifier=identifier,
         verification_code=verification_code,
         language=language,
+        bank_account=bank_account,
+        account_number=account_number,
+        transit_number=transit_number,
+        institution_number=institution_number,
         state=state,
     )
 
@@ -1985,6 +1997,10 @@ def setup_autopay_impl(  # pragma: no cover
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    bank_account: str | int | float = "",
+    account_number: str | int | float = "",
+    transit_number: str | int | float = "",
+    institution_number: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -2028,7 +2044,35 @@ def setup_autopay_impl(  # pragma: no cover
         "Ofrezca exactamente estas; use tarjeta_registrada/cuenta_registrada para ellas; use nueva_tarjeta solo para una tarjeta que no esté en esta lista; el preámbulo se dice una vez por sesión.",
     )
 
+    req_bank_fields = localized_text(
+        lang,
+        "transit number (5 digits), financial institution number (3 digits), and bank account number",
+        "numéro de transit (5 chiffres), numéro d'institution financière (3 chiffres) et numéro de compte bancaire",
+        "número de tránsito (5 dígitos), número de institución financiera (3 dígitos) y número de cuenta bancaria",
+    )
+
     act = str(action or "enroll").lower()
+    if act in ("info", "fields", "details", "inquire", "requirements"):
+        action_text = localized_text(
+            lang,
+            f"List the required banking details ({req_bank_fields}) and ask the caller for their transit and account numbers to complete autopay enrollment.",
+            f"Indiquez les coordonnées bancaires requises ({req_bank_fields}) et demandez au client son numéro de transit et de compte pour compléter l'inscription au paiement automatique.",
+            f"Indique los datos bancarios requeridos ({req_bank_fields}) y solicite al cliente su número de tránsito y cuenta para completar la inscripción.",
+        )
+        rep = ok_reply(
+            {
+                "required_bank_fields": req_bank_fields,
+                "payment_methods_on_file": methods_on_file,
+                "agent_action": action_text,
+            },
+            reference,
+            language=lang,
+        )
+        rep["required_bank_fields"] = req_bank_fields
+        rep["payment_methods_on_file"] = methods_on_file
+        rep["agent_action"] = action_text
+        return rep
+
     if act == "cancel":
         state["autopay_enrolled"] = False
         cancel_action = localized_text(
@@ -2193,7 +2237,18 @@ def setup_autopay_impl(  # pragma: no cover
         is_bank = any(w in pm for w in ("bank", "checking", "bancaire", "chèques", "compte", "6789"))
         method_name = "bank" if is_bank else "card"
 
-        provided_digits = last4 or (bank_last4 if is_bank else card_last4) or ""
+        provided_digits = (
+            last4
+            or (bank_last4 if is_bank else card_last4)
+            or (bank_account if is_bank else "")
+            or (account_number if is_bank else "")
+            or (transit_number if is_bank else "")
+            or kwargs.get("bank_account", "")
+            or kwargs.get("account_number", "")
+            or kwargs.get("transit_number", "")
+            or kwargs.get("account", "")
+            or ""
+        )
         digits_parsed = _extract_last4(provided_digits)
         if digits_parsed is None:
             return error_reply("INVALID_INPUT", reference=reference, language=lang)
@@ -2246,7 +2301,7 @@ def setup_autopay_impl(  # pragma: no cover
             lang,
             f"Autopay is confirmed with your bank account ending in {digits}. Your monthly payment will be automatically drafted on day {due_day_str} of each month, starting {next_date}. Confirmation number is {ref}.",
             f"Le paiement automatique est confirmé avec votre compte bancaire se terminant par {digits}. Votre paiement mensuel sera prélevé automatiquement le {due_day_str} de chaque mois, à compter du {next_date}. Numéro de confirmation : {ref}.",
-            f"El pago automatique está confirmado con su cuenta bancaria que termina en {digits}. Su pago mensual se debitará automáticamente el día {due_day_str} de cada mes, a partir del {next_date}. Número de confirmación: {ref}.",
+            f"El pago automático está confirmado con su cuenta bancaria que termina en {digits}. Su pago mensual se debitará automáticamente el día {due_day_str} de cada mes, a partir del {next_date}. Número de confirmación: {ref}.",
         )
 
     if is_new_card:
@@ -2285,29 +2340,42 @@ def setup_autopay_impl(  # pragma: no cover
         rep["agent_action"] = new_card_action
         return rep
 
-    enroll_action = localized_text(
-        lang,
-        f"Confirm autopay is set up; do not ask for digits again. {on_file_guidance}",
-        f"Confirmez que le paiement automatique est configuré; ne demandez plus les chiffres. {on_file_guidance}",
-        f"Confirme que el pago automático está configurado; no vuelva a pedir dígitos. {on_file_guidance}",
-    )
+    if is_bank:
+        bank_guidance = localized_text(
+            lang,
+            f"Confirm autopay is set up; do not ask for digits again. If the caller asks for banking requirements or wishes to use another bank account, provide the required fields: {req_bank_fields}.",
+            f"Confirmez que le paiement automatique est configuré; ne demandez plus les chiffres. Si le client demande les exigences bancaires ou souhaite utiliser un autre compte, indiquez les champs requis : {req_bank_fields}.",
+            f"Confirme que el pago automático está configurado; no vuelva a pedir dígitos. Si el cliente solicita los requisitos bancarios o desea usar otra cuenta, indique los campos requeridos: {req_bank_fields}.",
+        )
+        enroll_action = bank_guidance
+    else:
+        enroll_action = localized_text(
+            lang,
+            f"Confirm autopay is set up; do not ask for digits again. {on_file_guidance}",
+            f"Confirmez que le paiement automatique est configuré; ne demandez plus les chiffres. {on_file_guidance}",
+            f"Confirme que el pago automático está configurado; no vuelva a pedir dígitos. {on_file_guidance}",
+        )
+    reply_payload = {
+        "autopay_enrolled": True,
+        "autopay_enabled": True,
+        "payment_method": method_name,
+        "masked_last4": digits,
+        "card_last4": digits if method_name == "card" else state.get("card_last4", "7742"),
+        "bank_last4": digits if method_name == "bank" else state.get("bank_last4", "6789"),
+        "billing_day": bday,
+        "autopay_discount_monthly": "5.00",
+        "next_draft_date": next_date,
+        "confirmation_id": ref,
+        "confirmation_number": ref,
+        "payment_methods_on_file": methods_on_file,
+        "spoken_summary": spoken_summary,
+        "spoken_message": spoken_summary,
+        "agent_action": enroll_action,
+    }
+    if is_bank:
+        reply_payload["required_bank_fields"] = req_bank_fields
     rep = ok_reply(
-        {
-            "autopay_enrolled": True,
-            "autopay_enabled": True,
-            "payment_method": method_name,
-            "masked_last4": digits,
-            "card_last4": digits if method_name == "card" else state.get("card_last4", "7742"),
-            "billing_day": bday,
-            "autopay_discount_monthly": "5.00",
-            "next_draft_date": next_date,
-            "confirmation_id": ref,
-            "confirmation_number": ref,
-            "payment_methods_on_file": methods_on_file,
-            "spoken_summary": spoken_summary,
-            "spoken_message": spoken_summary,
-            "agent_action": enroll_action,
-        },
+        reply_payload,
         reference=ref,
         language=lang,
     )
@@ -2316,5 +2384,8 @@ def setup_autopay_impl(  # pragma: no cover
     rep["confirmation_number"] = ref
     rep["spoken_summary"] = spoken_summary
     rep["payment_methods_on_file"] = methods_on_file
+    if is_bank:
+        rep["required_bank_fields"] = req_bank_fields
+        rep["bank_last4"] = digits
     return rep
 # --- END GENERATED SHARED BUNDLE ---
