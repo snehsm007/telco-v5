@@ -372,4 +372,51 @@ def test_setup_autopay_action_confirm_completes_enrollment() -> None:
     assert rep["card_last4"] == "4321"
 
 
+@pytest.mark.parametrize(
+    ("locale", "expected_phrase"),
+    [
+        ("en-US", "transit number (5 digits)"),
+        ("fr-CA", "numéro de transit (5 chiffres)"),
+        ("es-US", "número de tránsito (5 dígitos)"),
+    ],
+)
+def test_setup_autopay_bank_fields_inquire(locale: str, expected_phrase: str) -> None:
+    st = {"account_id": "A1001", "auth_status": "pass"}
+    for act in ("fields", "info", "inquire", "details"):
+        rep = setup_autopay_impl(action=act, language=locale, state=st)
+        assert rep["status"] == "ok"
+        assert expected_phrase in rep["required_bank_fields"]
+        assert expected_phrase in rep["data"]["required_bank_fields"]
+        assert "payment_methods_on_file" in rep["data"]
+
+
+def test_setup_autopay_bank_enroll_includes_required_fields_and_guidance() -> None:
+    st = {"account_id": "A1001", "auth_status": "pass"}
+    rep = setup_autopay_impl(payment_method="bank", last4="6789", language="fr-CA", state=st)
+    assert rep["status"] == "ok"
+    assert rep["data"]["autopay_enrolled"] is True
+    assert rep["data"]["bank_last4"] == "6789"
+    assert "numéro de transit (5 chiffres)" in rep["data"]["required_bank_fields"]
+    assert "numéro de transit (5 chiffres)" in rep["required_bank_fields"]
+    assert "champs requis" in rep["agent_action"]
+
+
+def test_setup_autopay_bank_kwargs_account_and_transit(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    rep = tool.setup_autopay(
+        payment_method="bank",
+        account_number="1234567",
+        transit_number="12345",
+        language="fr-CA",
+    )
+    assert rep["status"] == "ok"
+    assert rep["data"]["bank_last4"] == "4567"
+    assert session.state["bank_last4"] == "4567"
+    assert rep["data"]["autopay_enrolled"] is True
+
+
+
 
