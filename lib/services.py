@@ -2426,14 +2426,32 @@ def get_appointment_and_ticket_status_impl(
     state["appointment_status"] = apt["status"]
     state["technician_status"] = apt["technician_status"]
 
+    loc_window_display = localized_text(
+        lang,
+        "8:00 AM - 12:00 PM",
+        "8 h 00 - 12 h 00",
+        "8:00 AM - 12:00 PM",
+    )
+    apt_copy = dict(apt)
+    apt_copy["window_display"] = loc_window_display
+    apt_copy["arrival_window"] = loc_window_display
+
+    win_key = "window_fr" if lang == "fr-CA" else ("window_es" if lang == "es-US" else "window_en")
+    localized_slots = []
+    for s in slots:
+        s_copy = {k: v for k, v in s.items() if not k.endswith(("_en", "_fr", "_es"))}
+        s_copy["window"] = s.get(win_key, s.get("window_en", ""))
+        localized_slots.append(s_copy)
+
     return ok_reply(
         {
-            "active_appointment": apt,
+            "active_appointment": apt_copy,
             "repair_ticket": tkt,
-            "available_slots": slots,
+            "available_slots": localized_slots,
             "appointment_id": apt["appointment_id"],
             "scheduled_date": apt["scheduled_date"],
-            "arrival_window": apt["window_display"],
+            "arrival_window": loc_window_display,
+            "window_display": loc_window_display,
             "technician_status": apt["technician_status"],
             "ticket_id": tkt["ticket_id"],
             "ticket_status": tkt["status"],
@@ -2579,6 +2597,7 @@ def manage_appointment_impl(
             "appointment_id": state.get("active_appointment_id", "APT-4021"),
             "scheduled_date": slot_match["date"],
             "arrival_window": win,
+            "window_display": win,
             "slot_id": slot_match["slot_id"],
             "confirmation_number": ref,
             "sms_confirmation_sent": True,
@@ -2627,6 +2646,9 @@ def browse_plans_and_coverage_impl(
     max_b = _parse_positive_money(max_budget)
     tax_rate = Decimal(str(SALES_TAX_RATE))
 
+    feat_lang = "fr" if lang == "fr-CA" else ("es" if lang == "es-US" else "en")
+    desc_lang = "fr" if lang == "fr-CA" else ("es" if lang == "es-US" else "en")
+
     shortlist = []
     for p in catalog:
         try:
@@ -2637,7 +2659,8 @@ def browse_plans_and_coverage_impl(
         p_total = p_price + p_tax
         if max_b is not None and p_price > max_b:
             continue
-        p_copy = dict(p)
+        p_copy = {k: v for k, v in p.items() if not k.endswith(("_en", "_fr", "_es"))}
+        p_copy["features"] = p.get(f"features_{feat_lang}", p.get("features_en", ""))
         p_copy["estimated_tax"] = str(p_tax)
         p_copy["estimated_total_monthly"] = str(p_total)
         p_copy["monthly_total_with_tax"] = str(p_total)
@@ -2647,10 +2670,11 @@ def browse_plans_and_coverage_impl(
             break
     if not shortlist:
         for p in catalog[:2]:
-            p_copy = dict(p)
+            p_copy = {k: v for k, v in p.items() if not k.endswith(("_en", "_fr", "_es"))}
             p_price = Decimal(str(p.get("monthly_price", 0)))
             p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             p_total = p_price + p_tax
+            p_copy["features"] = p.get(f"features_{feat_lang}", p.get("features_en", ""))
             p_copy["estimated_tax"] = str(p_tax)
             p_copy["estimated_total_monthly"] = str(p_total)
             p_copy["monthly_total_with_tax"] = str(p_total)
@@ -2662,7 +2686,8 @@ def browse_plans_and_coverage_impl(
         cat_addons = list(FAKE_ADDON_CATALOG)
     addons_enriched = []
     for a in cat_addons:
-        a_copy = dict(a)
+        a_copy = {k: v for k, v in a.items() if not k.endswith(("_en", "_fr", "_es"))}
+        a_copy["description"] = a.get(f"description_{desc_lang}", a.get("description_en", ""))
         a_copy["contract_required"] = False
         a_price = Decimal(str(a.get("monthly_price", 0)))
         a_tax = (a_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
