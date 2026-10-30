@@ -102,3 +102,11 @@ def test_paretoloop_cherry_picked_instruction_invariants() -> None:
     assert "provide verbal device troubleshooting steps before escalating" in tech_txt
 
 
+def test_billing_autopay_instruction_invariants() -> None:
+    billing_txt = (APP_DIR / "agents" / "billing" / "instruction.txt").read_text(encoding="utf-8")
+    assert '<step name="Configure Autopay">' in billing_txt
+    assert "- payment_method: card_on_file, bank_on_file, or new_card" in billing_txt
+    assert 'use payment_method="card_on_file" or "bank_on_file" when the caller selects credit card or bank account without providing a specific 4-digit card ending' in billing_txt
+    assert 'use payment_method="new_card" only when the caller specifies a 4-digit card ending not on file or explicitly asks to add a new card' in billing_txt
+
+
