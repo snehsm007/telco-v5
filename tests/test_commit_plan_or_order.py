@@ -98,3 +98,23 @@ def test_commit_plan_or_order_requires_confirmation_agent_action_localized(
     assert expected_action_keyword in res["agent_action"].lower()
 
 
+def test_commit_plan_or_order_tv_sports_addon_channels_and_combined_monthly(monkeypatch) -> None:
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "A1001", "phone_last4": "0143"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    # Quote phase
+    quote_res = tool.commit_plan_or_order(plan_id="ADDON-SPORTS", confirmed=False)
+    assert quote_res["status"] == "error"
+    assert quote_res["error"] == "REQUIRES_CONFIRMATION"
+    assert "TSN 1-5" in quote_res["data"]["included_channels"]
+    assert quote_res["data"]["combined_monthly_with_tv_starter"] == "43.00"
+    assert quote_res["data"]["combined_monthly_with_tv_starter_with_tax"] == "49.45"
+
+    # Confirmed order phase
+    order_res = tool.commit_plan_or_order(plan_id="ADDON-SPORTS", confirmed=True)
+    assert order_res["status"] == "ok"
+    assert "TSN 1-5" in order_res["data"]["included_channels"]
+    assert order_res["data"]["combined_monthly_with_tv_starter"] == "43.00"
+    assert order_res["data"]["combined_monthly_with_tv_starter_with_tax"] == "49.45"
+
+
+
