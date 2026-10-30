@@ -1050,13 +1050,16 @@ def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma:
             return True
         return False
     is_intl = (raw_str.strip().startswith("+") or raw_str.strip().startswith("00")) and 10 <= len(digits) <= 15
-    if not is_intl and len(digits) not in (7, 8, 9, 10, 11):
+    if not is_intl and len(digits) not in (7, 8, 9, 10, 11, 12):
         return True
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
     if len(norm_digits) == 10:
         if norm_digits[-4:] in {"0000", "9999", "1111"}:
             return True
         if norm_digits[:3] == "000" or norm_digits[3:7] == "0000" or norm_digits == "1234567890":
+            return True
+    if len(digits) in (11, 12) or len(norm_digits) in (11, 12):
+        if digits[-4:] in {"0000", "9999", "1111"}:
             return True
     if is_intl:
         if digits[-4:] in {"0000", "9999", "1111"}:
@@ -1169,7 +1172,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "duplicate_payment_amount": "85.50",
         }
 
-    if not has_alpha and len(norm_digits) in (7, 8, 9, 10):
+    if not has_alpha and len(norm_digits) in (7, 8, 9, 10, 11, 12):
         if len(norm_digits) == 10:
             return {
                 "account_id": f"ACC-{norm_digits[-4:]}",

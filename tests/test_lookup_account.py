@@ -244,4 +244,26 @@ def test_lookup_account_alphanumeric_identifiers(monkeypatch) -> None:
     assert reply_short["error"] == "NOT_FOUND"
 
 
+def test_lookup_account_12_digit_billing_account(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.lookup_account("8829-4410-5572")
+    assert reply["status"] == "ok"
+    assert reply["data"]["account_id"] == "ACC-5572"
+    assert session.state["account_id"] == "ACC-5572"
+
+    # Synthetic wrong 12-digit numbers ending in 0000, 9999, 1111 remain rejected
+    session_wrong = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_wrong, raising=False)
+    reply_wrong = tool.lookup_account("8829-4410-0000")
+    assert reply_wrong["status"] == "error"
+    assert reply_wrong["error"] == "NOT_FOUND"
+
+    session_9999 = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_9999, raising=False)
+    reply_9999 = tool.lookup_account("8829-4410-9999")
+    assert reply_9999["status"] == "error"
+    assert reply_9999["error"] == "NOT_FOUND"
+
+
 
