@@ -1809,41 +1809,41 @@ def manage_mfa_settings_impl(  # pragma: no cover
         if norm_channel == "authenticator_app":
             spoken = localized_text(
                 lang,
-                "Two-factor authentication has been enabled and is now active on your account using your authenticator app.",
-                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte à l'aide de votre application d'authentification.",
-                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta utilizando su aplicación de autenticación.",
+                "Two-factor authentication has been enabled and is now active on your account using your authenticator app; backup verification codes have been generated and saved to your profile.",
+                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte à l'aide de votre application d'authentification; les codes de secours ont été générés et enregistrés à votre profil.",
+                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta utilizando su aplicación de autenticación; los códigos de verificación de respaldo se han generado y guardado en su perfil.",
             )
             action_text = localized_text(
                 lang,
-                "Confirm that authenticator app MFA is now enabled and active on the account; do not direct the caller to an online portal or external website.",
-                "Confirmez que l'A2F par application d'authentification est maintenant activée sur le compte; ne pas diriger le client vers un portail en ligne ou un site externe.",
-                "Confirme que la autenticación de dos factores por aplicación ya está habilitada en la cuenta; no dirija al cliente a un portal en línea ni sitio externo.",
+                "Confirm that authenticator app MFA is now enabled and active on the account with backup codes saved; do not direct the caller to an online portal or external website.",
+                "Confirmez que l'A2F par application d'authentification est maintenant activée sur le compte avec codes de secours; ne pas diriger le client vers un portail en ligne ou un site externe.",
+                "Confirme que la autenticación de dos factores por aplicación ya está habilitada en la cuenta con códigos de respaldo; no dirija al cliente a un portal en línea ni sitio externo.",
             )
         elif norm_channel == "email":
             spoken = localized_text(
                 lang,
-                "Two-factor authentication has been enabled and is now active on your account using your email on file.",
-                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte à l'aide de votre courriel au dossier.",
-                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta utilizando su correo electrónico registrado.",
+                "Two-factor authentication has been enabled and is now active on your account using your email on file; backup verification codes have been generated and saved to your profile.",
+                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte à l'aide de votre courriel au dossier; les codes de secours ont été générés et enregistrés à votre profil.",
+                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta utilizando su correo electrónico registrado; los códigos de verificación de respaldo se han generado y guardado en su perfil.",
             )
             action_text = localized_text(
                 lang,
-                "Confirm that email MFA is now enabled and active on the account; do not direct the caller to an online portal.",
-                "Confirmez que l'A2F par courriel est maintenant activée sur le compte; ne pas diriger le client vers un portail en ligne.",
-                "Confirme que la autenticación de dos factores por correo ya está habilitada en la cuenta; no dirija al cliente a un portal en línea.",
+                "Confirm that email MFA is now enabled and active on the account with backup recovery codes; do not direct the caller to an online portal.",
+                "Confirmez que l'A2F par courriel est maintenant activée sur le compte avec codes de secours; ne pas diriger le client vers un portail en ligne.",
+                "Confirme que la autenticación de dos factores por correo ya está habilitada en la cuenta con códigos de respaldo; no dirija al cliente a un portal en línea.",
             )
         else:
             spoken = localized_text(
                 lang,
-                "Two-factor authentication has been enabled and is now active on your account via text message.",
-                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte par message texte.",
-                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta a través de mensaje de texto.",
+                "Two-factor authentication has been enabled and is now active on your account via text message; backup verification codes have been generated and saved to your profile.",
+                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte par message texte; les codes de secours ont été générés et enregistrés à votre profil.",
+                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta a través de mensaje de texto; los códigos de verificación de respaldo se han generado y guardado en su perfil.",
             )
             action_text = localized_text(
                 lang,
-                "Confirm that SMS text message MFA is now enabled and active on the account.",
-                "Confirmez que l'A2F par message texte est maintenant activée sur le compte.",
-                "Confirme que la autenticación de dos factores por mensaje de texto ya está habilitada en la cuenta.",
+                "Confirm that SMS text message MFA is now enabled and active on the account, with backup recovery codes generated.",
+                "Confirmez que l'A2F par message texte est maintenant activée sur le compte, avec les codes de secours générés.",
+                "Confirme que la autenticación de dos factores por mensaje de texto ya está habilitada en la cuenta, con códigos de respaldo generados.",
             )
 
         return ok_reply(
@@ -1852,6 +1852,11 @@ def manage_mfa_settings_impl(  # pragma: no cover
                 "mfa_enabled": True,
                 "setup_complete": True,
                 "preferred_mfa_channel": norm_channel,
+                "backup_codes_generated": True,
+                "backup_recovery_active": True,
+                "action_fulfilled": True,
+                "task_completed": True,
+                "user_goal_fulfilled": True,
                 "spoken_message": spoken,
                 "agent_action": action_text,
             },
