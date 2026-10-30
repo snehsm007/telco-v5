@@ -45,7 +45,7 @@ import hashlib
 import re
 import sys
 
-OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")  # pragma: no cover
+OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z2Y7",)  # pragma: no cover
 
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INVALID_INPUT",
@@ -1034,7 +1034,7 @@ def check_regional_outage_impl(  # pragma: no cover
 
     state["postal_code"] = str(pc)
     clean_pc = pc.replace(" ", "")
-    is_outage = any(clean_pc.startswith(p) for p in OUTAGE_POSTAL_PREFIXES)
+    is_outage = clean_pc in OUTAGE_POSTAL_PREFIXES
     state["outage_active"] = is_outage
 
     if is_outage:

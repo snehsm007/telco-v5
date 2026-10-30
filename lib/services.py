@@ -701,7 +701,7 @@ def lookup_account_impl(
     reg_alert = ""
     if pc:
         state["postal_code"] = pc
-        if any(pc.replace(" ", "").startswith(p) for p in OUTAGE_POSTAL_PREFIXES):
+        if pc.replace(" ", "") in OUTAGE_POSTAL_PREFIXES:
             reg_alert = spoken_line("service_alert_banner", lang)
             state["regional_alert"] = reg_alert
 
@@ -2079,7 +2079,7 @@ def check_regional_outage_impl(
 
     state["postal_code"] = str(pc)
     clean_pc = pc.replace(" ", "")
-    is_outage = any(clean_pc.startswith(p) for p in OUTAGE_POSTAL_PREFIXES)
+    is_outage = clean_pc in OUTAGE_POSTAL_PREFIXES
     state["outage_active"] = is_outage
 
     if is_outage:
