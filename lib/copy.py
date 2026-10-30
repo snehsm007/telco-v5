@@ -836,3 +836,35 @@ def localize_catalog_copy(text: str, language: str | None = "en-US") -> str:
         return entry.get(loc, text)
     return text
 
+
+TICKET_RESOLUTION_NOTES: dict[str, str] = {
+    "en-US": "Technician will inspect the optical network terminal (ONT), test optical signal levels along the local loop, and repair any degraded fiber splice during the scheduled visit.",
+    "fr-CA": "Le technicien inspectera le terminal de réseau optique (ONT), testera les niveaux de signal optique le long de la boucle locale et réparera toute épissure de fibre dégradée lors de la visite planifiée.",
+    "es-US": "El técnico inspeccionará la terminal de red óptica (ONT), probará los niveles de señal óptica a lo largo del bucle local y reparará cualquier empalme de fibra degradado durante la visita programada.",
+}
+
+
+def get_ticket_resolution_notes(language: str | None = "en-US") -> str:
+    """Return localized technical resolution steps for repair tickets."""
+    loc = resolve_copy_locale(language)
+    return TICKET_RESOLUTION_NOTES.get(loc, TICKET_RESOLUTION_NOTES["en-US"])
+
+
+def is_ticket_identifier(val: Any) -> bool:
+    """Return True if val looks like a trouble/repair ticket ID rather than an account identifier."""
+    s = str(val or "").strip().upper()
+    if not s:
+        return False
+    if s.startswith(("ACC-", "ACT-", "CUST-", "A10", "A11", "A12")):
+        return False
+    digits_only = re.sub(r"\D", "", s)
+    if digits_only and len(digits_only) >= 7 and len(re.sub(r"[\s\-\(\)\+]", "", s)) == len(digits_only):
+        return False
+    if any(s.startswith(pfx) for pfx in ("INC", "NT-", "NT", "TKT-", "TKT", "TCK-", "SR-", "CAS-", "REQ-")):
+        return True
+    if re.fullmatch(r"[A-Z]{2,4}-?\d{4,8}", s):
+        return True
+    return False
+
+
+

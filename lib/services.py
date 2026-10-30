@@ -15,6 +15,8 @@ from typing import Any
 
 from lib.copy import (
     SPOKEN_LINES,
+    get_ticket_resolution_notes,
+    is_ticket_identifier,
     localize_catalog_copy,
     localized_text,
     resolve_copy_locale,
@@ -2626,7 +2628,21 @@ def get_appointment_and_ticket_status_impl(
     if mock_err:
         return mock_err
 
-    inline_err = _maybe_inline_auth(identifier, verification_code, lang, state)
+    raw_ticket = (
+        kwargs.get("ticket_id")
+        or kwargs.get("ticket_number")
+        or kwargs.get("repair_ticket_id")
+        or ""
+    )
+    caller_ticket = ""
+    auth_identifier = identifier
+    if raw_ticket and is_ticket_identifier(raw_ticket):
+        caller_ticket = str(raw_ticket).strip().upper()
+    elif identifier and is_ticket_identifier(identifier):
+        caller_ticket = str(identifier).strip().upper()
+        auth_identifier = ""
+
+    inline_err = _maybe_inline_auth(auth_identifier, verification_code, lang, state)
     if inline_err:
         return inline_err
 
@@ -2648,6 +2664,17 @@ def get_appointment_and_ticket_status_impl(
     state["appointment_status"] = apt["status"]
     state["technician_status"] = apt["technician_status"]
 
+    effective_ticket_id = (
+        caller_ticket
+        or tkt["ticket_id"]
+    )
+    resolution_notes = get_ticket_resolution_notes(lang)
+
+    tkt_copy = dict(tkt)
+    tkt_copy["ticket_id"] = effective_ticket_id
+    tkt_copy["resolution_notes"] = resolution_notes
+    tkt_copy["technical_steps"] = resolution_notes
+
     loc_window_display = localized_text(
         lang,
         "8:00 AM - 12:00 PM",
@@ -2668,15 +2695,16 @@ def get_appointment_and_ticket_status_impl(
     return ok_reply(
         {
             "active_appointment": apt_copy,
-            "repair_ticket": tkt,
+            "repair_ticket": tkt_copy,
             "available_slots": localized_slots,
             "appointment_id": apt["appointment_id"],
             "scheduled_date": apt["scheduled_date"],
             "arrival_window": loc_window_display,
             "window_display": loc_window_display,
             "technician_status": apt["technician_status"],
-            "ticket_id": tkt["ticket_id"],
+            "ticket_id": effective_ticket_id,
             "ticket_status": tkt["status"],
+            "resolution_notes": resolution_notes,
         },
         reference,
         language=lang,
