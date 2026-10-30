@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import cxas_app.tools.setup_autopay.python_function.python_code as tool
+from lib.services import setup_autopay_impl
 
 
 def test_setup_autopay_happy_path(monkeypatch) -> None:
@@ -109,7 +110,28 @@ def test_setup_autopay_payment_methods_on_file(monkeypatch) -> None:
     assert any(m.get("type") == "bank" and m.get("last4") == "6789" for m in methods)
 
 
-def test_setup_autopay_new_card_capture_required(monkeypatch) -> None:
+def test_setup_autopay_new_card_first_call_capture_required(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.setup_autopay(payment_method="new_card", card_last4="4321")
+    assert reply["status"] == "error"
+    assert reply["error"] == "CARD_CAPTURE_REQUIRED"
+    assert reply["requested_card_last4"] == "4321"
+    assert reply["data"]["requested_card_last4"] == "4321"
+    assert "payment_methods_on_file" in reply["data"]
+    assert "spoken_line" in reply["data"]
+    assert "security" in reply["data"]["spoken_line"].lower()
+    assert "agent_action" in reply["data"]
+    assert "invite keypad entry for the NEW card ending in 4321" in reply["data"]["agent_action"]
+    assert "never name an on-file card here" in reply["data"]["agent_action"]
+    assert session.state.get("card_capture_prompted") is True
+    assert session.state.get("preamble_spoken") is True
+    assert session.state.get("pending_card_last4") == "4321"
+
+
+def test_setup_autopay_new_card_capture_required_no_card_last4(monkeypatch) -> None:
     session = SimpleNamespace(
         state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
     )
@@ -117,11 +139,58 @@ def test_setup_autopay_new_card_capture_required(monkeypatch) -> None:
     reply = tool.setup_autopay(payment_method="new_card")
     assert reply["status"] == "error"
     assert reply["error"] == "CARD_CAPTURE_REQUIRED"
-    assert "payment_methods_on_file" in reply["data"]
-    assert "spoken_line" in reply["data"]
-    assert "security" in reply["data"]["spoken_line"].lower()
-    assert "agent_action" in reply["data"]
-    assert "keypad" in reply["data"]["agent_action"].lower()
+    assert reply["requested_card_last4"] == ""
+    assert reply["data"]["requested_card_last4"] == ""
+    assert "ask for the last four digits of the new card, then call again" in reply["data"]["agent_action"]
+
+
+def test_setup_autopay_new_card_second_call_completes_enrollment(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    # First call: prompts capture
+    r1 = tool.setup_autopay(payment_method="new_card", card_last4="4321")
+    assert r1["error"] == "CARD_CAPTURE_REQUIRED"
+
+    # Second call: simulated DTMF completion (agent passes card_digits="4321" or no digits)
+    r2 = tool.setup_autopay(payment_method="new_card", card_digits="4321", card_last4="4321")
+    assert r2["status"] == "ok"
+    assert r2["data"]["autopay_enrolled"] is True
+    assert r2["data"]["card_last4"] == "4321"
+    assert session.state["card_last4"] == "4321"
+    assert session.state["card_token"] == "tok_card_4321"
+    assert "spoken_summary" in r2["data"]
+    assert "4321" in r2["data"]["spoken_summary"]
+    assert "not ask for digits again" in r2["data"]["agent_action"].lower()
+
+
+def test_setup_autopay_new_card_second_call_no_digits_named_last4(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    # First call prompts capture
+    tool.setup_autopay(payment_method="new_card")
+    assert session.state["card_capture_prompted"] is True
+
+    # Second call caller names last-4 without digits
+    r2 = tool.setup_autopay(payment_method="new_card", card_last4="4321")
+    assert r2["status"] == "ok"
+    assert r2["data"]["card_last4"] == "4321"
+    assert session.state["card_last4"] == "4321"
+
+
+def test_setup_autopay_preamble_spoken_once(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242", "preamble_spoken": True}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    # Second reply omits the preamble
+    reply = tool.setup_autopay(payment_method="new_card")
+    assert reply["status"] == "error"
+    assert reply["error"] == "CARD_CAPTURE_REQUIRED"
+    assert reply["data"]["spoken_line"] == ""
 
 
 def test_setup_autopay_new_card_capture_required_french(monkeypatch) -> None:
@@ -129,11 +198,13 @@ def test_setup_autopay_new_card_capture_required_french(monkeypatch) -> None:
         state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
-    reply = tool.setup_autopay(payment_method="new_card", language="fr-CA")
+    reply = tool.setup_autopay(payment_method="new_card", card_last4="9999", language="fr-CA")
     assert reply["status"] == "error"
     assert reply["error"] == "CARD_CAPTURE_REQUIRED"
+    assert reply["requested_card_last4"] == "9999"
     assert "sécurité" in reply["data"]["spoken_line"].lower()
     assert "clavier" in reply["data"]["agent_action"].lower()
+    assert "9999" in reply["data"]["agent_action"]
 
 
 def test_setup_autopay_new_card_invalid_digits(monkeypatch) -> None:
@@ -141,7 +212,7 @@ def test_setup_autopay_new_card_invalid_digits(monkeypatch) -> None:
         state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
-    reply = tool.setup_autopay(payment_method="new_card", card_digits="1234")
+    reply = tool.setup_autopay(payment_method="new_card", card_digits="12345678")
     assert reply["status"] == "error"
     assert reply["error"] == "INVALID_CARD_DIGITS"
 
@@ -175,4 +246,43 @@ def test_setup_autopay_new_card_valid_15_digits(monkeypatch) -> None:
     assert reply["data"]["card_last4"] == "0005"
     assert session.state["card_last4"] == "0005"
     assert raw_digits not in str(reply)
+
+
+def test_setup_autopay_impl_new_card_lifecycle() -> None:
+    st = {"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
+    # Prompt capture without last4
+    r0 = setup_autopay_impl(payment_method="new_card", state=st)
+    assert r0["error"] == "CARD_CAPTURE_REQUIRED"
+    assert r0["requested_card_last4"] == ""
+    assert "ask for the last four digits" in r0["agent_action"]
+
+    # Prompt capture with last4
+    st2 = {"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
+    r1 = setup_autopay_impl(payment_method="new_card", card_last4="7890", state=st2)
+    assert r1["error"] == "CARD_CAPTURE_REQUIRED"
+    assert r1["requested_card_last4"] == "7890"
+    assert "invite keypad entry for the NEW card ending in 7890" in r1["agent_action"]
+    assert st2["card_capture_prompted"] is True
+
+    # Invalid digits
+    st_inv = {"account_id": "A1001", "auth_status": "pass", "card_last4": "4242"}
+    r_inv = setup_autopay_impl(payment_method="new_card", card_digits="123", state=st_inv)
+    assert r_inv["error"] == "INVALID_CARD_DIGITS"
+
+    # Second call completes enrollment
+    r2 = setup_autopay_impl(
+        payment_method="new_card", card_digits="7890", card_last4="7890", state=st2
+    )
+    assert r2["status"] == "ok"
+    assert r2["data"]["autopay_enrolled"] is True
+    assert st2["card_last4"] == "7890"
+
+    # Direct 16 digits
+    st16 = {"account_id": "A1001", "auth_status": "pass"}
+    r16 = setup_autopay_impl(
+        payment_method="new_card", card_digits="4111222233334444", state=st16
+    )
+    assert r16["status"] == "ok"
+    assert st16["card_last4"] == "4444"
+
 

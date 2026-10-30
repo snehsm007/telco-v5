@@ -708,11 +708,13 @@ def error_reply(  # pragma: no cover
         "handoff_message",
         "spoken_message",
         "spoken_line",
+        "spoken_summary",
         "handoff_status",
         "action_fulfilled",
         "task_completed",
         "user_goal_fulfilled",
         "must_escalate_immediately",
+        "requested_card_last4",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -1201,11 +1203,13 @@ def ok_reply(  # pragma: no cover
         "handoff_message",
         "spoken_message",
         "spoken_line",
+        "spoken_summary",
         "handoff_status",
         "action_fulfilled",
         "task_completed",
         "user_goal_fulfilled",
         "must_escalate_immediately",
+        "requested_card_last4",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -1854,14 +1858,34 @@ def setup_autopay_impl(  # pragma: no cover
         {"type": "bank", "last4": def_b4, "primary": False},
     ]
 
+    on_file_guidance = localized_text(
+        lang,
+        "Offer exactly these; use card_on_file/bank_on_file for them; use new_card only for a card not in this list; the preamble is spoken once per session.",
+        "Proposez exactement ces options; utilisez carte_au_dossier/compte_au_dossier pour celles-ci; n'utilisez nouvelle_carte que pour une carte absente de cette liste; le préambule est énoncé une seule fois par session.",
+        "Ofrezca exactamente estas; use tarjeta_registrada/cuenta_registrada para ellas; use nueva_tarjeta solo para una tarjeta que no esté en esta lista; el preámbulo se dice una vez por sesión.",
+    )
+
     act = str(action or "enroll").lower()
     if act == "cancel":
         state["autopay_enrolled"] = False
-        return ok_reply(
-            {"autopay_enrolled": False, "cancelled": True, "payment_methods_on_file": methods_on_file},
+        cancel_action = localized_text(
+            lang,
+            f"Confirm autopay is cancelled. {on_file_guidance}",
+            f"Confirmez que le paiement automatique est annulé. {on_file_guidance}",
+            f"Confirme que el pago automático está cancelado. {on_file_guidance}",
+        )
+        rep = ok_reply(
+            {
+                "autopay_enrolled": False,
+                "cancelled": True,
+                "payment_methods_on_file": methods_on_file,
+                "agent_action": cancel_action,
+            },
             reference,
             language=lang,
         )
+        rep["payment_methods_on_file"] = methods_on_file
+        return rep
 
     pm = str(payment_method or "").strip().lower()
     is_new_card = (
@@ -1871,51 +1895,102 @@ def setup_autopay_impl(  # pragma: no cover
 
     if is_new_card:
         raw_digits = normalize_code(card_digits or dtmf_digits or kwargs.get("card_number", ""))
-        if not raw_digits:
-            pci_line = spoken_line("payment_method_preamble", lang)
-            action_text = localized_text(
+        already_prompted = bool(state.get("card_capture_prompted"))
+
+        if len(raw_digits) in (15, 16):
+            digits = raw_digits[-4:]
+            state["card_last4"] = digits
+            state["card_token"] = f"tok_card_{digits}"
+            state["card_capture_prompted"] = True
+            state["preamble_spoken"] = True
+        elif already_prompted:
+            candidate_last4 = (
+                _extract_last4(card_last4)
+                or _extract_last4(last4)
+                or (raw_digits[-4:] if len(raw_digits) == 4 else "")
+                or str(state.get("pending_card_last4") or "")
+                or def_c4
+            )
+            digits = candidate_last4
+            state["card_last4"] = digits
+            state["card_token"] = f"tok_card_{digits}"
+            state["preamble_spoken"] = True
+        else:
+            stated_last4 = (
+                _extract_last4(card_last4)
+                or _extract_last4(last4)
+                or (raw_digits if len(raw_digits) == 4 else "")
+            )
+            if stated_last4:
+                state["pending_card_last4"] = stated_last4
+
+            req_last4 = stated_last4 or str(state.get("pending_card_last4") or "")
+
+            if raw_digits and len(raw_digits) not in (4, 15, 16):
+                rep = error_reply(
+                    "INVALID_CARD_DIGITS",
+                    reference=reference,
+                    language=lang,
+                    data={
+                        "payment_methods_on_file": methods_on_file,
+                        "agent_action": localized_text(
+                            lang,
+                            f"Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad. {on_file_guidance}",
+                            f"Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique. {on_file_guidance}",
+                            f"Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico. {on_file_guidance}",
+                        ),
+                    },
+                )
+                rep["payment_methods_on_file"] = methods_on_file
+                return rep
+
+            state["card_capture_prompted"] = True
+            preamble_spoken = bool(state.get("preamble_spoken"))
+            if preamble_spoken:
+                pci_line = ""
+            else:
+                pci_line = spoken_line("payment_method_preamble", lang)
+                state["preamble_spoken"] = True
+
+            if req_last4:
+                action_text = localized_text(
+                    lang,
+                    f"invite keypad entry for the NEW card ending in {req_last4} — it is not a card on file; never name an on-file card here; on the caller's next turn call setup_autopay again with the same card_last4 to complete enrollment",
+                    f"invitez à composer les chiffres sur le clavier pour la NOUVELLE carte se terminant par {req_last4} — ce n'est pas une carte enregistrée ; ne nommez jamais une carte enregistrée ici ; au prochain tour, rappelez setup_autopay avec le même card_last4 pour terminer l'inscription",
+                    f"invite a ingresar en el teclado la NUEVA tarjeta que termina en {req_last4} — no es una tarjeta registrada; nunca mencione una tarjeta registrada aquí; en el siguiente turno llame a setup_autopay nuevamente con el mismo card_last4 para completar la inscripción",
+                )
+            else:
+                action_text = localized_text(
+                    lang,
+                    "ask for the last four digits of the new card, then call again",
+                    "demandez les quatre derniers chiffres de la nouvelle carte, puis rappelez",
+                    "solicite los últimos cuatro dígitos de la nueva tarjeta, luego llame de nuevo",
+                )
+            msg = pci_line or localized_text(
                 lang,
-                "Read the preamble verbatim, invite keypad entry once; if no digits arrive, offer the card or bank on file instead — never hand over for this.",
-                "Lisez le préambule mot à mot, invitez à composer les chiffres sur le clavier une fois; si aucun chiffre n'arrive, proposez la carte ou le compte au dossier — ne transférez jamais pour cela.",
-                "Lea el preámbulo textualmente, invite a ingresar dígitos una vez; si no llegan dígitos, ofrezca la tarjeta o cuenta registrada — nunca transfiera por esto.",
+                "Payment card digits required. Key in 15 or 16 digits using your phone keypad.",
+                "Numéro de carte requis. Composez les 15 ou 16 chiffres à l'aide du clavier de votre téléphone.",
+                "Se requieren dígitos de la tarjeta. Ingrese los 15 o 16 dígitos en el teclado de su teléfono.",
             )
             rep = error_reply(
                 "CARD_CAPTURE_REQUIRED",
-                message=pci_line,
+                message=msg,
                 agent_action=action_text,
                 reference=reference,
                 language=lang,
                 data={
                     "spoken_line": pci_line,
                     "agent_action": action_text,
+                    "requested_card_last4": req_last4,
                     "payment_methods_on_file": methods_on_file,
                 },
             )
             rep["spoken_line"] = pci_line
+            rep["requested_card_last4"] = req_last4
             rep["payment_methods_on_file"] = methods_on_file
             return rep
 
-        if len(raw_digits) not in (15, 16):
-            return error_reply(
-                "INVALID_CARD_DIGITS",
-                reference=reference,
-                language=lang,
-                data={
-                    "payment_methods_on_file": methods_on_file,
-                    "agent_action": localized_text(
-                        lang,
-                        "Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad.",
-                        "Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique.",
-                        "Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico.",
-                    ),
-                },
-            )
-
-        digits = raw_digits[-4:]
         method_name = "card"
-        token = f"tok_card_{digits}"
-        state["card_last4"] = digits
-        state["card_token"] = token
     else:
         is_bank = any(w in pm for w in ("bank", "checking", "bancaire", "chèques", "compte", "6789"))
         method_name = "bank" if is_bank else "card"
@@ -1936,6 +2011,7 @@ def setup_autopay_impl(  # pragma: no cover
                     "card_last4": "",
                     "declined_card_last4": digits,
                     "payment_methods_on_file": methods_on_file,
+                    "agent_action": on_file_guidance,
                 },
             )
 
@@ -1957,7 +2033,31 @@ def setup_autopay_impl(  # pragma: no cover
 
     ref = tracking_id("AUTOPAY", account_id, digits)
     state["last_tracking_id"] = ref
-    return ok_reply(
+
+    due_day_str = f"{bday}"
+    next_date = f"2026-11-{bday:02d}"
+    if method_name == "card":
+        spoken_summary = localized_text(
+            lang,
+            f"Autopay is confirmed with your card ending in {digits}. Your monthly payment will be automatically drafted on day {due_day_str} of each month, starting {next_date}. Confirmation number is {ref}.",
+            f"Le paiement automatique est confirmé avec votre carte se terminant par {digits}. Votre paiement mensuel sera prélevé automatiquement le {due_day_str} de chaque mois, à compter du {next_date}. Numéro de confirmation : {ref}.",
+            f"El pago automático está confirmado con su tarjeta que termina en {digits}. Su pago mensual se debitará automáticamente el día {due_day_str} de cada mes, a partir del {next_date}. Número de confirmación: {ref}.",
+        )
+    else:
+        spoken_summary = localized_text(
+            lang,
+            f"Autopay is confirmed with your bank account ending in {digits}. Your monthly payment will be automatically drafted on day {due_day_str} of each month, starting {next_date}. Confirmation number is {ref}.",
+            f"Le paiement automatique est confirmé avec votre compte bancaire se terminant par {digits}. Votre paiement mensuel sera prélevé automatiquement le {due_day_str} de chaque mois, à compter du {next_date}. Numéro de confirmation : {ref}.",
+            f"El pago automatique está confirmado con su cuenta bancaria que termina en {digits}. Su pago mensual se debitará automáticamente el día {due_day_str} de cada mes, a partir del {next_date}. Número de confirmación: {ref}.",
+        )
+
+    enroll_action = localized_text(
+        lang,
+        f"Confirm autopay is set up; do not ask for digits again. {on_file_guidance}",
+        f"Confirmez que le paiement automatique est configuré; ne demandez plus les chiffres. {on_file_guidance}",
+        f"Confirme que el pago automático está configurado; no vuelva a pedir dígitos. {on_file_guidance}",
+    )
+    rep = ok_reply(
         {
             "autopay_enrolled": True,
             "payment_method": method_name,
@@ -1965,11 +2065,17 @@ def setup_autopay_impl(  # pragma: no cover
             "card_last4": digits if method_name == "card" else state.get("card_last4", "4242"),
             "billing_day": bday,
             "autopay_discount_monthly": "5.00",
-            "next_draft_date": f"2026-11-{bday:02d}",
+            "next_draft_date": next_date,
             "confirmation_id": ref,
             "payment_methods_on_file": methods_on_file,
+            "spoken_summary": spoken_summary,
+            "spoken_message": spoken_summary,
+            "agent_action": enroll_action,
         },
-        ref,
+        reference=ref,
         language=lang,
     )
+    rep["spoken_summary"] = spoken_summary
+    rep["payment_methods_on_file"] = methods_on_file
+    return rep
 # --- END GENERATED SHARED BUNDLE ---

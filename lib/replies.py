@@ -162,11 +162,13 @@ def ok_reply(
         "handoff_message",
         "spoken_message",
         "spoken_line",
+        "spoken_summary",
         "handoff_status",
         "action_fulfilled",
         "task_completed",
         "user_goal_fulfilled",
         "must_escalate_immediately",
+        "requested_card_last4",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -215,11 +217,13 @@ def error_reply(
         "handoff_message",
         "spoken_message",
         "spoken_line",
+        "spoken_summary",
         "handoff_status",
         "action_fulfilled",
         "task_completed",
         "user_goal_fulfilled",
         "must_escalate_immediately",
+        "requested_card_last4",
     ):
         if key in payload:
             reply[key] = payload[key]
