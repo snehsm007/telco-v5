@@ -4169,10 +4169,28 @@ def cancel_or_port_out_service_impl(
     action = str(action_type or kwargs.get("action", "cancel")).strip().lower()
     is_port_out = action in {"port_out", "portout", "port"}
 
+    is_decline_retention = (
+        bool(decline_retention_offer)
+        and str(decline_retention_offer).lower() in {"true", "1", "yes", "oui"}
+    )
+
+    reason_str = " ".join([
+        str(reason or ""),
+        str(kwargs.get("notes") or ""),
+        str(kwargs.get("details") or ""),
+        str(kwargs.get("comments") or ""),
+    ]).strip().lower()
+
+    has_retention_reason = any(kw in reason_str for kw in ("retention", "loyalty", "credit", "keep service", "keep the", "stay", "retain"))
+
     is_accept_retention = (
-        (bool(accept_retention_offer) and str(accept_retention_offer).lower() in {"true", "1", "yes", "oui", "si", "accept"})
-        or action in {"retain", "keep", "accept_retention", "loyalty_credit"}
-        or bool(kwargs.get("accept_retention_offer"))
+        not is_decline_retention
+        and (
+            (bool(accept_retention_offer) and str(accept_retention_offer).lower() in {"true", "1", "yes", "oui", "si", "accept"})
+            or action in {"retain", "keep", "accept_retention", "loyalty_credit", "retention"}
+            or bool(kwargs.get("accept_retention_offer"))
+            or has_retention_reason
+        )
     )
 
     if is_accept_retention:
