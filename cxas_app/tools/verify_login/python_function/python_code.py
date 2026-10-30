@@ -1185,7 +1185,7 @@ def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int =
 
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
 
-OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")  # pragma: no cover
+OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z2Y7",)  # pragma: no cover
 
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 
@@ -1445,7 +1445,7 @@ def lookup_account_impl(  # pragma: no cover
     reg_alert = ""
     if pc:
         state["postal_code"] = pc
-        if any(pc.replace(" ", "").startswith(p) for p in OUTAGE_POSTAL_PREFIXES):
+        if pc.replace(" ", "") in OUTAGE_POSTAL_PREFIXES:
             reg_alert = spoken_line("service_alert_banner", lang)
             state["regional_alert"] = reg_alert
 

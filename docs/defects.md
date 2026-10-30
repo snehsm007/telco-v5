@@ -127,3 +127,21 @@ Group failing evaluations by shared root cause (not one entry per evaluation). F
 - **Fix & `file:line`**: Account agent instruction refinement for MFA toggle stability.
 - **Alternatives considered**: Service-side idempotency check vs prompt instruction.
 - **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as agent instruction oscillation noise (seen 4× in full-c8d6339 VE-12 r2).
+
+### DEF-10: VE-04 simulator-invented active postal code triggers outage rather than negative check
+- **Found by**: `VE-04` (`sim__check_outage_none_found_sms_troubleshoot`) (`smoke-c55b43d`, `smoke-f0863fa`)
+- **Evidence**: `bench/runs/failing_runs_data/smoke-c55b43d/VE-04__c50b72f8__r1.md`, `bench/runs/failing_runs_data/smoke-f0863fa/VE-04__e2bddd89__r2.md`
+- **Label**: `eval-design`
+- **Status**: `open`
+- **Root cause layer**: `platform / scenario`
+- **Diagnosis (all 3 judge metrics)**:
+  - *Expectations*: VE-04 evaluation expectation requires offering an SMS troubleshooting guide after a negative outage check ("The user is offered and accepts an SMS troubleshooting guide after the outage check returns negative"). However, the VE-04 user guide specifies no postal code ("The user provides their postal code..."), and the simulator invents the canonical sample Montréal postal code `H*Z *Y*` (`H3Z 2Y7`), which is the exact code required by VE-03 to simulate an active regional outage.
+    - Quoted caller lines (digits masked):
+      - `smoke-c55b43d` (`c50b72f8…`, slot 1): `"Internet is down. Check for an outage in H*Z *Y*."`
+      - `smoke-f0863fa` (`e2bddd89…`, slot 2): `"Hello. I'm currently working from my home office and my internet has gone down. I would like to check if there is a known outage in my area. My postal code is H*Z *Y*. Could you please verify this for me?"`
+    When `check_regional_outage` returns `outage_active: true`, the agent correctly offers restoration updates rather than a troubleshooting guide, failing the negative-check prerequisite.
+  - *User Goal*: Skipped via config (score -1)
+  - *Hallucination*: Skipped via config (score -1)
+- **Fix & `file:line`**: None on agent side. The collision is an eval-design limitation since both evaluations share the same phone/account profile and simulator-invented postal code `H3Z 2Y7` cannot be distinguished from intentional VE-03 active outage queries. The exact-match change in `cand/outage-region-exact` (`lib/fakes.py:53`, `lib/services.py:613,1151`) restricts active outage reporting to exact `H3Z2Y7`, removing prefix false positives for any other invented `H3Z xxx` codes (e.g., `H3Z 1A1`).
+- **Alternatives considered**: None on agent side; altering fake database to report no outage for `H3Z 2Y7` breaks VE-03.
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: 2/3 on `smoke-f0863fa` (`e2bddd89…`, slots 1 and 3 passed 3/3; slot 2 hit postal code collision).

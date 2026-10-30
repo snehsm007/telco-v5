@@ -138,7 +138,7 @@ def test_login_ladder_for_codes_and_secret_pins() -> None:
 def test_fake_catalogs_and_data_stores() -> None:
     assert len(ACCOUNTS) >= 2
     assert len(BLOCKED_CALLER_NUMBERS) >= 2
-    assert "H3Z" in OUTAGE_POSTAL_PREFIXES
+    assert "H3Z2Y7" in OUTAGE_POSTAL_PREFIXES
     assert "0000" in DECLINED_CARD_LAST4
     assert len(FAKE_PLAN_CATALOG["internet"]) >= 2
     assert len(FAKE_PLAN_CATALOG["mobility"]) >= 2
