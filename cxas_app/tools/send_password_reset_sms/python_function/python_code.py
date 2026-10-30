@@ -1429,6 +1429,7 @@ def lookup_account_impl(  # pragma: no cover
 
     state["account_id"] = account["account_id"]
     state["identified"] = True
+    state["lookup_by_name"] = bool(resolved_by_name)
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False
