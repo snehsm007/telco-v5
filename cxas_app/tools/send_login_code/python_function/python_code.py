@@ -933,7 +933,7 @@ def _hydrate_default_account_if_needed(state: dict[str, Any]) -> None:  # pragma
     state["phone_last4"] = default_acc["phone"][-4:]
     state.setdefault("contact_email", default_acc.get("email", "jordan@example.com"))
     state.setdefault("service_address", default_acc.get("address", "123 Maple Avenue, Montreal, QC"))
-    state.setdefault("card_last4", default_acc.get("card_on_file_last4", "4242"))
+    state.setdefault("card_last4", default_acc.get("card_on_file_last4", "7742"))
     state.setdefault("bank_last4", default_acc.get("bank_on_file_last4", "6789"))
     state.setdefault("current_balance", default_acc.get("current_balance", "85.50"))
     state.setdefault("past_due_balance", default_acc.get("past_due_balance", "85.50"))
@@ -1092,7 +1092,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
                 if record.get("first_name") == "Jordan"
                 else "taylor@example.com"
             )
-            rec[_k_cf4] = "4242"
+            rec[_k_cf4] = "7742"
             rec[_k_sc4] = "8844"
             rec[_k_bf4] = "6789"
             rec["subscribed_lobs"] = "mobility,internet,tv,homephone"
@@ -1119,7 +1119,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "preferred_language": "en-US",
             "identifier_kind": "phone",
             "email": f"user{last4}@example.com",
-            _k_cf4: "4242",
+            _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
             "subscribed_lobs": "mobility,internet,tv,homephone",
@@ -1143,7 +1143,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
                 "preferred_language": "en-US",
                 "identifier_kind": "phone",
                 "email": synth_email,
-                _k_cf4: "4242",
+                _k_cf4: "7742",
                 _k_sc4: "8844",
                 _k_bf4: "6789",
                 "subscribed_lobs": "mobility,internet,tv,homephone",
@@ -1164,7 +1164,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "preferred_language": "en-US",
             "identifier_kind": "billing_account",
             "email": synth_email,
-            _k_cf4: "4242",
+            _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
             "subscribed_lobs": "mobility,internet,tv,homephone",
@@ -1184,7 +1184,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         base["identifier_kind"] = "account_id"
         base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
         base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
-        base[_k_cf4] = "4242"
+        base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
         base["subscribed_lobs"] = "mobility,internet,tv,homephone"
@@ -1468,7 +1468,7 @@ def lookup_account_impl(  # pragma: no cover
     state["contact_email"] = account.get("email") or fallback_email
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
     card_on_file = account.get("card_on_file_last4", "")
-    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "4242")
+    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "7742")
     bank_on_file = account.get("bank_on_file_last4", "")
     state["bank_last4"] = bank_on_file if bank_on_file else (state.get("bank_last4") or "6789")
     state["current_balance"] = account.get("current_balance", "85.50")

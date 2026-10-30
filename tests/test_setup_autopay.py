@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import pytest
 import cxas_app.tools.setup_autopay.python_function.python_code as tool
 from lib.services import setup_autopay_impl
 
@@ -98,14 +99,14 @@ def test_setup_autopay_localization(monkeypatch) -> None:
 
 def test_setup_autopay_payment_methods_on_file(monkeypatch) -> None:
     session = SimpleNamespace(
-        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242", "bank_last4": "6789"}
+        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "7742", "bank_last4": "6789"}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
     reply = tool.setup_autopay(payment_method="card_on_file")
     assert reply["status"] == "ok"
     assert "payment_methods_on_file" in reply["data"]
     methods = reply["data"]["payment_methods_on_file"]
-    assert any(m.get("type") == "card" and m.get("last4") == "4242" for m in methods)
+    assert any(m.get("type") == "card" and m.get("last4") == "7742" for m in methods)
     assert any(m.get("type") == "card" and m.get("last4") == "8844" for m in methods)
     assert any(m.get("type") == "bank" and m.get("last4") == "6789" for m in methods)
 
@@ -120,12 +121,12 @@ def test_setup_autopay_new_card_first_call_capture_required(monkeypatch) -> None
     assert reply["error"] == "CARD_CAPTURE_REQUIRED"
     assert reply["requested_card_last4"] == "4321"
     assert reply["data"]["requested_card_last4"] == "4321"
-    assert "payment_methods_on_file" in reply["data"]
+    assert "payment_methods_on_file" not in reply["data"]
+    assert "payment_methods_on_file" not in reply
     assert "spoken_line" in reply["data"]
     assert "security" in reply["data"]["spoken_line"].lower()
     assert "agent_action" in reply["data"]
-    assert "invite keypad entry for the NEW card ending in 4321" in reply["data"]["agent_action"]
-    assert "never name an on-file card here" in reply["data"]["agent_action"]
+    assert "confirm the card ending 4321 the caller named; do not mention other cards" in reply["data"]["agent_action"]
     assert session.state.get("card_capture_prompted") is True
     assert session.state.get("preamble_spoken") is True
     assert session.state.get("pending_card_last4") == "4321"
@@ -158,11 +159,13 @@ def test_setup_autopay_new_card_second_call_completes_enrollment(monkeypatch) ->
     assert r2["status"] == "ok"
     assert r2["data"]["autopay_enrolled"] is True
     assert r2["data"]["card_last4"] == "4321"
+    assert "payment_methods_on_file" not in r2["data"]
+    assert "payment_methods_on_file" not in r2
     assert session.state["card_last4"] == "4321"
     assert session.state["card_token"] == "tok_card_4321"
     assert "spoken_summary" in r2["data"]
     assert "4321" in r2["data"]["spoken_summary"]
-    assert "not ask for digits again" in r2["data"]["agent_action"].lower()
+    assert "confirm the card ending 4321 the caller named; do not mention other cards" in r2["data"]["agent_action"]
 
 
 def test_setup_autopay_new_card_second_call_no_digits_named_last4(monkeypatch) -> None:
@@ -202,9 +205,10 @@ def test_setup_autopay_new_card_capture_required_french(monkeypatch) -> None:
     assert reply["status"] == "error"
     assert reply["error"] == "CARD_CAPTURE_REQUIRED"
     assert reply["requested_card_last4"] == "9999"
+    assert "payment_methods_on_file" not in reply["data"]
+    assert "payment_methods_on_file" not in reply
     assert "sécurité" in reply["data"]["spoken_line"].lower()
-    assert "clavier" in reply["data"]["agent_action"].lower()
-    assert "9999" in reply["data"]["agent_action"]
+    assert "confirmez la carte se terminant par 9999 nommée par le client; ne mentionnez pas d'autres cartes" in reply["data"]["agent_action"]
 
 
 def test_setup_autopay_new_card_invalid_digits(monkeypatch) -> None:
@@ -261,7 +265,9 @@ def test_setup_autopay_impl_new_card_lifecycle() -> None:
     r1 = setup_autopay_impl(payment_method="new_card", card_last4="7890", state=st2)
     assert r1["error"] == "CARD_CAPTURE_REQUIRED"
     assert r1["requested_card_last4"] == "7890"
-    assert "invite keypad entry for the NEW card ending in 7890" in r1["agent_action"]
+    assert "confirm the card ending 7890 the caller named; do not mention other cards" in r1["agent_action"]
+    assert "payment_methods_on_file" not in r1
+    assert "payment_methods_on_file" not in r1.get("data", {})
     assert st2["card_capture_prompted"] is True
 
     # Invalid digits
@@ -275,6 +281,8 @@ def test_setup_autopay_impl_new_card_lifecycle() -> None:
     )
     assert r2["status"] == "ok"
     assert r2["data"]["autopay_enrolled"] is True
+    assert "payment_methods_on_file" not in r2
+    assert "payment_methods_on_file" not in r2.get("data", {})
     assert st2["card_last4"] == "7890"
 
     # Direct 16 digits
@@ -284,5 +292,39 @@ def test_setup_autopay_impl_new_card_lifecycle() -> None:
     )
     assert r16["status"] == "ok"
     assert st16["card_last4"] == "4444"
+
+
+@pytest.mark.parametrize("locale,expected_phrase", [
+    ("en-US", "confirm the card ending 4321 the caller named; do not mention other cards"),
+    ("fr-CA", "confirmez la carte se terminant par 4321 nommée par le client; ne mentionnez pas d'autres cartes"),
+    ("es-US", "confirme la tarjeta que termina en 4321 que el cliente nombró; no mencione otras tarjetas"),
+])
+def test_setup_autopay_new_card_3_locales_omits_on_file(locale: str, expected_phrase: str) -> None:
+    st = {"account_id": "A1001", "auth_status": "pass"}
+    # Capture required
+    rep1 = setup_autopay_impl(payment_method="new_card", card_last4="4321", language=locale, state=st)
+    assert rep1["error"] == "CARD_CAPTURE_REQUIRED"
+    assert rep1["requested_card_last4"] == "4321"
+    assert "payment_methods_on_file" not in rep1
+    assert "payment_methods_on_file" not in rep1.get("data", {})
+    assert expected_phrase in rep1["agent_action"]
+
+    # Completion
+    rep2 = setup_autopay_impl(payment_method="new_card", card_digits="4321", card_last4="4321", language=locale, state=st)
+    assert rep2["status"] == "ok"
+    assert rep2["card_last4"] == "4321"
+    assert "payment_methods_on_file" not in rep2
+    assert "payment_methods_on_file" not in rep2.get("data", {})
+    assert expected_phrase in rep2["agent_action"]
+
+
+@pytest.mark.parametrize("locale", ["en-US", "fr-CA", "es-US"])
+def test_setup_autopay_on_file_path_includes_methods_3_locales(locale: str) -> None:
+    st = {"account_id": "A1001", "auth_status": "pass"}
+    rep = setup_autopay_impl(payment_method="card_on_file", language=locale, state=st)
+    assert rep["status"] == "ok"
+    assert "payment_methods_on_file" in rep
+    assert "payment_methods_on_file" in rep.get("data", {})
+    assert len(rep["payment_methods_on_file"]) == 3
 
 

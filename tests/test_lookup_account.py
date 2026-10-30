@@ -80,7 +80,7 @@ def test_lookup_account_populates_card_and_bank_last4(monkeypatch) -> None:
     monkeypatch.setattr(tool, "context", session, raising=False)
     reply = tool.lookup_account("202 555 0143")
     assert reply["status"] == "ok"
-    assert session.state["card_last4"] == "4242"
+    assert session.state["card_last4"] == "7742"
     assert session.state["bank_last4"] == "6789"
 
 
@@ -123,7 +123,7 @@ def test_lookup_account_by_full_name_unknown_synthesis(monkeypatch) -> None:
     assert reply["data"]["caller_provided_phone_last4"] == ""
     assert session.state["current_balance"] == "85.50"
     assert session.state["past_due_balance"] == "85.50"
-    assert session.state["card_last4"] == "4242"
+    assert session.state["card_last4"] == "7742"
     assert session.state["bank_last4"] == "6789"
     assert "agent_action" in reply["data"]
     assert session.state["identified"] is True

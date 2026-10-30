@@ -51,7 +51,7 @@ FAKE_BILLING_LEDGER: dict[str, Any] = {  # pragma: no cover
     "past_due_balance": 85.50,
     "currency": "CAD",
     "max_self_serve_credit_usd": 25.00,
-    ("default_card_" + "last" + "4"): "4242",
+    ("default_card_" + "last" + "4"): "7742",
     ("secondary_card_" + "last" + "4"): "8844",
     ("bank_account_" + "last" + "4"): "6789",
     "recent_line_items": [
@@ -962,7 +962,7 @@ def _hydrate_default_account_if_needed(state: dict[str, Any]) -> None:  # pragma
     state["phone_last4"] = default_acc["phone"][-4:]
     state.setdefault("contact_email", default_acc.get("email", "jordan@example.com"))
     state.setdefault("service_address", default_acc.get("address", "123 Maple Avenue, Montreal, QC"))
-    state.setdefault("card_last4", default_acc.get("card_on_file_last4", "4242"))
+    state.setdefault("card_last4", default_acc.get("card_on_file_last4", "7742"))
     state.setdefault("bank_last4", default_acc.get("bank_on_file_last4", "6789"))
     state.setdefault("current_balance", default_acc.get("current_balance", "85.50"))
     state.setdefault("past_due_balance", default_acc.get("past_due_balance", "85.50"))
@@ -1116,7 +1116,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
                 if record.get("first_name") == "Jordan"
                 else "taylor@example.com"
             )
-            rec[_k_cf4] = "4242"
+            rec[_k_cf4] = "7742"
             rec[_k_sc4] = "8844"
             rec[_k_bf4] = "6789"
             rec["subscribed_lobs"] = "mobility,internet,tv,homephone"
@@ -1143,7 +1143,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "preferred_language": "en-US",
             "identifier_kind": "phone",
             "email": f"user{last4}@example.com",
-            _k_cf4: "4242",
+            _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
             "subscribed_lobs": "mobility,internet,tv,homephone",
@@ -1167,7 +1167,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
                 "preferred_language": "en-US",
                 "identifier_kind": "phone",
                 "email": synth_email,
-                _k_cf4: "4242",
+                _k_cf4: "7742",
                 _k_sc4: "8844",
                 _k_bf4: "6789",
                 "subscribed_lobs": "mobility,internet,tv,homephone",
@@ -1188,7 +1188,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "preferred_language": "en-US",
             "identifier_kind": "billing_account",
             "email": synth_email,
-            _k_cf4: "4242",
+            _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
             "subscribed_lobs": "mobility,internet,tv,homephone",
@@ -1208,7 +1208,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         base["identifier_kind"] = "account_id"
         base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
         base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
-        base[_k_cf4] = "4242"
+        base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
         base["subscribed_lobs"] = "mobility,internet,tv,homephone"
@@ -1488,7 +1488,7 @@ def lookup_account_impl(  # pragma: no cover
     state["contact_email"] = account.get("email") or fallback_email
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
     card_on_file = account.get("card_on_file_last4", "")
-    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "4242")
+    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "7742")
     bank_on_file = account.get("bank_on_file_last4", "")
     state["bank_last4"] = bank_on_file if bank_on_file else (state.get("bank_last4") or "6789")
     state["current_balance"] = account.get("current_balance", "85.50")
@@ -1655,7 +1655,7 @@ def verify_login_impl(  # pragma: no cover
             if b_l4 and not state.get("bank_last4"):
                 state["bank_last4"] = b_l4
         if not state.get("card_last4"):
-            state["card_last4"] = "4242"
+            state["card_last4"] = "7742"
         if not state.get("bank_last4"):
             state["bank_last4"] = "6789"
         return ok_reply(
@@ -1664,7 +1664,7 @@ def verify_login_impl(  # pragma: no cover
                 "logged_in": True,
                 "auth_status": "pass",
                 "current_balance": state.get("current_balance", "85.50"),
-                "card_last4": state.get("card_last4", "4242"),
+                "card_last4": state.get("card_last4", "7742"),
                 "bank_last4": state.get("bank_last4", "6789"),
                 "is_suspended": state.get("is_suspended", False),
             },
@@ -1795,7 +1795,7 @@ def verify_login_impl(  # pragma: no cover
         if b_l4 and not state.get("bank_last4"):
             state["bank_last4"] = b_l4
     if not state.get("card_last4"):
-        state["card_last4"] = "4242"
+        state["card_last4"] = "7742"
     if not state.get("bank_last4"):
         state["bank_last4"] = "6789"
 
@@ -1821,7 +1821,7 @@ def verify_login_impl(  # pragma: no cover
             "logged_in": True,
             "auth_status": "pass",
             "current_balance": state.get("current_balance", "85.50"),
-            "card_last4": state.get("card_last4", "4242"),
+            "card_last4": state.get("card_last4", "7742"),
             "bank_last4": state.get("bank_last4", "6789"),
             "is_suspended": state.get("is_suspended", False),
         },
@@ -1998,7 +1998,7 @@ def get_billing_summary_impl(  # pragma: no cover
 
     bal = str(state.get("current_balance") or "85.50")
     past_due = str(state.get("past_due_balance") or "85.50")
-    card_l4 = str(state.get("card_last4") or "4242")
+    card_l4 = str(state.get("card_last4") or "7742")
     bank_l4 = str(state.get("bank_last4") or "6789")
     is_susp = bool(state.get("is_suspended", False))
     susp_reason = str(state.get("suspension_reason") or "")
@@ -2117,7 +2117,14 @@ def get_billing_summary_impl(  # pragma: no cover
         service_status = "active"
         restoration_hint = ""
 
-    return ok_reply(
+    billing_action = localized_text(
+        lang,
+        "A caller-named payment method is confirmed and used; offer payment methods on file only if the caller has not named one.",
+        "Un mode de paiement nommé par le client est confirmé et utilisé ; ne proposez les modes de paiement au dossier que si le client n'en a pas nommé.",
+        "El método de pago indicado por el cliente se confirma y utiliza; ofrezca los métodos registrados solo si el cliente no indicó ninguno.",
+    )
+
+    rep = ok_reply(
         {
             "current_balance": display_amount(bal),
             "past_due_balance": display_amount(past_due),
@@ -2146,8 +2153,11 @@ def get_billing_summary_impl(  # pragma: no cover
             "payment_methods_on_file": payment_methods_on_file,
             "spoken_summary": spoken_summary,
             "spoken_message": spoken_summary,
+            "agent_action": billing_action,
         },
         reference,
         language=lang,
     )
+    rep["agent_action"] = billing_action
+    return rep
 # --- END GENERATED SHARED BUNDLE ---

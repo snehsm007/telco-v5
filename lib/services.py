@@ -188,7 +188,7 @@ def _hydrate_default_account_if_needed(state: dict[str, Any]) -> None:
     state["phone_last4"] = default_acc["phone"][-4:]
     state.setdefault("contact_email", default_acc.get("email", "jordan@example.com"))
     state.setdefault("service_address", default_acc.get("address", "123 Maple Avenue, Montreal, QC"))
-    state.setdefault("card_last4", default_acc.get("card_on_file_last4", "4242"))
+    state.setdefault("card_last4", default_acc.get("card_on_file_last4", "7742"))
     state.setdefault("bank_last4", default_acc.get("bank_on_file_last4", "6789"))
     state.setdefault("current_balance", default_acc.get("current_balance", "85.50"))
     state.setdefault("past_due_balance", default_acc.get("past_due_balance", "85.50"))
@@ -706,7 +706,7 @@ def lookup_account_impl(
     state["contact_email"] = account.get("email") or fallback_email
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
     card_on_file = account.get("card_on_file_last4", "")
-    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "4242")
+    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "7742")
     bank_on_file = account.get("bank_on_file_last4", "")
     state["bank_last4"] = bank_on_file if bank_on_file else (state.get("bank_last4") or "6789")
     state["current_balance"] = account.get("current_balance", "85.50")
@@ -1021,7 +1021,7 @@ def verify_login_impl(
             if b_l4 and not state.get("bank_last4"):
                 state["bank_last4"] = b_l4
         if not state.get("card_last4"):
-            state["card_last4"] = "4242"
+            state["card_last4"] = "7742"
         if not state.get("bank_last4"):
             state["bank_last4"] = "6789"
         return ok_reply(
@@ -1030,7 +1030,7 @@ def verify_login_impl(
                 "logged_in": True,
                 "auth_status": "pass",
                 "current_balance": state.get("current_balance", "85.50"),
-                "card_last4": state.get("card_last4", "4242"),
+                "card_last4": state.get("card_last4", "7742"),
                 "bank_last4": state.get("bank_last4", "6789"),
                 "is_suspended": state.get("is_suspended", False),
             },
@@ -1161,7 +1161,7 @@ def verify_login_impl(
         if b_l4 and not state.get("bank_last4"):
             state["bank_last4"] = b_l4
     if not state.get("card_last4"):
-        state["card_last4"] = "4242"
+        state["card_last4"] = "7742"
     if not state.get("bank_last4"):
         state["bank_last4"] = "6789"
 
@@ -1187,7 +1187,7 @@ def verify_login_impl(
             "logged_in": True,
             "auth_status": "pass",
             "current_balance": state.get("current_balance", "85.50"),
-            "card_last4": state.get("card_last4", "4242"),
+            "card_last4": state.get("card_last4", "7742"),
             "bank_last4": state.get("bank_last4", "6789"),
             "is_suspended": state.get("is_suspended", False),
         },
@@ -1338,7 +1338,7 @@ def get_billing_summary_impl(
 
     bal = str(state.get("current_balance") or "85.50")
     past_due = str(state.get("past_due_balance") or "85.50")
-    card_l4 = str(state.get("card_last4") or "4242")
+    card_l4 = str(state.get("card_last4") or "7742")
     bank_l4 = str(state.get("bank_last4") or "6789")
     is_susp = bool(state.get("is_suspended", False))
     susp_reason = str(state.get("suspension_reason") or "")
@@ -1457,7 +1457,14 @@ def get_billing_summary_impl(
         service_status = "active"
         restoration_hint = ""
 
-    return ok_reply(
+    billing_action = localized_text(
+        lang,
+        "A caller-named payment method is confirmed and used; offer payment methods on file only if the caller has not named one.",
+        "Un mode de paiement nommé par le client est confirmé et utilisé ; ne proposez les modes de paiement au dossier que si le client n'en a pas nommé.",
+        "El método de pago indicado por el cliente se confirma y utiliza; ofrezca los métodos registrados solo si el cliente no indicó ninguno.",
+    )
+
+    rep = ok_reply(
         {
             "current_balance": display_amount(bal),
             "past_due_balance": display_amount(past_due),
@@ -1486,10 +1493,13 @@ def get_billing_summary_impl(
             "payment_methods_on_file": payment_methods_on_file,
             "spoken_summary": spoken_summary,
             "spoken_message": spoken_summary,
+            "agent_action": billing_action,
         },
         reference,
         language=lang,
     )
+    rep["agent_action"] = billing_action
+    return rep
 
 
 # ============================================================================
@@ -1584,14 +1594,20 @@ def process_bill_payment_impl(
             )
         )
     )
+    def_c4_b = str(state.get("card_last4") or "7742")[-4:]
+    def_b4_b = str(state.get("bank_last4") or "6789")[-4:]
     provided_method = bank_last4 if is_bank else (card_last4 or bank_last4)
     l4_parsed = _extract_last4(provided_method)
     if l4_parsed is None:
         return error_reply("INVALID_INPUT", reference=reference, language=lang)
     if is_bank:
-        l4 = l4_parsed or str(state.get("bank_last4") or "6789")[-4:]
+        l4 = l4_parsed or def_b4_b
     else:
-        l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or "4242")[-4:]
+        l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or def_c4_b)[-4:]
+
+    is_new_card = not is_bank and any(
+        w in pm_low for w in ("new", "nouvelle", "nouveau", "nueva", "capture", "keypad", "clavier")
+    )
 
     if l4 in DECLINED_CARD_LAST4:
         failures = read_count(state, "payment_failure_count") + 1
@@ -1697,11 +1713,26 @@ def process_bill_payment_impl(
         reply_data["card_last4"] = ""
     else:
         reply_data["card_last4"] = l4
-    return ok_reply(
+
+    if is_new_card:
+        new_card_action = localized_text(
+            lang,
+            f"confirm the card ending {l4} the caller named; do not mention other cards",
+            f"confirmez la carte se terminant par {l4} nommée par le client; ne mentionnez pas d'autres cartes",
+            f"confirme la tarjeta que termina en {l4} que el cliente nombró; no mencione otras tarjetas",
+        )
+        reply_data["requested_card_last4"] = l4
+        reply_data["agent_action"] = new_card_action
+
+    rep = ok_reply(
         reply_data,
         conf,
         language=lang,
     )
+    if is_new_card:
+        rep["requested_card_last4"] = l4
+        rep["agent_action"] = new_card_action
+    return rep
 
 
 # ============================================================================
@@ -1833,7 +1864,7 @@ def setup_autopay_impl(
 
     _record_audit(state)
 
-    def_c4 = str(state.get("card_last4") or "4242")[-4:]
+    def_c4 = str(state.get("card_last4") or "7742")[-4:]
     sec_c4 = "8844"
     def_b4 = str(state.get("bank_last4") or "6789")[-4:]
     methods_on_file = [
@@ -1916,32 +1947,53 @@ def setup_autopay_impl(
                     reference=reference,
                     language=lang,
                     data={
-                        "payment_methods_on_file": methods_on_file,
+                        "requested_card_last4": req_last4,
                         "agent_action": localized_text(
                             lang,
-                            f"Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad. {on_file_guidance}",
-                            f"Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique. {on_file_guidance}",
-                            f"Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico. {on_file_guidance}",
+                            f"Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad for the card ending in {req_last4}. Do not mention other cards.",
+                            f"Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique pour la carte se terminant par {req_last4}. Ne mentionnez pas d'autres cartes.",
+                            f"Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico para la tarjeta que termina en {req_last4}. No mencione otras tarjetas.",
+                        ) if req_last4 else localized_text(
+                            lang,
+                            "Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad.",
+                            "Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique.",
+                            "Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico.",
                         ),
                     },
                 )
-                rep["payment_methods_on_file"] = methods_on_file
+                rep["requested_card_last4"] = req_last4
                 return rep
 
             state["card_capture_prompted"] = True
             preamble_spoken = bool(state.get("preamble_spoken"))
             if preamble_spoken:
-                pci_line = ""
+                if req_last4:
+                    pci_line = localized_text(
+                        lang,
+                        f"Key in your card ending in {req_last4} using your phone keypad.",
+                        f"Composez votre carte se terminant par {req_last4} à l'aide du clavier de votre téléphone.",
+                        f"Ingrese su tarjeta que termina en {req_last4} en el teclado de su teléfono.",
+                    )
+                else:
+                    pci_line = ""
             else:
-                pci_line = spoken_line("payment_method_preamble", lang)
+                if req_last4:
+                    pci_line = localized_text(
+                        lang,
+                        f"For your security, please do not read your full card number or security code out loud. Key in your card ending in {req_last4} using your phone keypad.",
+                        f"Pour votre sécurité, veuillez ne pas lire votre numéro de carte complet ni votre code de sécurité à haute voix. Composez votre carte se terminant par {req_last4} à l'aide du clavier de votre téléphone.",
+                        f"Por su seguridad, no lea en voz alta el número completo de su tarjeta ni el código de seguridad. Ingrese su tarjeta que termina en {req_last4} en el teclado de su teléfono.",
+                    )
+                else:
+                    pci_line = spoken_line("payment_method_preamble", lang)
                 state["preamble_spoken"] = True
 
             if req_last4:
                 action_text = localized_text(
                     lang,
-                    f"invite keypad entry for the NEW card ending in {req_last4} — it is not a card on file; never name an on-file card here; on the caller's next turn call setup_autopay again with the same card_last4 to complete enrollment",
-                    f"invitez à composer les chiffres sur le clavier pour la NOUVELLE carte se terminant par {req_last4} — ce n'est pas une carte enregistrée ; ne nommez jamais une carte enregistrée ici ; au prochain tour, rappelez setup_autopay avec le même card_last4 pour terminer l'inscription",
-                    f"invite a ingresar en el teclado la NUEVA tarjeta que termina en {req_last4} — no es una tarjeta registrada; nunca mencione una tarjeta registrada aquí; en el siguiente turno llame a setup_autopay nuevamente con el mismo card_last4 para completar la inscripción",
+                    f"confirm the card ending {req_last4} the caller named; do not mention other cards",
+                    f"confirmez la carte se terminant par {req_last4} nommée par le client; ne mentionnez pas d'autres cartes",
+                    f"confirme la tarjeta que termina en {req_last4} que el cliente nombró; no mencione otras tarjetas",
                 )
             else:
                 action_text = localized_text(
@@ -1952,9 +2004,9 @@ def setup_autopay_impl(
                 )
             msg = pci_line or localized_text(
                 lang,
-                "Payment card digits required. Key in 15 or 16 digits using your phone keypad.",
-                "Numéro de carte requis. Composez les 15 ou 16 chiffres à l'aide du clavier de votre téléphone.",
-                "Se requieren dígitos de la tarjeta. Ingrese los 15 o 16 dígitos en el teclado de su teléfono.",
+                f"Payment card digits required. Key in your card ending in {req_last4} using your phone keypad." if req_last4 else "Payment card digits required. Key in 15 or 16 digits using your phone keypad.",
+                f"Numéro de carte requis. Composez votre carte se terminant par {req_last4} à l'aide du clavier de votre téléphone." if req_last4 else "Numéro de carte requis. Composez les 15 ou 16 chiffres à l'aide du clavier de votre téléphone.",
+                f"Se requieren dígitos de la tarjeta. Ingrese su tarjeta que termina en {req_last4} en el teclado de su teléfono." if req_last4 else "Se requieren dígitos de la tarjeta. Ingrese los 15 o 16 dígitos en el teclado de su teléfono.",
             )
             rep = error_reply(
                 "CARD_CAPTURE_REQUIRED",
@@ -1966,12 +2018,10 @@ def setup_autopay_impl(
                     "spoken_line": pci_line,
                     "agent_action": action_text,
                     "requested_card_last4": req_last4,
-                    "payment_methods_on_file": methods_on_file,
                 },
             )
             rep["spoken_line"] = pci_line
             rep["requested_card_last4"] = req_last4
-            rep["payment_methods_on_file"] = methods_on_file
             return rep
 
         method_name = "card"
@@ -2035,6 +2085,37 @@ def setup_autopay_impl(
             f"El pago automatique está confirmado con su cuenta bancaria que termina en {digits}. Su pago mensual se debitará automáticamente el día {due_day_str} de cada mes, a partir del {next_date}. Número de confirmación: {ref}.",
         )
 
+    if is_new_card:
+        new_card_action = localized_text(
+            lang,
+            f"confirm the card ending {digits} the caller named; do not mention other cards",
+            f"confirmez la carte se terminant par {digits} nommée par le client; ne mentionnez pas d'autres cartes",
+            f"confirme la tarjeta que termina en {digits} que el cliente nombró; no mencione otras tarjetas",
+        )
+        rep = ok_reply(
+            {
+                "autopay_enrolled": True,
+                "payment_method": method_name,
+                "masked_last4": digits,
+                "card_last4": digits,
+                "requested_card_last4": digits,
+                "billing_day": bday,
+                "autopay_discount_monthly": "5.00",
+                "next_draft_date": next_date,
+                "confirmation_id": ref,
+                "spoken_summary": spoken_summary,
+                "spoken_message": spoken_summary,
+                "agent_action": new_card_action,
+            },
+            reference=ref,
+            language=lang,
+        )
+        rep["spoken_summary"] = spoken_summary
+        rep["requested_card_last4"] = digits
+        rep["card_last4"] = digits
+        rep["agent_action"] = new_card_action
+        return rep
+
     enroll_action = localized_text(
         lang,
         f"Confirm autopay is set up; do not ask for digits again. {on_file_guidance}",
@@ -2046,7 +2127,7 @@ def setup_autopay_impl(
             "autopay_enrolled": True,
             "payment_method": method_name,
             "masked_last4": digits,
-            "card_last4": digits if method_name == "card" else state.get("card_last4", "4242"),
+            "card_last4": digits if method_name == "card" else state.get("card_last4", "7742"),
             "billing_day": bday,
             "autopay_discount_monthly": "5.00",
             "next_draft_date": next_date,
@@ -2166,7 +2247,7 @@ def process_refund_or_dispute_impl(
                 "applied_amount": amt_disp,
                 "applied_amount_display": amt_disp,
                 "credit_amount": amt_disp,
-                "card_last4": state.get("card_last4", "4242"),
+                "card_last4": state.get("card_last4", "7742"),
                 "settlement_days": 5,
                 "confirmation_number": ref,
                 "spoken_message": full_confirm,
