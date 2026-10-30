@@ -488,16 +488,6 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
         "es-US": "Por su seguridad, necesito verificar su identidad. Por favor ingrese el PIN de 4 dígitos que configuró.",
     },
-    "account_dtmf_registered": {
-        "en-US": "Your keypad entry has been registered. For your security, please enter the 4-digit PIN you set up.",
-        "fr-CA": "Votre saisie au clavier a bien été enregistrée. Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
-        "es-US": "Su entrada por teclado ha sido registrada. Por su seguridad, ingrese el PIN de 4 dígitos que configuró.",
-    },
-    "pin_dtmf_registered": {
-        "en-US": "Your keypad PIN entry has been registered and your identity is verified.",
-        "fr-CA": "Votre entrée DTMF au clavier a bien été enregistrée et votre identité est vérifiée.",
-        "es-US": "Su entrada de PIN por teclado ha sido registrada y su identidad está verificada.",
-    },
     "live_agent_handoff": {
         "en-US": "I'll connect you to a representative who can help. Please hold.",
         "fr-CA": "Je vais vous mettre en communication avec un représentant qui pourra vous aider. Veuillez patienter.",
@@ -547,11 +537,6 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
         "fr-CA": "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté.",
         "es-US": "Le comunicaré ahora con un especialista de facturación; tendrá toda la información que ya conversamos.",
-    },
-    "refund_threshold_specialist_reason": {
-        "en-US": "Because this refund exceeds our self-service limit, your request requires billing specialist approval.",
-        "fr-CA": "Comme ce remboursement dépasse notre limite libre-service, votre demande nécessite l'approbation d'un spécialiste de la facturation.",
-        "es-US": "Debido a que este reembolso excede nuestro límite de autoservicio, su solicitud requiere la aprobación de un especialista de facturación.",
     },
     "service_alert_banner": {
         "en-US": "Please note: there is an active regional service advisory in parts of Montreal today.",
@@ -646,9 +631,6 @@ def enforce_handover_utterance(  # pragma: no cover
     is_specialist = target_queue == "billing_specialist" or any(
         term in reason for term in _SP_SPECIALIST_TERMS
     )
-    is_refund_threshold = is_specialist and any(
-        w in reason for w in ("refund", "threshold", "remboursement", "reembolso")
-    )
 
     if is_biz:
         required_lines = [spoken_line("business_handoff", loc)]
@@ -656,11 +638,6 @@ def enforce_handover_utterance(  # pragma: no cover
         required_lines = [
             spoken_line("empathy_protocol", loc),
             spoken_line("live_agent_handoff", loc),
-        ]
-    elif is_refund_threshold:
-        required_lines = [
-            spoken_line("refund_threshold_specialist_reason", loc),
-            spoken_line("transfer_to_specialist", loc),
         ]
     elif is_specialist:
         required_lines = [spoken_line("transfer_to_specialist", loc)]
@@ -705,26 +682,5 @@ def enforce_handover_utterance(  # pragma: no cover
         if other_missing:
             merged = f"{merged} {' '.join(other_missing)}"
         return merged
-
-    reason_line = (
-        spoken_line("refund_threshold_specialist_reason", loc)
-        if is_refund_threshold
-        else ""
-    )
-    if (
-        is_refund_threshold
-        and reason_line in missing
-        and (
-            _norm_ws(spoken_line("transfer_to_specialist", loc)) in norm_existing
-            or _norm_ws(generic_line) in norm_existing
-            or any(hold_tail in norm_existing for hold_tail in _SP_HOLD_TAILS)
-        )
-    ):
-        other_missing = [line for line in missing if line != reason_line]
-        merged = f"{reason_line} {existing}"
-        if other_missing:
-            merged = f"{merged} {' '.join(other_missing)}"
-        return merged
-
     return f"{existing} {' '.join(missing)}"
 # --- END GENERATED SHARED BUNDLE ---

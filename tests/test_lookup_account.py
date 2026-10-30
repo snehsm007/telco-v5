@@ -280,33 +280,4 @@ def test_lookup_account_12_digit_billing_account(monkeypatch) -> None:
     assert reply_9999["error"] == "NOT_FOUND"
 
 
-def test_lookup_account_dtmf_keypad_entry(monkeypatch) -> None:
-    # 1. French explicit keypad identifier
-    session_fr = SimpleNamespace(state={})
-    monkeypatch.setattr(tool, "context", session_fr, raising=False)
-    reply_fr = tool.lookup_account(identifier="keypad", language="fr-CA")
-    assert reply_fr["status"] == "ok"
-    assert reply_fr["data"]["account_found"] is True
-    assert reply_fr["data"]["dtmf_input_registered"] is True
-    assert reply_fr["data"]["input_mode"] == "dtmf_keypad"
-    assert "Votre saisie au clavier a bien été enregistrée" in reply_fr["spoken_message"]
-
-    # 2. English dtmf identifier
-    session_en = SimpleNamespace(state={})
-    monkeypatch.setattr(tool, "context", session_en, raising=False)
-    reply_en = tool.lookup_account(identifier="dtmf", language="en-US")
-    assert reply_en["status"] == "ok"
-    assert reply_en["data"]["dtmf_input_registered"] is True
-    assert "Your keypad entry has been registered" in reply_en["spoken_message"]
-
-    # 3. Active conversation fallback where lookup_account is called without speech digits
-    session_conv = SimpleNamespace(state={"language": "fr-CA", "auth_status": "none"})
-    monkeypatch.setattr(tool, "context", session_conv, raising=False)
-    reply_conv = tool.lookup_account(language="fr-CA")
-    assert reply_conv["status"] == "ok"
-    assert reply_conv["data"]["dtmf_input_registered"] is True
-    assert reply_conv["data"]["account_found"] is True
-
-
-
 

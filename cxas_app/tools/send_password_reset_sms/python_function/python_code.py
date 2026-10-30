@@ -7,16 +7,12 @@ from typing import Any
 def send_password_reset_sms(
     identifier: str | int | float = "",
     language: str = "",
-    destination_phone: str | int | float = "",
-    phone_number: str | int | float = "",
 ) -> dict[str, Any]:
     """Dispatch password reset link via SMS to identified account only.
 
     Args:
-        identifier: Optional account ID, phone, or 4-digit mobile ending.
+        identifier: Optional account ID or phone number to look up if not identified.
         language: Preferred language code (e.g. 'en-US', 'fr-CA', 'es-US').
-        destination_phone: Optional destination mobile phone or 4-digit ending.
-        phone_number: Optional destination phone number.
 
     Returns:
         dict[str, Any]: Confirmation payload with status, expiration, and spoken message.
@@ -28,8 +24,6 @@ def send_password_reset_sms(
     return send_password_reset_sms_impl(
         identifier=identifier,
         language=language,
-        destination_phone=destination_phone,
-        phone_number=phone_number,
         state=state,
     )
 
@@ -705,9 +699,6 @@ def error_reply(  # pragma: no cover
         "user_goal_fulfilled",
         "must_escalate_immediately",
         "requested_card_last4",
-        "agent_action",
-        "input_mode",
-        "dtmf_input_registered",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -753,16 +744,6 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
         "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
         "es-US": "Por su seguridad, necesito verificar su identidad. Por favor ingrese el PIN de 4 dígitos que configuró.",
-    },
-    "account_dtmf_registered": {
-        "en-US": "Your keypad entry has been registered. For your security, please enter the 4-digit PIN you set up.",
-        "fr-CA": "Votre saisie au clavier a bien été enregistrée. Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
-        "es-US": "Su entrada por teclado ha sido registrada. Por su seguridad, ingrese el PIN de 4 dígitos que configuró.",
-    },
-    "pin_dtmf_registered": {
-        "en-US": "Your keypad PIN entry has been registered and your identity is verified.",
-        "fr-CA": "Votre entrée DTMF au clavier a bien été enregistrée et votre identité est vérifiée.",
-        "es-US": "Su entrada de PIN por teclado ha sido registrada y su identidad está verificada.",
     },
     "live_agent_handoff": {
         "en-US": "I'll connect you to a representative who can help. Please hold.",
@@ -813,11 +794,6 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
         "fr-CA": "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté.",
         "es-US": "Le comunicaré ahora con un especialista de facturación; tendrá toda la información que ya conversamos.",
-    },
-    "refund_threshold_specialist_reason": {
-        "en-US": "Because this refund exceeds our self-service limit, your request requires billing specialist approval.",
-        "fr-CA": "Comme ce remboursement dépasse notre limite libre-service, votre demande nécessite l'approbation d'un spécialiste de la facturation.",
-        "es-US": "Debido a que este reembolso excede nuestro límite de autoservicio, su solicitud requiere la aprobación de un especialista de facturación.",
     },
     "service_alert_banner": {
         "en-US": "Please note: there is an active regional service advisory in parts of Montreal today.",
@@ -1139,8 +1115,6 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
 
     if is_intl:
         last4 = digits[-4:]
-        fn_to_use = synth_fn
-        email_to_use = synth_email if clean_fn else f"user{last4}@example.com"
         return {
             "account_id": f"ACC-{last4}",
             "phone": digits,
@@ -1149,11 +1123,11 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             _k_cp4: last4,
             _k_a4: last4,
             "billing_account": "BA-" + digits[-6:],
-            "first_name": fn_to_use,
+            "first_name": "",
             "status": "active",
             "preferred_language": "en-US",
             "identifier_kind": "phone",
-            "email": email_to_use,
+            "email": f"user{last4}@example.com",
             _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
@@ -1208,7 +1182,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "duplicate_payment_amount": "85.50",
         }
 
-    if has_alpha and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
+    if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
         base = dict(ACCOUNTS[0])
         base["account_id"] = raw
         base["linked_mobile_last4"] = base["phone"][-4:]
@@ -1218,7 +1192,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         base[_k_a4] = raw[-4:]
         base["identifier_kind"] = "account_id"
         base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
-        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else f"user{raw[-4:]}@example.com"
+        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
         base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
@@ -1261,9 +1235,6 @@ def ok_reply(  # pragma: no cover
         "user_goal_fulfilled",
         "must_escalate_immediately",
         "requested_card_last4",
-        "agent_action",
-        "input_mode",
-        "dtmf_input_registered",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -1354,15 +1325,7 @@ def lookup_account_impl(  # pragma: no cover
             language=lang,
         )
 
-    is_keypad = (
-        bool(kwargs.get("keypad") or kwargs.get("dtmf"))
-        or (isinstance(id_val, str) and any(w in id_val.lower() for w in ("keypad", "dtmf", "clavier", "touch-tone")))
-    )
-    if not is_keypad and not str(id_val or "").strip() and not name_val and not email_val:
-        if state and state.get("language") and not state.get("is_blocked") and not state.get("identified"):
-            is_keypad = True
-
-    if not is_keypad and ((isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val)):
+    if (isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val):
         return error_reply(
             "INVALID_INPUT",
             language=lang,
@@ -1387,21 +1350,11 @@ def lookup_account_impl(  # pragma: no cover
     existing_email = str(state.get("contact_email") or "").strip()
     email_user = existing_email.split("@")[0].split(".")[0] if (existing_email and existing_email != "user@example.com") else ""
     fn_hint = str(name_val or "").strip() or email_user
-
-    # When account is already identified in session and lookup_account is invoked with that same ID, keep it.
-    if state.get("account_id") and str(id_val or "").strip().upper() == str(state.get("account_id")).upper():
-        matched_curr = find_account(state.get("account_id"), first_name=fn_hint)
-        if matched_curr:
-            account = dict(matched_curr)
-        else:
-            account = dict(find_account(ACCOUNTS[0]["account_id"]))
-            account["account_id"] = state.get("account_id")
-    else:
-        account = (
-            find_account(id_val, first_name=fn_hint)
-            if str(id_val or "").strip()
-            else None
-        )
+    account = (
+        find_account(id_val, first_name=fn_hint)
+        if str(id_val or "").strip()
+        else None
+    )
     resolved_by_name = False
     resolved_by_email = False
     if account and name_val:
@@ -1443,9 +1396,6 @@ def lookup_account_impl(  # pragma: no cover
             account = dict(find_account(ACCOUNTS[0]["account_id"]))
             account["email"] = email_val
         resolved_by_email = True
-
-    if account is None and is_keypad:
-        account = dict(find_account(state.get("account_id") or ACCOUNTS[0]["account_id"]))
 
     if account is None:
         return error_reply(
@@ -1566,12 +1516,6 @@ def lookup_account_impl(  # pragma: no cover
             "Demander à quel numéro de mobile envoyer le code de vérification, ou proposer l'authentification avec le NIP du compte.",
             "Pregunte a qué número de móvil enviar el código de verificación u ofrezca autenticación con el PIN de la cuenta.",
         )
-    if is_keypad:
-        reply_data["input_mode"] = "dtmf_keypad"
-        reply_data["dtmf_input_registered"] = True
-        dtmf_spoken = spoken_line("account_dtmf_registered", lang)
-        reply_data["spoken_message"] = dtmf_spoken
-        reply_data["agent_action"] = dtmf_spoken
     return ok_reply(
         reply_data,
         reference,
@@ -1583,8 +1527,6 @@ def send_password_reset_sms_impl(  # pragma: no cover
     language: str = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
-    destination_phone: str | int | float = "",
-    phone_number: str | int | float = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Dispatch password reset link via SMS to Identified account only."""
@@ -1597,7 +1539,7 @@ def send_password_reset_sms_impl(  # pragma: no cover
     if mock_err:
         return mock_err
 
-    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", ""))
+    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -1607,43 +1549,14 @@ def send_password_reset_sms_impl(  # pragma: no cover
             and (str(id_val).strip().startswith("+") or str(id_val).strip().startswith("00"))
             and 10 <= len(raw_digits) <= 15
         )
-        if not has_alpha and len(norm_digits) == 4 and state.get("account_id"):
+        if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
             caller_l4 = norm_digits[-4:]
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
-        else:
-            if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
-                caller_l4 = norm_digits[-4:]
-                state["caller_provided_phone_last4"] = caller_l4
-                state["phone_last4"] = caller_l4
 
-            l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
-            if l_res.get("status") == "error":
-                return l_res
-
-    dest_val = (
-        destination_phone
-        or phone_number
-        or kwargs.get("destination_phone")
-        or kwargs.get("phone_number")
-        or kwargs.get("destination")
-        or kwargs.get("phone")
-        or kwargs.get("mobile")
-        or ""
-    )
-    if str(dest_val or "").strip():
-        d_raw = normalize_code(dest_val)
-        d_has_alpha = any(c.isalpha() for c in str(dest_val or ""))
-        d_norm = d_raw[1:] if (not d_has_alpha and len(d_raw) == 11 and d_raw.startswith("1")) else d_raw
-        is_dest_intl = (
-            not d_has_alpha
-            and (str(dest_val).strip().startswith("+") or str(dest_val).strip().startswith("00"))
-            and 10 <= len(d_raw) <= 15
-        )
-        if not d_has_alpha and (len(d_norm) in (4, 10) or is_dest_intl):
-            dest_l4 = d_norm[-4:]
-            state["caller_provided_phone_last4"] = dest_l4
-            state["phone_last4"] = dest_l4
+        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+        if l_res.get("status") == "error":
+            return l_res
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -1688,13 +1601,6 @@ def send_password_reset_sms_impl(  # pragma: no cover
             "Se ha enviado un enlace de restablecimiento al teléfono móvil registrado y es válido durante 30 minutos.",
         )
 
-    action_text = localized_text(
-        lang,
-        "Confirm the SMS reset link was sent and its validity window, and ask the caller to let you know once it arrives or if they need anything else; never call end_session while the caller says they are checking their phone or waiting for the message.",
-        "Confirmez l'envoi du lien de réinitialisation par texto et sa période de validité, et demandez au client de vous avertir dès sa réception ou s'il a besoin d'autre chose; n'appelez jamais end_session lorsque le client dit vérifier son cellulaire ou attendre le message.",
-        "Confirme el envío del enlace de restablecimiento por SMS y su ventana de validez, y pida al cliente que le avise una vez que llegue o si necesita algo más; nunca llame a end_session mientras el cliente diga que está revisando su teléfono o esperando el mensaje.",
-    )
-
     return ok_reply(
         {
             "password_reset_sent": True,
@@ -1704,7 +1610,6 @@ def send_password_reset_sms_impl(  # pragma: no cover
             "can_change_password_by_voice": False,
             "spoken_summary": summary,
             "spoken_message": summary,
-            "agent_action": action_text,
         },
         reference,
         language=lang,

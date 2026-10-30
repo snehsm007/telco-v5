@@ -948,9 +948,6 @@ def error_reply(  # pragma: no cover
         "user_goal_fulfilled",
         "must_escalate_immediately",
         "requested_card_last4",
-        "agent_action",
-        "input_mode",
-        "dtmf_input_registered",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -996,16 +993,6 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
         "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
         "es-US": "Por su seguridad, necesito verificar su identidad. Por favor ingrese el PIN de 4 dígitos que configuró.",
-    },
-    "account_dtmf_registered": {
-        "en-US": "Your keypad entry has been registered. For your security, please enter the 4-digit PIN you set up.",
-        "fr-CA": "Votre saisie au clavier a bien été enregistrée. Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
-        "es-US": "Su entrada por teclado ha sido registrada. Por su seguridad, ingrese el PIN de 4 dígitos que configuró.",
-    },
-    "pin_dtmf_registered": {
-        "en-US": "Your keypad PIN entry has been registered and your identity is verified.",
-        "fr-CA": "Votre entrée DTMF au clavier a bien été enregistrée et votre identité est vérifiée.",
-        "es-US": "Su entrada de PIN por teclado ha sido registrada y su identidad está verificada.",
     },
     "live_agent_handoff": {
         "en-US": "I'll connect you to a representative who can help. Please hold.",
@@ -1056,11 +1043,6 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
         "fr-CA": "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté.",
         "es-US": "Le comunicaré ahora con un especialista de facturación; tendrá toda la información que ya conversamos.",
-    },
-    "refund_threshold_specialist_reason": {
-        "en-US": "Because this refund exceeds our self-service limit, your request requires billing specialist approval.",
-        "fr-CA": "Comme ce remboursement dépasse notre limite libre-service, votre demande nécessite l'approbation d'un spécialiste de la facturation.",
-        "es-US": "Debido a que este reembolso excede nuestro límite de autoservicio, su solicitud requiere la aprobación de un especialista de facturación.",
     },
     "service_alert_banner": {
         "en-US": "Please note: there is an active regional service advisory in parts of Montreal today.",
@@ -1272,130 +1254,6 @@ def _session_language(state: dict[str, Any] | None, language: Any = "") -> str: 
 
     return resolve_copy_locale(None)
 
-CURRENT_PLAN_DEFAULTS: dict[str, dict[str, Any]] = {  # pragma: no cover
-    "internet": {
-        "plan_id": "NET-STARTER",
-        "name": {
-            "en-US": "Fiber Internet 100",
-            "fr-CA": "Internet Fibre 100",
-            "es-US": "Internet Fibra 100",
-        },
-        "monthly_price": {
-            "en-US": "$45.00/month",
-            "fr-CA": "45.00 $/mois",
-            "es-US": "$45.00/mes",
-        },
-        "monthly_rate": "45.00",
-        "speed": {
-            "en-US": "100 Mbps symmetrical download/upload",
-            "fr-CA": "100 Mbps symétrique téléchargement et téléversement",
-            "es-US": "100 Mbps simétrico descarga y carga",
-        },
-        "download_speed": "100 Mbps",
-        "upload_speed": "100 Mbps",
-        "features": {
-            "en-US": "Unlimited downloads, Wi-Fi 6 gateway included, no annual contract",
-            "fr-CA": "Téléchargements illimités, borne Wi-Fi 6 incluse, sans contrat annuel",
-            "es-US": "Descargas ilimitadas, módem Wi-Fi 6 incluido, sin contrato anual",
-        },
-        "spoken_summary": {
-            "en-US": "Your current plan is Fiber Internet 100 at $45.00/month with 100 Mbps symmetrical download/upload.",
-            "fr-CA": "Votre forfait actuel est Internet Fibre 100 à 45.00 $/mois avec 100 Mbps symétrique téléchargement et téléversement.",
-            "es-US": "Su plan actual es Internet Fibra 100 a $45.00/mes con 100 Mbps simétrico descarga y carga.",
-        },
-    },
-    "mobility": {
-        "plan_id": "MOB-ESSENTIAL",
-        "name": {
-            "en-US": "Mobility Essential Plan",
-            "fr-CA": "Forfait Mobilité Essentiel",
-            "es-US": "Plan Movilidad Esencial",
-        },
-        "monthly_price": {
-            "en-US": "$55.00/month",
-            "fr-CA": "55.00 $/mois",
-            "es-US": "$55.00/mes",
-        },
-        "monthly_rate": "55.00",
-        "speed": {
-            "en-US": "20 GB data",
-            "fr-CA": "20 Go de données",
-            "es-US": "20 GB de datos",
-        },
-        "data": {
-            "en-US": "20 GB data",
-            "fr-CA": "20 Go de données",
-            "es-US": "20 GB de datos",
-        },
-        "download_speed": "Up to 250 Mbps (5G)",
-        "upload_speed": "Up to 50 Mbps",
-        "features": {
-            "en-US": "Unlimited Canada-wide talk and text, 20GB full-speed 5G data",
-            "fr-CA": "Appels et textos illimités partout au Canada, 20 Go de données 5G pleine vitesse",
-            "es-US": "Llamadas y mensajes ilimitados en todo Canadá, 20GB de datos 5G de alta velocidad",
-        },
-        "spoken_summary": {
-            "en-US": "Your current plan is Mobility Essential Plan at $55.00/month with 20 GB data.",
-            "fr-CA": "Votre forfait actuel est Forfait Mobilité Essentiel à 55.00 $/mois avec 20 Go de données.",
-            "es-US": "Su plan actual es Plan Movilidad Esencial a $55.00/mes con 20 GB de datos.",
-        },
-    },
-    "tv": {
-        "plan_id": "TV-STARTER",
-        "name": {
-            "en-US": "TV Starter",
-            "fr-CA": "Télé Starter",
-            "es-US": "TV Inicial",
-        },
-        "monthly_price": {
-            "en-US": "$25.00/month",
-            "fr-CA": "25.00 $/mois",
-            "es-US": "$25.00/mes",
-        },
-        "monthly_rate": "25.00",
-        "speed": {
-            "en-US": "Starter TV channels in HD",
-            "fr-CA": "Chaînes télé de base en HD",
-            "es-US": "Canales de TV básicos en HD",
-        },
-        "spoken_summary": {
-            "en-US": "Your current plan is TV Starter at $25.00/month.",
-            "fr-CA": "Votre forfait actuel est Télé Starter à 25.00 $/mois.",
-            "es-US": "Su plan actual es TV Inicial a $25.00/mes.",
-        },
-    },
-}
-
-def get_current_plan_info(category: str = "internet", language: str | None = "en-US") -> dict[str, Any]:  # pragma: no cover
-    """Return a localized current_plan object for the requested category."""
-    loc = resolve_copy_locale(language)
-    cat = str(category or "internet").lower()
-    entry = CURRENT_PLAN_DEFAULTS.get(cat, CURRENT_PLAN_DEFAULTS["internet"])
-
-    plan_name = entry["name"].get(loc, entry["name"]["en-US"])
-    monthly_price = entry["monthly_price"].get(loc, entry["monthly_price"]["en-US"])
-    monthly_rate = entry.get("monthly_rate", "45.00")
-    speed = entry["speed"].get(loc, entry["speed"]["en-US"])
-    spoken_summary = entry["spoken_summary"].get(loc, entry["spoken_summary"]["en-US"])
-
-    info: dict[str, Any] = {
-        "plan_id": entry.get("plan_id", ""),
-        "plan_name": plan_name,
-        "monthly_price": monthly_price,
-        "monthly_rate": monthly_rate,
-        "speed": speed,
-        "spoken_summary": spoken_summary,
-    }
-    if "download_speed" in entry:
-        info["download_speed"] = entry["download_speed"]
-    if "upload_speed" in entry:
-        info["upload_speed"] = entry["upload_speed"]
-    if "features" in entry:
-        info["features"] = entry["features"].get(loc, entry["features"]["en-US"])
-    if "data" in entry:
-        info["data"] = entry["data"].get(loc, entry["data"]["en-US"])
-    return info
-
 CATALOG_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
     "Account credit": {
         "en-US": "Account credit",
@@ -1507,9 +1365,6 @@ def ok_reply(  # pragma: no cover
         "user_goal_fulfilled",
         "must_escalate_immediately",
         "requested_card_last4",
-        "agent_action",
-        "input_mode",
-        "dtmf_input_registered",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -1630,8 +1485,6 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
     ref = tracking_id("browse_plans_and_coverage", cat, pc)
     state["last_tracking_id"] = ref
 
-    current_plan = get_current_plan_info(cat, lang)
-
     contract_term = localized_text(
         lang,
         "Month-to-month, no annual contract, $0 activation fee",
@@ -1641,10 +1494,6 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
 
     browse_payload = {
         "category": cat,
-        "current_plan": current_plan,
-        "current_plan_name": current_plan["plan_name"],
-        "current_plan_price": current_plan["monthly_price"],
-        "current_plan_speed": current_plan.get("speed", ""),
         "shortlisted_plans": shortlist,
         "available_add_ons": addons_enriched,
         "add_ons": addons_enriched,

@@ -604,10 +604,7 @@ def _is_only_generated_tool_bundle_diff(
     content = full_path.read_text(encoding="utf-8")
     marker_line = None
     for idx, line in enumerate(content.splitlines(), 1):
-        if (
-            "# DO NOT MODIFY CODE BELOW THIS LINE" in line
-            or "# --- BEGIN GENERATED SHARED BUNDLE" in line
-        ):
+        if "# DO NOT MODIFY CODE BELOW THIS LINE" in line:
             marker_line = idx
             break
     if marker_line is None:

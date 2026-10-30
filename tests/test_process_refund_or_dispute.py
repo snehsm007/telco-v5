@@ -75,12 +75,10 @@ def test_process_refund_or_dispute_exceeds_cap(monkeypatch) -> None:
     assert reply["data"]["exceeds_self_serve_cap"] is True
     assert reply["data"]["target_queue"] == "billing_specialist"
     assert reply["data"]["verbatim_key"] == "transfer_to_specialist"
-    expected_msg = (
-        "Because this refund exceeds our self-service limit, your request requires billing specialist approval. "
+    assert reply["data"]["spoken_message"] == (
         "I'll connect you to a billing specialist now — they'll have everything we've already discussed."
     )
-    assert reply["data"]["spoken_message"] == expected_msg
-    assert reply["data"]["handoff_message"] == expected_msg
+    assert reply["data"]["handoff_message"] == reply["data"]["spoken_message"]
 
 
 def test_process_refund_or_dispute_exceeds_cap_french(monkeypatch) -> None:
@@ -93,12 +91,10 @@ def test_process_refund_or_dispute_exceeds_cap_french(monkeypatch) -> None:
     assert reply["data"]["approved"] is False
     assert reply["data"]["exceeds_self_serve_cap"] is True
     assert reply["data"]["verbatim_key"] == "transfer_to_specialist"
-    expected_fr = (
-        "Comme ce remboursement dépasse notre limite libre-service, votre demande nécessite l'approbation d'un spécialiste de la facturation. "
+    assert reply["data"]["spoken_message"] == (
         "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté."
     )
-    assert reply["data"]["spoken_message"] == expected_fr
-    assert reply["data"]["handoff_message"] == expected_fr
+    assert reply["data"]["handoff_message"] == reply["data"]["spoken_message"]
 
 
 def test_process_refund_or_dispute_not_authenticated(monkeypatch) -> None:
@@ -158,8 +154,6 @@ def test_handover_to_person_billing_specialist_verbatim_key() -> None:
     )
     assert reply["status"] == "ok"
     assert reply["data"]["verbatim_key"] == "transfer_to_specialist"
-    expected_msg = (
-        "Because this refund exceeds our self-service limit, your request requires billing specialist approval. "
+    assert reply["data"]["spoken_message"] == (
         "I'll connect you to a billing specialist now — they'll have everything we've already discussed."
     )
-    assert reply["data"]["spoken_message"] == expected_msg

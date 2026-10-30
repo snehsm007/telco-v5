@@ -192,8 +192,6 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
 
     if is_intl:
         last4 = digits[-4:]
-        fn_to_use = synth_fn
-        email_to_use = synth_email if clean_fn else f"user{last4}@example.com"
         return {
             "account_id": f"ACC-{last4}",
             "phone": digits,
@@ -202,11 +200,11 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             _k_cp4: last4,
             _k_a4: last4,
             "billing_account": "BA-" + digits[-6:],
-            "first_name": fn_to_use,
+            "first_name": "",
             "status": "active",
             "preferred_language": "en-US",
             "identifier_kind": "phone",
-            "email": email_to_use,
+            "email": f"user{last4}@example.com",
             _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
@@ -261,7 +259,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "duplicate_payment_amount": "85.50",
         }
 
-    if has_alpha and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
+    if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
         base = dict(ACCOUNTS[0])
         base["account_id"] = raw
         base["linked_mobile_last4"] = base["phone"][-4:]
@@ -271,7 +269,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         base[_k_a4] = raw[-4:]
         base["identifier_kind"] = "account_id"
         base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
-        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else f"user{raw[-4:]}@example.com"
+        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
         base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"

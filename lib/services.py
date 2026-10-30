@@ -15,9 +15,6 @@ from typing import Any
 
 from lib.copy import (
     SPOKEN_LINES,
-    get_current_plan_info,
-    get_ticket_resolution_notes,
-    is_ticket_identifier,
     localize_catalog_copy,
     localized_text,
     resolve_copy_locale,
@@ -570,15 +567,7 @@ def lookup_account_impl(
             language=lang,
         )
 
-    is_keypad = (
-        bool(kwargs.get("keypad") or kwargs.get("dtmf"))
-        or (isinstance(id_val, str) and any(w in id_val.lower() for w in ("keypad", "dtmf", "clavier", "touch-tone")))
-    )
-    if not is_keypad and not str(id_val or "").strip() and not name_val and not email_val:
-        if state and state.get("language") and not state.get("is_blocked") and not state.get("identified"):
-            is_keypad = True
-
-    if not is_keypad and ((isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val)):
+    if (isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val):
         return error_reply(
             "INVALID_INPUT",
             language=lang,
@@ -603,21 +592,11 @@ def lookup_account_impl(
     existing_email = str(state.get("contact_email") or "").strip()
     email_user = existing_email.split("@")[0].split(".")[0] if (existing_email and existing_email != "user@example.com") else ""
     fn_hint = str(name_val or "").strip() or email_user
-
-    # When account is already identified in session and lookup_account is invoked with that same ID, keep it.
-    if state.get("account_id") and str(id_val or "").strip().upper() == str(state.get("account_id")).upper():
-        matched_curr = find_account(state.get("account_id"), first_name=fn_hint)
-        if matched_curr:
-            account = dict(matched_curr)
-        else:
-            account = dict(find_account(ACCOUNTS[0]["account_id"]))
-            account["account_id"] = state.get("account_id")
-    else:
-        account = (
-            find_account(id_val, first_name=fn_hint)
-            if str(id_val or "").strip()
-            else None
-        )
+    account = (
+        find_account(id_val, first_name=fn_hint)
+        if str(id_val or "").strip()
+        else None
+    )
     resolved_by_name = False
     resolved_by_email = False
     if account and name_val:
@@ -659,9 +638,6 @@ def lookup_account_impl(
             account = dict(find_account(ACCOUNTS[0]["account_id"]))
             account["email"] = email_val
         resolved_by_email = True
-
-    if account is None and is_keypad:
-        account = dict(find_account(state.get("account_id") or ACCOUNTS[0]["account_id"]))
 
     if account is None:
         return error_reply(
@@ -782,12 +758,6 @@ def lookup_account_impl(
             "Demander à quel numéro de mobile envoyer le code de vérification, ou proposer l'authentification avec le NIP du compte.",
             "Pregunte a qué número de móvil enviar el código de verificación u ofrezca autenticación con el PIN de la cuenta.",
         )
-    if is_keypad:
-        reply_data["input_mode"] = "dtmf_keypad"
-        reply_data["dtmf_input_registered"] = True
-        dtmf_spoken = spoken_line("account_dtmf_registered", lang)
-        reply_data["spoken_message"] = dtmf_spoken
-        reply_data["agent_action"] = dtmf_spoken
     return ok_reply(
         reply_data,
         reference,
@@ -861,13 +831,6 @@ def send_login_code_impl(
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
-    if "@" in str(id_val or ""):
-        state["contact_email"] = str(id_val).strip()
-        id_val = ""
-    elif "@" in str(kwargs.get("email") or kwargs.get("email_address") or kwargs.get("destination") or ""):
-        state["contact_email"] = str(kwargs.get("email") or kwargs.get("email_address") or kwargs.get("destination")).strip()
-    if state.get("account_id") and str(id_val or "").strip().upper() == str(state.get("account_id")).upper():
-        id_val = ""
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -1035,13 +998,6 @@ def verify_login_impl(
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
-    if "@" in str(id_val or ""):
-        state["contact_email"] = str(id_val).strip()
-        id_val = ""
-    elif "@" in str(kwargs.get("email") or kwargs.get("email_address") or kwargs.get("destination") or ""):
-        state["contact_email"] = str(kwargs.get("email") or kwargs.get("email_address") or kwargs.get("destination")).strip()
-    if state.get("account_id") and str(id_val or "").strip().upper() == str(state.get("account_id")).upper():
-        id_val = ""
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -1103,23 +1059,14 @@ def verify_login_impl(
             state["card_last4"] = "7742"
         if not state.get("bank_last4"):
             state["bank_last4"] = "6789"
-        res_data = {
-            "verified": True,
-            "logged_in": True,
-            "auth_status": "pass",
-            "current_balance": state.get("current_balance", "85.50"),
-            "is_suspended": state.get("is_suspended", False),
-        }
-        method_low = str(method or "").strip().lower()
-        raw_code = normalize_code(code_val)
-        if method_low == "pin" or len(raw_code) == SECRET_PIN_LENGTH or state.get("login_channel") == "pin":
-            res_data["input_mode"] = "dtmf_keypad"
-            res_data["dtmf_input_registered"] = True
-            msg = spoken_line("pin_dtmf_registered", lang)
-            res_data["spoken_message"] = msg
-            res_data["agent_action"] = msg
         return ok_reply(
-            res_data,
+            {
+                "verified": True,
+                "logged_in": True,
+                "auth_status": "pass",
+                "current_balance": state.get("current_balance", "85.50"),
+                "is_suspended": state.get("is_suspended", False),
+            },
             reference,
             language=lang,
         )
@@ -1267,22 +1214,14 @@ def verify_login_impl(
     else:
         state["login_channel"] = "sms"
 
-    res_data = {
-        "verified": True,
-        "logged_in": True,
-        "auth_status": "pass",
-        "current_balance": state.get("current_balance", "85.50"),
-        "is_suspended": state.get("is_suspended", False),
-    }
-    if method_low == "pin" or len(digits) == SECRET_PIN_LENGTH:
-        res_data["input_mode"] = "dtmf_keypad"
-        res_data["dtmf_input_registered"] = True
-        msg = spoken_line("pin_dtmf_registered", lang)
-        res_data["spoken_message"] = msg
-        res_data["agent_action"] = msg
-
     return ok_reply(
-        res_data,
+        {
+            "verified": True,
+            "logged_in": True,
+            "auth_status": "pass",
+            "current_balance": state.get("current_balance", "85.50"),
+            "is_suspended": state.get("is_suspended", False),
+        },
         reference,
         language=lang,
     )
@@ -1352,10 +1291,7 @@ def handover_to_person_impl(
         any(w in r_low for w in ("refund_threshold", "billing_specialist", "remboursement"))
         or tq_low == "billing_specialist"
     ):
-        if any(w in r_low for w in ("refund_threshold", "remboursement")) or "refund" in r_low:
-            msg = f"{spoken_line('refund_threshold_specialist_reason', resolved_lang)} {spoken_line('transfer_to_specialist', resolved_lang)}"
-        else:
-            msg = spoken_line("transfer_to_specialist", resolved_lang)
+        msg = spoken_line("transfer_to_specialist", resolved_lang)
         queue = "billing_specialist"
         queue_hours = "after_hours_callback_available" if state.get("after_hours") else "open"
     elif "secondary_language" in r_low or tq_low == "multilingual_support":
@@ -1554,9 +1490,9 @@ def get_billing_summary_impl(
 
     billing_action = localized_text(
         lang,
-        "A caller-named payment method or specified card ending is confirmed and used; offer payment methods on file only if the caller has not named one. When the caller states their saved card has a different ending, accept and charge that card ending.",
-        "Un mode de paiement ou terminaison de carte nommé par le client est confirmé et utilisé ; ne proposez les modes de paiement au dossier que si le client n'en a pas nommé. Si le client indique une terminaison de carte différente, acceptez et débitez cette carte.",
-        "El método de pago o terminación de tarjeta indicado por el cliente se confirma y utiliza; ofrezca los métodos registrados solo si el cliente no indicó ninguno. Si el cliente indica una terminación de tarjeta diferente, acepte y cargue esa tarjeta.",
+        "A caller-named payment method is confirmed and used; offer payment methods on file only if the caller has not named one.",
+        "Un mode de paiement nommé par le client est confirmé et utilisé ; ne proposez les modes de paiement au dossier que si le client n'en a pas nommé.",
+        "El método de pago indicado por el cliente se confirma y utiliza; ofrezca los métodos registrados solo si el cliente no indicó ninguno.",
     )
 
     rep = ok_reply(
@@ -1962,10 +1898,6 @@ def setup_autopay_impl(
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
-    bank_account: str | int | float = "",
-    account_number: str | int | float = "",
-    transit_number: str | int | float = "",
-    institution_number: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -2009,35 +1941,7 @@ def setup_autopay_impl(
         "Ofrezca exactamente estas; use tarjeta_registrada/cuenta_registrada para ellas; use nueva_tarjeta solo para una tarjeta que no esté en esta lista; el preámbulo se dice una vez por sesión.",
     )
 
-    req_bank_fields = localized_text(
-        lang,
-        "transit number (5 digits), financial institution number (3 digits), and bank account number",
-        "numéro de transit (5 chiffres), numéro d'institution financière (3 chiffres) et numéro de compte bancaire",
-        "número de tránsito (5 dígitos), número de institución financiera (3 dígitos) y número de cuenta bancaria",
-    )
-
     act = str(action or "enroll").lower()
-    if act in ("info", "fields", "details", "inquire", "requirements"):
-        action_text = localized_text(
-            lang,
-            f"List the required banking details ({req_bank_fields}) and ask the caller for their transit and account numbers to complete autopay enrollment.",
-            f"Indiquez les coordonnées bancaires requises ({req_bank_fields}) et demandez au client son numéro de transit et de compte pour compléter l'inscription au paiement automatique.",
-            f"Indique los datos bancarios requeridos ({req_bank_fields}) y solicite al cliente su número de tránsito y cuenta para completar la inscripción.",
-        )
-        rep = ok_reply(
-            {
-                "required_bank_fields": req_bank_fields,
-                "payment_methods_on_file": methods_on_file,
-                "agent_action": action_text,
-            },
-            reference,
-            language=lang,
-        )
-        rep["required_bank_fields"] = req_bank_fields
-        rep["payment_methods_on_file"] = methods_on_file
-        rep["agent_action"] = action_text
-        return rep
-
     if act == "cancel":
         state["autopay_enrolled"] = False
         cancel_action = localized_text(
@@ -2202,18 +2106,7 @@ def setup_autopay_impl(
         is_bank = any(w in pm for w in ("bank", "checking", "bancaire", "chèques", "compte", "6789"))
         method_name = "bank" if is_bank else "card"
 
-        provided_digits = (
-            last4
-            or (bank_last4 if is_bank else card_last4)
-            or (bank_account if is_bank else "")
-            or (account_number if is_bank else "")
-            or (transit_number if is_bank else "")
-            or kwargs.get("bank_account", "")
-            or kwargs.get("account_number", "")
-            or kwargs.get("transit_number", "")
-            or kwargs.get("account", "")
-            or ""
-        )
+        provided_digits = last4 or (bank_last4 if is_bank else card_last4) or ""
         digits_parsed = _extract_last4(provided_digits)
         if digits_parsed is None:
             return error_reply("INVALID_INPUT", reference=reference, language=lang)
@@ -2266,7 +2159,7 @@ def setup_autopay_impl(
             lang,
             f"Autopay is confirmed with your bank account ending in {digits}. Your monthly payment will be automatically drafted on day {due_day_str} of each month, starting {next_date}. Confirmation number is {ref}.",
             f"Le paiement automatique est confirmé avec votre compte bancaire se terminant par {digits}. Votre paiement mensuel sera prélevé automatiquement le {due_day_str} de chaque mois, à compter du {next_date}. Numéro de confirmation : {ref}.",
-            f"El pago automático está confirmado con su cuenta bancaria que termina en {digits}. Su pago mensual se debitará automáticamente el día {due_day_str} de cada mes, a partir del {next_date}. Número de confirmación: {ref}.",
+            f"El pago automatique está confirmado con su cuenta bancaria que termina en {digits}. Su pago mensual se debitará automáticamente el día {due_day_str} de cada mes, a partir del {next_date}. Número de confirmación: {ref}.",
         )
 
     if is_new_card:
@@ -2305,42 +2198,29 @@ def setup_autopay_impl(
         rep["agent_action"] = new_card_action
         return rep
 
-    if is_bank:
-        bank_guidance = localized_text(
-            lang,
-            f"Confirm autopay is set up; do not ask for digits again. If the caller asks for banking requirements or wishes to use another bank account, provide the required fields: {req_bank_fields}.",
-            f"Confirmez que le paiement automatique est configuré; ne demandez plus les chiffres. Si le client demande les exigences bancaires ou souhaite utiliser un autre compte, indiquez les champs requis : {req_bank_fields}.",
-            f"Confirme que el pago automático está configurado; no vuelva a pedir dígitos. Si el cliente solicita los requisitos bancarios o desea usar otra cuenta, indique los campos requeridos: {req_bank_fields}.",
-        )
-        enroll_action = bank_guidance
-    else:
-        enroll_action = localized_text(
-            lang,
-            f"Confirm autopay is set up; do not ask for digits again. {on_file_guidance}",
-            f"Confirmez que le paiement automatique est configuré; ne demandez plus les chiffres. {on_file_guidance}",
-            f"Confirme que el pago automático está configurado; no vuelva a pedir dígitos. {on_file_guidance}",
-        )
-    reply_payload = {
-        "autopay_enrolled": True,
-        "autopay_enabled": True,
-        "payment_method": method_name,
-        "masked_last4": digits,
-        "card_last4": digits if method_name == "card" else state.get("card_last4", "7742"),
-        "bank_last4": digits if method_name == "bank" else state.get("bank_last4", "6789"),
-        "billing_day": bday,
-        "autopay_discount_monthly": "5.00",
-        "next_draft_date": next_date,
-        "confirmation_id": ref,
-        "confirmation_number": ref,
-        "payment_methods_on_file": methods_on_file,
-        "spoken_summary": spoken_summary,
-        "spoken_message": spoken_summary,
-        "agent_action": enroll_action,
-    }
-    if is_bank:
-        reply_payload["required_bank_fields"] = req_bank_fields
+    enroll_action = localized_text(
+        lang,
+        f"Confirm autopay is set up; do not ask for digits again. {on_file_guidance}",
+        f"Confirmez que le paiement automatique est configuré; ne demandez plus les chiffres. {on_file_guidance}",
+        f"Confirme que el pago automático está configurado; no vuelva a pedir dígitos. {on_file_guidance}",
+    )
     rep = ok_reply(
-        reply_payload,
+        {
+            "autopay_enrolled": True,
+            "autopay_enabled": True,
+            "payment_method": method_name,
+            "masked_last4": digits,
+            "card_last4": digits if method_name == "card" else state.get("card_last4", "7742"),
+            "billing_day": bday,
+            "autopay_discount_monthly": "5.00",
+            "next_draft_date": next_date,
+            "confirmation_id": ref,
+            "confirmation_number": ref,
+            "payment_methods_on_file": methods_on_file,
+            "spoken_summary": spoken_summary,
+            "spoken_message": spoken_summary,
+            "agent_action": enroll_action,
+        },
         reference=ref,
         language=lang,
     )
@@ -2349,9 +2229,6 @@ def setup_autopay_impl(
     rep["confirmation_number"] = ref
     rep["spoken_summary"] = spoken_summary
     rep["payment_methods_on_file"] = methods_on_file
-    if is_bank:
-        rep["required_bank_fields"] = req_bank_fields
-        rep["bank_last4"] = digits
     return rep
 
 
@@ -2502,15 +2379,7 @@ def process_refund_or_dispute_impl(
     state["dispute_ticket_id"] = tkt
     state["handoff_reason"] = "refund_threshold_exceeded"
     specialist_msg = spoken_line("transfer_to_specialist", lang)
-    reason_prefix = spoken_line("refund_threshold_specialist_reason", lang)
-    full_spoken_message = f"{reason_prefix} {specialist_msg}".strip()
-    agent_action = localized_text(
-        lang,
-        "Emit refund_threshold_specialist_reason followed by transfer_to_specialist.",
-        "Émettez refund_threshold_specialist_reason suivi de transfer_to_specialist.",
-        "Emita refund_threshold_specialist_reason seguido de transfer_to_specialist.",
-    )
-    state["handoff_message"] = full_spoken_message
+    state["handoff_message"] = specialist_msg
     return ok_reply(
         {
             "approved": False,
@@ -2520,9 +2389,8 @@ def process_refund_or_dispute_impl(
             "must_escalate_immediately": True,
             "escalation_reason": "refund_threshold_exceeded",
             "target_queue": "billing_specialist",
-            "handoff_message": full_spoken_message,
-            "spoken_message": full_spoken_message,
-            "agent_action": agent_action,
+            "handoff_message": specialist_msg,
+            "spoken_message": specialist_msg,
             "verbatim_key": "transfer_to_specialist",
         },
         tkt,
@@ -2758,21 +2626,7 @@ def get_appointment_and_ticket_status_impl(
     if mock_err:
         return mock_err
 
-    raw_ticket = (
-        kwargs.get("ticket_id")
-        or kwargs.get("ticket_number")
-        or kwargs.get("repair_ticket_id")
-        or ""
-    )
-    caller_ticket = ""
-    auth_identifier = identifier
-    if raw_ticket and is_ticket_identifier(raw_ticket):
-        caller_ticket = str(raw_ticket).strip().upper()
-    elif identifier and is_ticket_identifier(identifier):
-        caller_ticket = str(identifier).strip().upper()
-        auth_identifier = ""
-
-    inline_err = _maybe_inline_auth(auth_identifier, verification_code, lang, state)
+    inline_err = _maybe_inline_auth(identifier, verification_code, lang, state)
     if inline_err:
         return inline_err
 
@@ -2794,17 +2648,6 @@ def get_appointment_and_ticket_status_impl(
     state["appointment_status"] = apt["status"]
     state["technician_status"] = apt["technician_status"]
 
-    effective_ticket_id = (
-        caller_ticket
-        or tkt["ticket_id"]
-    )
-    resolution_notes = get_ticket_resolution_notes(lang)
-
-    tkt_copy = dict(tkt)
-    tkt_copy["ticket_id"] = effective_ticket_id
-    tkt_copy["resolution_notes"] = resolution_notes
-    tkt_copy["technical_steps"] = resolution_notes
-
     loc_window_display = localized_text(
         lang,
         "8:00 AM - 12:00 PM",
@@ -2825,16 +2668,15 @@ def get_appointment_and_ticket_status_impl(
     return ok_reply(
         {
             "active_appointment": apt_copy,
-            "repair_ticket": tkt_copy,
+            "repair_ticket": tkt,
             "available_slots": localized_slots,
             "appointment_id": apt["appointment_id"],
             "scheduled_date": apt["scheduled_date"],
             "arrival_window": loc_window_display,
             "window_display": loc_window_display,
             "technician_status": apt["technician_status"],
-            "ticket_id": effective_ticket_id,
+            "ticket_id": tkt["ticket_id"],
             "ticket_status": tkt["status"],
-            "resolution_notes": resolution_notes,
         },
         reference,
         language=lang,
@@ -3106,8 +2948,6 @@ def browse_plans_and_coverage_impl(
     ref = tracking_id("browse_plans_and_coverage", cat, pc)
     state["last_tracking_id"] = ref
 
-    current_plan = get_current_plan_info(cat, lang)
-
     contract_term = localized_text(
         lang,
         "Month-to-month, no annual contract, $0 activation fee",
@@ -3117,10 +2957,6 @@ def browse_plans_and_coverage_impl(
 
     browse_payload = {
         "category": cat,
-        "current_plan": current_plan,
-        "current_plan_name": current_plan["plan_name"],
-        "current_plan_price": current_plan["monthly_price"],
-        "current_plan_speed": current_plan.get("speed", ""),
         "shortlisted_plans": shortlist,
         "available_add_ons": addons_enriched,
         "add_ons": addons_enriched,
@@ -3563,7 +3399,6 @@ def manage_warranty_claim_impl(
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("manage_warranty_claim", account_id, str(issue_description))
     state["last_tracking_id"] = reference
-    unit_condition = localized_text(lang, "brand-new unit", "appareil neuf", "unidad completamente nueva")
 
     # Priority 1: Swollen battery hazard override
     desc_low = str(issue_description or "").lower()
@@ -3580,15 +3415,7 @@ def manage_warranty_claim_impl(
             {
                 "safety_hazard": True,
                 "claim_status": "urgent_safety_replacement",
-                "warranty_covered": True,
-                "warranty_active": True,
-                "in_warranty": True,
                 "device_model": FAKE_WARRANTY_DATA["device_model"],
-                "purchase_date": FAKE_WARRANTY_DATA["purchase_date"],
-                "warranty_months": FAKE_WARRANTY_DATA["warranty_months"],
-                "warranty_coverage_end": FAKE_WARRANTY_DATA["coverage_end_date"],
-                "coverage_end_date": FAKE_WARRANTY_DATA["coverage_end_date"],
-                "replacement_unit_condition": unit_condition,
                 "urgent_safety_instructions": instructions,
                 "expedited_replacement_eta": eta_text,
                 "do_not_mail_warning": True,
@@ -3624,14 +3451,8 @@ def manage_warranty_claim_impl(
                 "requires_damage_check": True,
                 "claim_submitted": False,
                 "warranty_active": True,
-                "warranty_covered": True,
-                "in_warranty": True,
                 "device_model": FAKE_WARRANTY_DATA["device_model"],
-                "purchase_date": FAKE_WARRANTY_DATA["purchase_date"],
-                "warranty_months": FAKE_WARRANTY_DATA["warranty_months"],
                 "warranty_coverage_end": FAKE_WARRANTY_DATA["coverage_end_date"],
-                "coverage_end_date": FAKE_WARRANTY_DATA["coverage_end_date"],
-                "replacement_unit_condition": unit_condition,
                 "spoken_message": prompt_msg,
             },
             reference,
@@ -3655,16 +3476,9 @@ def manage_warranty_claim_impl(
     return ok_reply(
         {
             "warranty_covered": True,
-            "warranty_active": True,
-            "in_warranty": True,
             "claim_status": "approved",
             "warranty_claim_id": claim_id,
             "device_model": FAKE_WARRANTY_DATA["device_model"],
-            "purchase_date": FAKE_WARRANTY_DATA["purchase_date"],
-            "warranty_months": FAKE_WARRANTY_DATA["warranty_months"],
-            "warranty_coverage_end": FAKE_WARRANTY_DATA["coverage_end_date"],
-            "coverage_end_date": FAKE_WARRANTY_DATA["coverage_end_date"],
-            "replacement_unit_condition": unit_condition,
             "replacement_eta_days": 2,
             "return_window_days": 14,
             "prepaid_label_sent": True,
@@ -3684,8 +3498,6 @@ def send_password_reset_sms_impl(
     language: str = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
-    destination_phone: str | int | float = "",
-    phone_number: str | int | float = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Dispatch password reset link via SMS to Identified account only."""
@@ -3698,7 +3510,7 @@ def send_password_reset_sms_impl(
     if mock_err:
         return mock_err
 
-    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", ""))
+    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -3708,43 +3520,14 @@ def send_password_reset_sms_impl(
             and (str(id_val).strip().startswith("+") or str(id_val).strip().startswith("00"))
             and 10 <= len(raw_digits) <= 15
         )
-        if not has_alpha and len(norm_digits) == 4 and state.get("account_id"):
+        if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
             caller_l4 = norm_digits[-4:]
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
-        else:
-            if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
-                caller_l4 = norm_digits[-4:]
-                state["caller_provided_phone_last4"] = caller_l4
-                state["phone_last4"] = caller_l4
 
-            l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
-            if l_res.get("status") == "error":
-                return l_res
-
-    dest_val = (
-        destination_phone
-        or phone_number
-        or kwargs.get("destination_phone")
-        or kwargs.get("phone_number")
-        or kwargs.get("destination")
-        or kwargs.get("phone")
-        or kwargs.get("mobile")
-        or ""
-    )
-    if str(dest_val or "").strip():
-        d_raw = normalize_code(dest_val)
-        d_has_alpha = any(c.isalpha() for c in str(dest_val or ""))
-        d_norm = d_raw[1:] if (not d_has_alpha and len(d_raw) == 11 and d_raw.startswith("1")) else d_raw
-        is_dest_intl = (
-            not d_has_alpha
-            and (str(dest_val).strip().startswith("+") or str(dest_val).strip().startswith("00"))
-            and 10 <= len(d_raw) <= 15
-        )
-        if not d_has_alpha and (len(d_norm) in (4, 10) or is_dest_intl):
-            dest_l4 = d_norm[-4:]
-            state["caller_provided_phone_last4"] = dest_l4
-            state["phone_last4"] = dest_l4
+        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+        if l_res.get("status") == "error":
+            return l_res
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -3789,13 +3572,6 @@ def send_password_reset_sms_impl(
             "Se ha enviado un enlace de restablecimiento al teléfono móvil registrado y es válido durante 30 minutos.",
         )
 
-    action_text = localized_text(
-        lang,
-        "Confirm the SMS reset link was sent and its validity window, and ask the caller to let you know once it arrives or if they need anything else; never call end_session while the caller says they are checking their phone or waiting for the message.",
-        "Confirmez l'envoi du lien de réinitialisation par texto et sa période de validité, et demandez au client de vous avertir dès sa réception ou s'il a besoin d'autre chose; n'appelez jamais end_session lorsque le client dit vérifier son cellulaire ou attendre le message.",
-        "Confirme el envío del enlace de restablecimiento por SMS y su ventana de validez, y pida al cliente que le avise una vez que llegue o si necesita algo más; nunca llame a end_session mientras el cliente diga que está revisando su teléfono o esperando el mensaje.",
-    )
-
     return ok_reply(
         {
             "password_reset_sent": True,
@@ -3805,7 +3581,6 @@ def send_password_reset_sms_impl(
             "can_change_password_by_voice": False,
             "spoken_summary": summary,
             "spoken_message": summary,
-            "agent_action": action_text,
         },
         reference,
         language=lang,
@@ -3824,7 +3599,6 @@ def manage_mfa_settings_impl(
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
-    email: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -3838,18 +3612,11 @@ def manage_mfa_settings_impl(
     if mock_err:
         return mock_err
 
-    caller_email = str(email or kwargs.get("email") or "").strip()
-    id_str = str(identifier or "").strip()
-    if not caller_email and "@" in id_str:
-        caller_email = id_str
-    if caller_email and "@" in caller_email:
-        state["contact_email"] = caller_email
-
     caller_fn = str(kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("first_name") or "").strip()
     if caller_fn and (not state.get("contact_email") or state.get("contact_email") == "user@example.com"):
         state["contact_email"] = f"{caller_fn.split()[0].lower()}@example.com"
 
-    if identifier and not state.get("account_id") and "@" not in str(identifier):
+    if identifier and not state.get("account_id"):
         lookup_account_impl(identifier=identifier, language=lang, state=state, full_name=caller_fn)
 
     account_id = str(state.get("account_id") or "")
@@ -3930,14 +3697,7 @@ def manage_mfa_settings_impl(
         _hydrate_default_account_if_needed(state)
 
     if state.get("auth_status") != "pass":
-        if state.get("identified") and state.get("login_code_sent") and state.get("auth_status") in ("none", "code_sent"):
-            state["auth_status"] = "pass"
-            state["logged_in"] = True
-            state["auth_failure_count"] = 0
-            if not state.get("account_id"):
-                _hydrate_default_account_if_needed(state)
-        else:
-            return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
+        return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
 
     _record_audit(state)
 
@@ -3955,28 +3715,6 @@ def manage_mfa_settings_impl(
             state["mfa_email_code_sent"] = True
             email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
             if already_sent:
-                if state.get("login_channel") == "mfa_email_resent" and state.get("logged_in") and not str(code_val or "").strip():
-                    state["mfa_enabled"] = False
-                    state["mfa_email_verified"] = True
-                    disable_msg = localized_text(
-                        lang,
-                        "Two-factor authentication has been disabled for your account.",
-                        "L'authentification à deux facteurs a été désactivée pour votre compte.",
-                        "La autenticación de dos factores se ha desactivado para su cuenta.",
-                    )
-                    reply = ok_reply(
-                        {
-                            "mfa_updated": True,
-                            "mfa_enabled": False,
-                            "spoken_message": disable_msg,
-                        },
-                        reference,
-                        language=lang,
-                    )
-                    reply["spoken_message"] = disable_msg
-                    return reply
-
-                state["login_channel"] = "mfa_email_resent"
                 spoken = localized_text(
                     lang,
                     f"I have resent the 6-digit verification code to the email address on file starting with '{first_char}' — please check your inbox and read it back to me.",

@@ -238,20 +238,4 @@ def test_get_billing_summary_adjustments_and_restoration_hint_localized(
     assert expected_hint_keyword in data["restoration_hint"]
 
 
-def test_get_billing_summary_agent_action_caller_specified_card(monkeypatch) -> None:
-    session = SimpleNamespace(
-        state={
-            "account_id": "A1001",
-            "auth_status": "pass",
-            "current_balance": "85.50",
-            "language": "en-US",
-        }
-    )
-    monkeypatch.setattr(tool, "context", session, raising=False)
-    res = tool.get_billing_summary()
-    assert res["status"] == "ok"
-    assert "When the caller states their saved card has a different ending" in res["data"]["agent_action"]
-
-
-
 

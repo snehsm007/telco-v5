@@ -117,9 +117,3 @@ def test_router_lookup_by_name_instruction_invariants() -> None:
     assert "When the caller gives their name (or does not have their phone or account number), call {@TOOL: lookup_account} immediately with full_name" in router_txt
 
 
-def test_account_password_reset_destination_phone_instruction_invariants() -> None:
-    account_txt = (APP_DIR / "agents" / "account" / "instruction.txt").read_text(encoding="utf-8")
-    assert '<step name="Send Password Reset Without Login">' in account_txt
-    assert "- destination_phone: the mobile number or 4-digit ending when specified" in account_txt
-
-

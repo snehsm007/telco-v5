@@ -806,9 +806,6 @@ def error_reply(  # pragma: no cover
         "user_goal_fulfilled",
         "must_escalate_immediately",
         "requested_card_last4",
-        "agent_action",
-        "input_mode",
-        "dtmf_input_registered",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -854,16 +851,6 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
         "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
         "es-US": "Por su seguridad, necesito verificar su identidad. Por favor ingrese el PIN de 4 dígitos que configuró.",
-    },
-    "account_dtmf_registered": {
-        "en-US": "Your keypad entry has been registered. For your security, please enter the 4-digit PIN you set up.",
-        "fr-CA": "Votre saisie au clavier a bien été enregistrée. Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
-        "es-US": "Su entrada por teclado ha sido registrada. Por su seguridad, ingrese el PIN de 4 dígitos que configuró.",
-    },
-    "pin_dtmf_registered": {
-        "en-US": "Your keypad PIN entry has been registered and your identity is verified.",
-        "fr-CA": "Votre entrée DTMF au clavier a bien été enregistrée et votre identité est vérifiée.",
-        "es-US": "Su entrada de PIN por teclado ha sido registrada y su identidad está verificada.",
     },
     "live_agent_handoff": {
         "en-US": "I'll connect you to a representative who can help. Please hold.",
@@ -914,11 +901,6 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "I'll connect you to a billing specialist now — they'll have everything we've already discussed.",
         "fr-CA": "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté.",
         "es-US": "Le comunicaré ahora con un especialista de facturación; tendrá toda la información que ya conversamos.",
-    },
-    "refund_threshold_specialist_reason": {
-        "en-US": "Because this refund exceeds our self-service limit, your request requires billing specialist approval.",
-        "fr-CA": "Comme ce remboursement dépasse notre limite libre-service, votre demande nécessite l'approbation d'un spécialiste de la facturation.",
-        "es-US": "Debido a que este reembolso excede nuestro límite de autoservicio, su solicitud requiere la aprobación de un especialista de facturación.",
     },
     "service_alert_banner": {
         "en-US": "Please note: there is an active regional service advisory in parts of Montreal today.",
@@ -1207,8 +1189,6 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
 
     if is_intl:
         last4 = digits[-4:]
-        fn_to_use = synth_fn
-        email_to_use = synth_email if clean_fn else f"user{last4}@example.com"
         return {
             "account_id": f"ACC-{last4}",
             "phone": digits,
@@ -1217,11 +1197,11 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             _k_cp4: last4,
             _k_a4: last4,
             "billing_account": "BA-" + digits[-6:],
-            "first_name": fn_to_use,
+            "first_name": "",
             "status": "active",
             "preferred_language": "en-US",
             "identifier_kind": "phone",
-            "email": email_to_use,
+            "email": f"user{last4}@example.com",
             _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
@@ -1276,7 +1256,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "duplicate_payment_amount": "85.50",
         }
 
-    if has_alpha and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
+    if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
         base = dict(ACCOUNTS[0])
         base["account_id"] = raw
         base["linked_mobile_last4"] = base["phone"][-4:]
@@ -1286,7 +1266,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         base[_k_a4] = raw[-4:]
         base["identifier_kind"] = "account_id"
         base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
-        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else f"user{raw[-4:]}@example.com"
+        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
         base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
@@ -1329,9 +1309,6 @@ def ok_reply(  # pragma: no cover
         "user_goal_fulfilled",
         "must_escalate_immediately",
         "requested_card_last4",
-        "agent_action",
-        "input_mode",
-        "dtmf_input_registered",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -1422,15 +1399,7 @@ def lookup_account_impl(  # pragma: no cover
             language=lang,
         )
 
-    is_keypad = (
-        bool(kwargs.get("keypad") or kwargs.get("dtmf"))
-        or (isinstance(id_val, str) and any(w in id_val.lower() for w in ("keypad", "dtmf", "clavier", "touch-tone")))
-    )
-    if not is_keypad and not str(id_val or "").strip() and not name_val and not email_val:
-        if state and state.get("language") and not state.get("is_blocked") and not state.get("identified"):
-            is_keypad = True
-
-    if not is_keypad and ((isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val)):
+    if (isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val):
         return error_reply(
             "INVALID_INPUT",
             language=lang,
@@ -1455,21 +1424,11 @@ def lookup_account_impl(  # pragma: no cover
     existing_email = str(state.get("contact_email") or "").strip()
     email_user = existing_email.split("@")[0].split(".")[0] if (existing_email and existing_email != "user@example.com") else ""
     fn_hint = str(name_val or "").strip() or email_user
-
-    # When account is already identified in session and lookup_account is invoked with that same ID, keep it.
-    if state.get("account_id") and str(id_val or "").strip().upper() == str(state.get("account_id")).upper():
-        matched_curr = find_account(state.get("account_id"), first_name=fn_hint)
-        if matched_curr:
-            account = dict(matched_curr)
-        else:
-            account = dict(find_account(ACCOUNTS[0]["account_id"]))
-            account["account_id"] = state.get("account_id")
-    else:
-        account = (
-            find_account(id_val, first_name=fn_hint)
-            if str(id_val or "").strip()
-            else None
-        )
+    account = (
+        find_account(id_val, first_name=fn_hint)
+        if str(id_val or "").strip()
+        else None
+    )
     resolved_by_name = False
     resolved_by_email = False
     if account and name_val:
@@ -1511,9 +1470,6 @@ def lookup_account_impl(  # pragma: no cover
             account = dict(find_account(ACCOUNTS[0]["account_id"]))
             account["email"] = email_val
         resolved_by_email = True
-
-    if account is None and is_keypad:
-        account = dict(find_account(state.get("account_id") or ACCOUNTS[0]["account_id"]))
 
     if account is None:
         return error_reply(
@@ -1634,12 +1590,6 @@ def lookup_account_impl(  # pragma: no cover
             "Demander à quel numéro de mobile envoyer le code de vérification, ou proposer l'authentification avec le NIP du compte.",
             "Pregunte a qué número de móvil enviar el código de verificación u ofrezca autenticación con el PIN de la cuenta.",
         )
-    if is_keypad:
-        reply_data["input_mode"] = "dtmf_keypad"
-        reply_data["dtmf_input_registered"] = True
-        dtmf_spoken = spoken_line("account_dtmf_registered", lang)
-        reply_data["spoken_message"] = dtmf_spoken
-        reply_data["agent_action"] = dtmf_spoken
     return ok_reply(
         reply_data,
         reference,
