@@ -1168,6 +1168,8 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
 
     if is_intl:
         last4 = digits[-4:]
+        fn_to_use = synth_fn
+        email_to_use = synth_email if clean_fn else f"user{last4}@example.com"
         return {
             "account_id": f"ACC-{last4}",
             "phone": digits,
@@ -1176,11 +1178,11 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             _k_cp4: last4,
             _k_a4: last4,
             "billing_account": "BA-" + digits[-6:],
-            "first_name": "",
+            "first_name": fn_to_use,
             "status": "active",
             "preferred_language": "en-US",
             "identifier_kind": "phone",
-            "email": f"user{last4}@example.com",
+            "email": email_to_use,
             _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
@@ -1235,7 +1237,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "duplicate_payment_amount": "85.50",
         }
 
-    if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
+    if has_alpha and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
         base = dict(ACCOUNTS[0])
         base["account_id"] = raw
         base["linked_mobile_last4"] = base["phone"][-4:]
@@ -1245,7 +1247,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         base[_k_a4] = raw[-4:]
         base["identifier_kind"] = "account_id"
         base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
-        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
+        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else f"user{raw[-4:]}@example.com"
         base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
@@ -1423,11 +1425,21 @@ def lookup_account_impl(  # pragma: no cover
     existing_email = str(state.get("contact_email") or "").strip()
     email_user = existing_email.split("@")[0].split(".")[0] if (existing_email and existing_email != "user@example.com") else ""
     fn_hint = str(name_val or "").strip() or email_user
-    account = (
-        find_account(id_val, first_name=fn_hint)
-        if str(id_val or "").strip()
-        else None
-    )
+
+    # When account is already identified in session and lookup_account is invoked with that same ID, keep it.
+    if state.get("account_id") and str(id_val or "").strip().upper() == str(state.get("account_id")).upper():
+        matched_curr = find_account(state.get("account_id"), first_name=fn_hint)
+        if matched_curr:
+            account = dict(matched_curr)
+        else:
+            account = dict(find_account(ACCOUNTS[0]["account_id"]))
+            account["account_id"] = state.get("account_id")
+    else:
+        account = (
+            find_account(id_val, first_name=fn_hint)
+            if str(id_val or "").strip()
+            else None
+        )
     resolved_by_name = False
     resolved_by_email = False
     if account and name_val:
@@ -1664,6 +1676,13 @@ def verify_login_impl(  # pragma: no cover
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
+    if "@" in str(id_val or ""):
+        state["contact_email"] = str(id_val).strip()
+        id_val = ""
+    elif "@" in str(kwargs.get("email") or kwargs.get("email_address") or kwargs.get("destination") or ""):
+        state["contact_email"] = str(kwargs.get("email") or kwargs.get("email_address") or kwargs.get("destination")).strip()
+    if state.get("account_id") and str(id_val or "").strip().upper() == str(state.get("account_id")).upper():
+        id_val = ""
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))

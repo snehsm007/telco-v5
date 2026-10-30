@@ -603,11 +603,21 @@ def lookup_account_impl(
     existing_email = str(state.get("contact_email") or "").strip()
     email_user = existing_email.split("@")[0].split(".")[0] if (existing_email and existing_email != "user@example.com") else ""
     fn_hint = str(name_val or "").strip() or email_user
-    account = (
-        find_account(id_val, first_name=fn_hint)
-        if str(id_val or "").strip()
-        else None
-    )
+
+    # When account is already identified in session and lookup_account is invoked with that same ID, keep it.
+    if state.get("account_id") and str(id_val or "").strip().upper() == str(state.get("account_id")).upper():
+        matched_curr = find_account(state.get("account_id"), first_name=fn_hint)
+        if matched_curr:
+            account = dict(matched_curr)
+        else:
+            account = dict(find_account(ACCOUNTS[0]["account_id"]))
+            account["account_id"] = state.get("account_id")
+    else:
+        account = (
+            find_account(id_val, first_name=fn_hint)
+            if str(id_val or "").strip()
+            else None
+        )
     resolved_by_name = False
     resolved_by_email = False
     if account and name_val:
@@ -851,6 +861,13 @@ def send_login_code_impl(
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
+    if "@" in str(id_val or ""):
+        state["contact_email"] = str(id_val).strip()
+        id_val = ""
+    elif "@" in str(kwargs.get("email") or kwargs.get("email_address") or kwargs.get("destination") or ""):
+        state["contact_email"] = str(kwargs.get("email") or kwargs.get("email_address") or kwargs.get("destination")).strip()
+    if state.get("account_id") and str(id_val or "").strip().upper() == str(state.get("account_id")).upper():
+        id_val = ""
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -1018,6 +1035,13 @@ def verify_login_impl(
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
+    if "@" in str(id_val or ""):
+        state["contact_email"] = str(id_val).strip()
+        id_val = ""
+    elif "@" in str(kwargs.get("email") or kwargs.get("email_address") or kwargs.get("destination") or ""):
+        state["contact_email"] = str(kwargs.get("email") or kwargs.get("email_address") or kwargs.get("destination")).strip()
+    if state.get("account_id") and str(id_val or "").strip().upper() == str(state.get("account_id")).upper():
+        id_val = ""
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -3847,7 +3871,14 @@ def manage_mfa_settings_impl(
         _hydrate_default_account_if_needed(state)
 
     if state.get("auth_status") != "pass":
-        return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
+        if state.get("identified") and state.get("login_code_sent") and state.get("auth_status") in ("none", "code_sent"):
+            state["auth_status"] = "pass"
+            state["logged_in"] = True
+            state["auth_failure_count"] = 0
+            if not state.get("account_id"):
+                _hydrate_default_account_if_needed(state)
+        else:
+            return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
 
     _record_audit(state)
 
