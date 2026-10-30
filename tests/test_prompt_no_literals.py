@@ -83,3 +83,19 @@ def test_five_agent_tree_subtask_structure_and_handover_pairing() -> None:
         else:
             assert "{@TOOL: verify_login}" in agent_txt
             assert any("M2 " in s for s in subtasks)
+
+
+def test_paretoloop_cherry_picked_instruction_invariants() -> None:
+    for name in ("account", "billing", "sales_equipment", "tech_support"):
+        agent_txt = (APP_DIR / "agents" / name / "instruction.txt").read_text(encoding="utf-8")
+        assert "never call {@TOOL: verify_login} until the caller provides their PIN" in agent_txt, (
+            f"{name} missing gated verify_login PIN instruction"
+        )
+
+    account_txt = (APP_DIR / "agents" / "account" / "instruction.txt").read_text(encoding="utf-8")
+    assert '<step name="Post-Cancellation Inquiries">' in account_txt
+    assert "contract_cancellation_fee_disclosure" in account_txt
+
+    tech_txt = (APP_DIR / "agents" / "tech_support" / "instruction.txt").read_text(encoding="utf-8")
+    assert "The caller explicitly asks about a network outage or requests a regional outage check" in tech_txt
+
