@@ -125,6 +125,12 @@ Patient, analytical, and reassuring. Provide clear step-by-step guidance grounde
                 Explain the diagnostic findings, walk through the returned steps, and confirm the SMS troubleshooting guide was sent.
             </action>
         </step>
+        <step name="No Service Verbal Device Troubleshooting">
+            <trigger>A mobile troubleshooting caller has no cellular service to receive an SMS verification code and cannot complete email or PIN verification</trigger>
+            <action>
+                Call {@TOOL: run_troubleshooting_and_sms} with service_type="mobility", symptom=the caller's reported symptom, send_sms_guide=False, and language=the active language code. Read the returned verbal troubleshooting steps aloud directly to provide verbal device troubleshooting steps before escalating via {@TOOL: handover_to_person}.
+            </action>
+        </step>
     </subtask>
     <subtask name="M6 Technician and Ticket Management">
         <step name="Review Appointment and Tickets">
