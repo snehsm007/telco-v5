@@ -323,8 +323,53 @@ def test_setup_autopay_on_file_path_includes_methods_3_locales(locale: str) -> N
     st = {"account_id": "A1001", "auth_status": "pass"}
     rep = setup_autopay_impl(payment_method="card_on_file", language=locale, state=st)
     assert rep["status"] == "ok"
+    assert rep["autopay_enabled"] is True
+    assert rep["data"]["autopay_enabled"] is True
     assert "payment_methods_on_file" in rep
     assert "payment_methods_on_file" in rep.get("data", {})
     assert len(rep["payment_methods_on_file"]) == 3
+
+
+def test_setup_autopay_new_card_updates_state_card_last4_on_capture_prompt() -> None:
+    st = {"account_id": "A1001", "auth_status": "pass", "card_last4": "7742"}
+    rep = setup_autopay_impl(payment_method="new_card", card_last4="4321", state=st)
+    assert rep["error"] == "CARD_CAPTURE_REQUIRED"
+    assert rep["requested_card_last4"] == "4321"
+    assert rep["card_last4"] == "4321"
+    assert rep["data"]["requested_card_last4"] == "4321"
+    assert rep["data"]["card_last4"] == "4321"
+    assert st["card_last4"] == "4321"
+    assert st["pending_card_last4"] == "4321"
+
+
+@pytest.mark.parametrize("locale", ["en-US", "fr-CA", "es-US"])
+def test_setup_autopay_new_card_completion_confirms_autopay_enabled_3_locales(locale: str) -> None:
+    st = {"account_id": "A1001", "auth_status": "pass", "card_last4": "7742"}
+    # Call 1: capture required
+    rep1 = setup_autopay_impl(payment_method="new_card", card_last4="4321", language=locale, state=st)
+    assert rep1["error"] == "CARD_CAPTURE_REQUIRED"
+    assert st["card_last4"] == "4321"
+
+    # Call 2: completion
+    rep2 = setup_autopay_impl(payment_method="new_card", card_last4="4321", language=locale, state=st)
+    assert rep2["status"] == "ok"
+    assert rep2["autopay_enabled"] is True
+    assert rep2["data"]["autopay_enabled"] is True
+    assert rep2["autopay_enrolled"] is True
+    assert rep2["data"]["autopay_enrolled"] is True
+    assert rep2["card_last4"] == "4321"
+    assert rep2["data"]["card_last4"] == "4321"
+    assert rep2["confirmation_number"] != ""
+    assert rep2["data"]["confirmation_number"] != ""
+
+
+def test_setup_autopay_action_confirm_completes_enrollment() -> None:
+    st = {"account_id": "A1001", "auth_status": "pass", "card_last4": "7742"}
+    rep = setup_autopay_impl(payment_method="new_card", card_last4="4321", action="confirm", state=st)
+    assert rep["status"] == "ok"
+    assert rep["autopay_enabled"] is True
+    assert rep["data"]["autopay_enabled"] is True
+    assert rep["card_last4"] == "4321"
+
 
 
