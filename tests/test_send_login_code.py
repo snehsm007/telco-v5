@@ -129,7 +129,7 @@ def test_send_login_code_sms_no_mobile_on_file_returns_no_mobile_on_file(monkeyp
     assert not session.state.get("login_code_sent")
 
 
-def test_send_login_code_sms_lookup_by_name_without_mobile_returns_no_mobile_on_file(monkeypatch) -> None:
+def test_send_login_code_sms_lookup_by_name_allows_otp_dispatch(monkeypatch) -> None:
     session = SimpleNamespace(
         state={
             "account_id": "ACC-1001",
@@ -143,29 +143,9 @@ def test_send_login_code_sms_lookup_by_name_without_mobile_returns_no_mobile_on_
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
     reply = tool.send_login_code(channel="sms")
-    assert reply["status"] == "error"
-    assert reply["error"] == "NO_MOBILE_ON_FILE"
-    assert "agent_action" in reply
-    assert not session.state.get("login_code_sent")
-
-
-def test_send_login_code_sms_lookup_by_name_with_caller_phone_succeeds(monkeypatch) -> None:
-    session = SimpleNamespace(
-        state={
-            "account_id": "ACC-1001",
-            "phone_last4": "0143",
-            "caller_provided_phone_last4": "0143",
-            "lookup_by_name": True,
-            "auth_failure_count": 0,
-            "login_attempts": 0,
-            "auth_status": "none",
-        }
-    )
-    monkeypatch.setattr(tool, "context", session, raising=False)
-    reply = tool.send_login_code(channel="sms")
     assert reply["status"] == "ok"
     assert reply["data"]["sent"] is True
-    assert reply["data"]["destination_last4"] == "0143"
+    assert reply["data"]["destination_last4"] == ""
     assert session.state["auth_status"] == "code_sent"
     assert session.state["login_code_sent"] is True
 

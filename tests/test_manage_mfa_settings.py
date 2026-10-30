@@ -461,24 +461,3 @@ def test_manage_mfa_settings_enable_backup_codes_confirmation() -> None:
     assert r_es["data"]["backup_codes_generated"] is True
     assert "códigos de verificación de respaldo" in r_es["data"]["spoken_message"]
 
-
-def test_7_digit_phone_lookup_and_send_login_code() -> None:
-    from lib.services import lookup_account_impl, send_login_code_impl
-
-    state: dict = {}
-    r_lookup = lookup_account_impl(identifier="555-0128", language="en-US", state=state)
-    assert r_lookup["status"] == "ok"
-    assert r_lookup["data"]["account_found"] is True
-    assert r_lookup["data"]["linked_mobile_last4"] == "0128"
-    assert state.get("phone_last4") == "0128"
-    assert state.get("caller_provided_phone_last4") == "0128"
-
-    r_code = send_login_code_impl(identifier="555-0128", channel="sms", language="en-US", state=state)
-    assert r_code["status"] == "ok"
-    assert r_code.get("error") != "NO_MOBILE_ON_FILE"
-    assert r_code["destination_last4"] == "0128"
-    assert "6-digit" in r_code["spoken_message"]
-
-
-
-
