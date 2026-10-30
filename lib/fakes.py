@@ -114,7 +114,7 @@ def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:
     return False
 
 
-def find_account(identifier: Any) -> dict[str, Any] | None:
+def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None:
     """Find an account by phone number or account number; None when there is none."""
     if identifier is None or isinstance(identifier, bool):
         return None
@@ -126,6 +126,14 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
     has_alpha = any(c.isalpha() for c in raw_str)
     norm_digits = digits[1:] if (not has_alpha and len(digits) == 11 and digits.startswith("1")) else digits
     is_intl = not has_alpha and (raw_str.strip().startswith("+") or raw_str.strip().startswith("00")) and 10 <= len(digits) <= 15
+
+    clean_fn = str(first_name or "").strip()
+    synth_fn = clean_fn.title() if clean_fn else ""
+    synth_email = (
+        f"{clean_fn.lower()}@example.com"
+        if clean_fn
+        else f"user{norm_digits[-4:]}@example.com"
+    )
 
     _k_p4 = "phone_" + "last" + "4"
     _k_cp4 = "caller_provided_" + _k_p4
@@ -202,11 +210,11 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
                 _k_cp4: norm_digits[-4:],
                 _k_a4: norm_digits[-4:],
                 "billing_account": "BA-" + norm_digits[-6:],
-                "first_name": "",
+                "first_name": synth_fn,
                 "status": "active",
                 "preferred_language": "en-US",
                 "identifier_kind": "phone",
-                "email": "jordan@example.com",
+                "email": synth_email,
                 _k_cf4: "4242",
                 _k_sc4: "8844",
                 _k_bf4: "6789",
@@ -223,11 +231,11 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
             _k_cp4: "",
             _k_a4: norm_digits[-4:],
             "billing_account": "BA-" + norm_digits[-6:],
-            "first_name": "",
+            "first_name": synth_fn,
             "status": "active",
             "preferred_language": "en-US",
             "identifier_kind": "billing_account",
-            "email": "jordan@example.com",
+            "email": synth_email,
             _k_cf4: "4242",
             _k_sc4: "8844",
             _k_bf4: "6789",
@@ -246,7 +254,8 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
         base["billing_account"] = "BA-" + base["phone"][-6:]
         base[_k_a4] = raw[-4:]
         base["identifier_kind"] = "account_id"
-        base["email"] = "jordan@example.com"
+        base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
+        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
         base[_k_cf4] = "4242"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
