@@ -984,91 +984,6 @@ def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
 
-def _session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
-    """Resolve session language with asymmetric lock: non-English locks over English.
-
-    When state has no language or is default 'en-US', a model-supplied
-    non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
-    Once state holds a non-English locale, a model-supplied 'en-US' or empty
-    value is ignored (PRD BR-TV-004 lock).
-    """
-    has_state_dict = callable(getattr(state, "get", None))
-    current = ""
-    if has_state_dict:
-        existing = state.get("language")
-        if existing and str(existing).strip():
-            current = resolve_copy_locale(str(existing))
-
-    arg_lang = ""
-    if language and str(language).strip():
-        arg_lang = resolve_copy_locale(str(language))
-
-    # 1. Once state holds a non-English locale, model-supplied en-US/empty is ignored.
-    if current and current != "en-US":
-        state["language"] = current
-        if not state.get("preferred_language"):
-            state["preferred_language"] = current
-        return current
-
-    # 2. When state has no language or is default 'en-US':
-    # A model-supplied non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
-    if arg_lang and arg_lang != "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = arg_lang
-            state["preferred_language"] = arg_lang
-        return arg_lang
-
-    # 3. If state already had 'en-US', keep it.
-    if current == "en-US":
-        return "en-US"
-
-    # 4. State had no language and model passed non-empty 'en-US'.
-    if arg_lang == "en-US":
-        if callable(getattr(state, "__setitem__", None)):
-            state["language"] = "en-US"
-        return "en-US"
-
-    # 5. Check preferred_language in state if any.
-    if has_state_dict:
-        pref = state.get("preferred_language")
-        if pref and str(pref).strip():
-            pref_loc = resolve_copy_locale(str(pref))
-            if pref_loc != "en-US":
-                if callable(getattr(state, "__setitem__", None)):
-                    state["language"] = pref_loc
-                return pref_loc
-            return "en-US"
-
-    return resolve_copy_locale(None)
-
-def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:  # pragma: no cover
-    """Return text localized for the caller's target language."""
-    loc = resolve_copy_locale(language)
-    if loc == "fr-CA":
-        return fr
-    if loc == "es-US":
-        return es or en
-    return en
-
-ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
-    {"0000", "000000", "1111", "111111", "9999", "999999"}
-)
-
-def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int = 3) -> bool:  # pragma: no cover
-    """Whether the fake login service accepts a code on this try (the login ladder)."""
-    digits = normalize_code(code_digits)
-    if not (4 <= len(digits) <= 10):
-        return False
-    if digits in ALWAYS_WRONG_LOGIN_CODES:
-        return False
-    if attempts >= max(max_attempts - 1, 1):
-        return False
-    return True
-
-BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
-
-OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")  # pragma: no cover
-
 def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma: no cover
     """Return True when an identifier is intentionally invalid or synthetic wrong."""
     raw_low = raw_str.lower()
@@ -1133,11 +1048,16 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             rec["billing_account"] = "BA-" + rec["phone"][-6:]
             rec[_k_a4] = record["account_id"][-4:]
             rec["identifier_kind"] = "phone" if not has_alpha else "account_id"
-            rec["email"] = (
-                "jordan@example.com"
-                if record.get("first_name") == "Jordan"
-                else "taylor@example.com"
-            )
+            if clean_fn:
+                first_word = clean_fn.split()[0].title()
+                rec["first_name"] = first_word
+                rec["email"] = f"{first_word.lower()}@example.com"
+            else:
+                rec["email"] = (
+                    "jordan@example.com"
+                    if record.get("first_name") == "Jordan"
+                    else "taylor@example.com"
+                )
             rec[_k_cf4] = "7742"
             rec[_k_sc4] = "8844"
             rec[_k_bf4] = "6789"
@@ -1241,6 +1161,130 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
 
     return None
 
+def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:  # pragma: no cover
+    """Return text localized for the caller's target language."""
+    loc = resolve_copy_locale(language)
+    if loc == "fr-CA":
+        return fr
+    if loc == "es-US":
+        return es or en
+    return en
+
+def _resolve_session_email_and_mask(  # pragma: no cover
+    state: dict[str, Any],
+    lang: str = "en-US",
+) -> tuple[str, str, str, str, str, str]:
+    """Resolve active session email and return (email, first_char, domain, masked, spoken, action_text).
+
+    Ensures consistent on-file email and masking across send_login_code, manage_mfa_settings,
+    and profile tools without diverging across call turns.
+    """
+    email_on_file = str(state.get("contact_email") or "").strip()
+
+    if (not email_on_file or email_on_file == "user@example.com") and state.get("account_id"):
+        acc = find_account(state.get("account_id"))
+        if acc and acc.get("email"):
+            email_on_file = acc["email"]
+            state["contact_email"] = email_on_file
+
+    if not email_on_file:
+        email_on_file = "user@example.com"
+        state["contact_email"] = email_on_file
+
+    first_char = email_on_file[:1].lower() if email_on_file else "u"
+    domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
+    masked = f"{first_char}***@{domain}"
+
+    spoken = localized_text(
+        lang,
+        f"For your security, I just sent a 6-digit verification code to the email address on file starting with '{first_char}' — please read it back to me.",
+        f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez me le lire.",
+        f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor léamelo.",
+    )
+    action_text = localized_text(
+        lang,
+        f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
+        f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
+        f"Mencione la dirección únicamente comme 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
+    )
+    return email_on_file, first_char, domain, masked, spoken, action_text
+
+def _session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
+    """Resolve session language with asymmetric lock: non-English locks over English.
+
+    When state has no language or is default 'en-US', a model-supplied
+    non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
+    Once state holds a non-English locale, a model-supplied 'en-US' or empty
+    value is ignored (PRD BR-TV-004 lock).
+    """
+    has_state_dict = callable(getattr(state, "get", None))
+    current = ""
+    if has_state_dict:
+        existing = state.get("language")
+        if existing and str(existing).strip():
+            current = resolve_copy_locale(str(existing))
+
+    arg_lang = ""
+    if language and str(language).strip():
+        arg_lang = resolve_copy_locale(str(language))
+
+    # 1. Once state holds a non-English locale, model-supplied en-US/empty is ignored.
+    if current and current != "en-US":
+        state["language"] = current
+        if not state.get("preferred_language"):
+            state["preferred_language"] = current
+        return current
+
+    # 2. When state has no language or is default 'en-US':
+    # A model-supplied non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
+    if arg_lang and arg_lang != "en-US":
+        if callable(getattr(state, "__setitem__", None)):
+            state["language"] = arg_lang
+            state["preferred_language"] = arg_lang
+        return arg_lang
+
+    # 3. If state already had 'en-US', keep it.
+    if current == "en-US":
+        return "en-US"
+
+    # 4. State had no language and model passed non-empty 'en-US'.
+    if arg_lang == "en-US":
+        if callable(getattr(state, "__setitem__", None)):
+            state["language"] = "en-US"
+        return "en-US"
+
+    # 5. Check preferred_language in state if any.
+    if has_state_dict:
+        pref = state.get("preferred_language")
+        if pref and str(pref).strip():
+            pref_loc = resolve_copy_locale(str(pref))
+            if pref_loc != "en-US":
+                if callable(getattr(state, "__setitem__", None)):
+                    state["language"] = pref_loc
+                return pref_loc
+            return "en-US"
+
+    return resolve_copy_locale(None)
+
+ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
+    {"0000", "000000", "1111", "111111", "9999", "999999"}
+)
+
+def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int = 3) -> bool:  # pragma: no cover
+    """Whether the fake login service accepts a code on this try (the login ladder)."""
+    digits = normalize_code(code_digits)
+    if not (4 <= len(digits) <= 10):
+        return False
+    if digits in ALWAYS_WRONG_LOGIN_CODES:
+        return False
+    if attempts >= max(max_attempts - 1, 1):
+        return False
+    return True
+
+BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
+
+OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")  # pragma: no cover
+
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 
 def ok_reply(  # pragma: no cover
@@ -1305,7 +1349,7 @@ def lookup_account_impl(  # pragma: no cover
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else (phone_or_account if str(phone_or_account or "").strip() else kwargs.get("phone_or_account", ""))
-    name_val = str(full_name or kwargs.get("full_name") or "").strip()
+    name_val = str(full_name or kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("name") or "").strip()
     email_val = str(email or kwargs.get("email") or "").strip()
 
     if not name_val and str(id_val).strip() and any(c.isalpha() for c in str(id_val)):
@@ -1384,7 +1428,9 @@ def lookup_account_impl(  # pragma: no cover
             },
         )
 
-    fn_hint = str(name_val or "") or state.get("contact_email", "").split("@")[0].split(".")[0]
+    existing_email = str(state.get("contact_email") or "").strip()
+    email_user = existing_email.split("@")[0].split(".")[0] if (existing_email and existing_email != "user@example.com") else ""
+    fn_hint = str(name_val or "").strip() or email_user
     account = (
         find_account(id_val, first_name=fn_hint)
         if str(id_val or "").strip()
@@ -1392,6 +1438,12 @@ def lookup_account_impl(  # pragma: no cover
     )
     resolved_by_name = False
     resolved_by_email = False
+    if account and name_val:
+        first_word = name_val.split()[0].title()
+        account["first_name"] = first_word
+        if not email_val:
+            account["email"] = f"{first_word.lower()}@example.com"
+
     if account is None and name_val:
         matched = None
         for record in ACCOUNTS:
@@ -1571,8 +1623,12 @@ def manage_mfa_settings_impl(  # pragma: no cover
     if mock_err:
         return mock_err
 
+    caller_fn = str(kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("first_name") or "").strip()
+    if caller_fn and (not state.get("contact_email") or state.get("contact_email") == "user@example.com"):
+        state["contact_email"] = f"{caller_fn.split()[0].lower()}@example.com"
+
     if identifier and not state.get("account_id"):
-        lookup_account_impl(identifier=identifier, language=lang, state=state)
+        lookup_account_impl(identifier=identifier, language=lang, state=state, full_name=caller_fn)
 
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("manage_mfa_settings", account_id, str(action))
@@ -1667,22 +1723,7 @@ def manage_mfa_settings_impl(  # pragma: no cover
         state["lost_authenticator"] = True
         if not state.get("mfa_email_verified"):
             state["mfa_email_code_sent"] = True
-            email_on_file = state.get("contact_email") or "user@example.com"
-            first_char = email_on_file[:1].lower() if email_on_file else "u"
-            domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
-            masked = f"{first_char}***@{domain}"
-            spoken = localized_text(
-                lang,
-                f"For your security, I just sent a 6-digit verification code to the email address on file starting with '{first_char}' — please read it back to me.",
-                f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez me le lire.",
-                f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor léamelo.",
-            )
-            action_text = localized_text(
-                lang,
-                f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
-                f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
-                f"Mencione la dirección únicamente como 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
-            )
+            email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
             return ok_reply(
                 {
                     "requires_email_step_up": True,
