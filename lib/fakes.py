@@ -215,7 +215,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         }
 
     if not has_alpha and len(norm_digits) in (7, 8, 9, 10, 11, 12):
-        if len(norm_digits) == 10:
+        if len(norm_digits) in (7, 10):
             return {
                 "account_id": f"ACC-{norm_digits[-4:]}",
                 "phone": norm_digits,

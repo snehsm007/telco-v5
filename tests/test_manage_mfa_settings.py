@@ -434,4 +434,51 @@ def test_manage_mfa_settings_backup_email_resend_locales() -> None:
     assert "Confirme que el código de verificación de 6 dígitos se reenvió" in r_es["data"]["agent_action"]
 
 
+def test_manage_mfa_settings_enable_backup_codes_confirmation() -> None:
+    from lib.services import manage_mfa_settings_impl
+
+    # SMS enable
+    state_sms = {"auth_status": "pass", "account_id": "A1001"}
+    r_sms = manage_mfa_settings_impl(action="enable", preferred_mfa_channel="sms", language="en-US", state=state_sms)
+    assert r_sms["status"] == "ok"
+    assert r_sms["data"]["backup_codes_generated"] is True
+    assert r_sms["data"]["backup_recovery_active"] is True
+    assert r_sms["data"]["task_completed"] is True
+    assert "backup verification codes" in r_sms["data"]["spoken_message"]
+    assert "backup recovery codes" in r_sms["data"]["agent_action"]
+
+    # Authenticator app enable in French
+    state_fr = {"auth_status": "pass", "account_id": "A1001"}
+    r_fr = manage_mfa_settings_impl(action="enable", preferred_mfa_channel="authenticator", language="fr-CA", state=state_fr)
+    assert r_fr["status"] == "ok"
+    assert r_fr["data"]["backup_codes_generated"] is True
+    assert "codes de secours" in r_fr["data"]["spoken_message"]
+
+    # Email enable in Spanish
+    state_es = {"auth_status": "pass", "account_id": "A1001"}
+    r_es = manage_mfa_settings_impl(action="enable", preferred_mfa_channel="email", language="es-US", state=state_es)
+    assert r_es["status"] == "ok"
+    assert r_es["data"]["backup_codes_generated"] is True
+    assert "códigos de verificación de respaldo" in r_es["data"]["spoken_message"]
+
+
+def test_7_digit_phone_lookup_and_send_login_code() -> None:
+    from lib.services import lookup_account_impl, send_login_code_impl
+
+    state: dict = {}
+    r_lookup = lookup_account_impl(identifier="555-0128", language="en-US", state=state)
+    assert r_lookup["status"] == "ok"
+    assert r_lookup["data"]["account_found"] is True
+    assert r_lookup["data"]["linked_mobile_last4"] == "0128"
+    assert state.get("phone_last4") == "0128"
+    assert state.get("caller_provided_phone_last4") == "0128"
+
+    r_code = send_login_code_impl(identifier="555-0128", channel="sms", language="en-US", state=state)
+    assert r_code["status"] == "ok"
+    assert r_code.get("error") != "NO_MOBILE_ON_FILE"
+    assert r_code["destination_last4"] == "0128"
+    assert "6-digit" in r_code["spoken_message"]
+
+
+
 

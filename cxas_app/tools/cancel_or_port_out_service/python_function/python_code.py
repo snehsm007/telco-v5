@@ -1185,7 +1185,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         }
 
     if not has_alpha and len(norm_digits) in (7, 8, 9, 10, 11, 12):
-        if len(norm_digits) == 10:
+        if len(norm_digits) in (7, 10):
             return {
                 "account_id": f"ACC-{norm_digits[-4:]}",
                 "phone": norm_digits,
@@ -1506,7 +1506,7 @@ def lookup_account_impl(  # pragma: no cover
         and (raw_id_str.strip().startswith("+") or raw_id_str.strip().startswith("00"))
         and 10 <= len(caller_digits) <= 15
     )
-    caller_gave_phone = not has_alpha and (len(norm_caller_digits) == 10 or is_intl)
+    caller_gave_phone = not has_alpha and (len(norm_caller_digits) in (7, 10) or is_intl)
 
     if caller_gave_phone:
         p_l4 = norm_caller_digits[-4:]
@@ -1647,7 +1647,7 @@ def verify_login_impl(  # pragma: no cover
             and (str(id_val).strip().startswith("+") or str(id_val).strip().startswith("00"))
             and 10 <= len(raw_digits) <= 15
         )
-        if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
+        if not has_alpha and (len(norm_digits) in (4, 7, 10) or is_intl):
             caller_l4 = norm_digits[-4:]
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
