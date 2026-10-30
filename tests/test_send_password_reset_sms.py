@@ -166,3 +166,27 @@ def test_send_password_reset_sms_destination_phone_or_last4(monkeypatch) -> None
     assert reply4["data"]["destination_phone_last4"] == "0987"
     assert "0987" in reply4["data"]["spoken_summary"]
     assert session.state["account_id"] == "ACC-4105"
+
+
+def test_send_password_reset_sms_agent_action_stay_on_line(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "phone_last4": "0143",
+            "caller_provided_phone_last4": "0143",
+            "auth_status": "pass",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply_en = tool.send_password_reset_sms(language="en-US")
+    assert reply_en["status"] == "ok"
+    assert "never call end_session while the caller says they are checking their phone" in reply_en["data"]["agent_action"]
+
+    reply_fr = tool.send_password_reset_sms(language="fr-CA")
+    assert reply_fr["status"] == "ok"
+    assert "n'appelez jamais end_session" in reply_fr["data"]["agent_action"]
+
+    session.state.pop("language", None)
+    reply_es = tool.send_password_reset_sms(language="es-US")
+    assert reply_es["status"] == "ok"
+    assert "nunca llame a end_session" in reply_es["data"]["agent_action"]

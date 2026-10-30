@@ -1643,6 +1643,13 @@ def send_password_reset_sms_impl(  # pragma: no cover
             "Se ha enviado un enlace de restablecimiento al teléfono móvil registrado y es válido durante 30 minutos.",
         )
 
+    action_text = localized_text(
+        lang,
+        "Confirm the SMS reset link was sent and its validity window, and ask the caller to let you know once it arrives or if they need anything else; never call end_session while the caller says they are checking their phone or waiting for the message.",
+        "Confirmez l'envoi du lien de réinitialisation par texto et sa période de validité, et demandez au client de vous avertir dès sa réception ou s'il a besoin d'autre chose; n'appelez jamais end_session lorsque le client dit vérifier son cellulaire ou attendre le message.",
+        "Confirme el envío del enlace de restablecimiento por SMS y su ventana de validez, y pida al cliente que le avise una vez que llegue o si necesita algo más; nunca llame a end_session mientras el cliente diga que está revisando su teléfono o esperando el mensaje.",
+    )
+
     return ok_reply(
         {
             "password_reset_sent": True,
@@ -1652,6 +1659,7 @@ def send_password_reset_sms_impl(  # pragma: no cover
             "can_change_password_by_voice": False,
             "spoken_summary": summary,
             "spoken_message": summary,
+            "agent_action": action_text,
         },
         reference,
         language=lang,
