@@ -3520,6 +3520,8 @@ def send_password_reset_sms_impl(
     language: str = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
+    destination_phone: str | int | float = "",
+    phone_number: str | int | float = "",
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Dispatch password reset link via SMS to Identified account only."""
@@ -3532,7 +3534,7 @@ def send_password_reset_sms_impl(
     if mock_err:
         return mock_err
 
-    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
+    id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", ""))
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -3542,14 +3544,43 @@ def send_password_reset_sms_impl(
             and (str(id_val).strip().startswith("+") or str(id_val).strip().startswith("00"))
             and 10 <= len(raw_digits) <= 15
         )
-        if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
+        if not has_alpha and len(norm_digits) == 4 and state.get("account_id"):
             caller_l4 = norm_digits[-4:]
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
+        else:
+            if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
+                caller_l4 = norm_digits[-4:]
+                state["caller_provided_phone_last4"] = caller_l4
+                state["phone_last4"] = caller_l4
 
-        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
-        if l_res.get("status") == "error":
-            return l_res
+            l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+            if l_res.get("status") == "error":
+                return l_res
+
+    dest_val = (
+        destination_phone
+        or phone_number
+        or kwargs.get("destination_phone")
+        or kwargs.get("phone_number")
+        or kwargs.get("destination")
+        or kwargs.get("phone")
+        or kwargs.get("mobile")
+        or ""
+    )
+    if str(dest_val or "").strip():
+        d_raw = normalize_code(dest_val)
+        d_has_alpha = any(c.isalpha() for c in str(dest_val or ""))
+        d_norm = d_raw[1:] if (not d_has_alpha and len(d_raw) == 11 and d_raw.startswith("1")) else d_raw
+        is_dest_intl = (
+            not d_has_alpha
+            and (str(dest_val).strip().startswith("+") or str(dest_val).strip().startswith("00"))
+            and 10 <= len(d_raw) <= 15
+        )
+        if not d_has_alpha and (len(d_norm) in (4, 10) or is_dest_intl):
+            dest_l4 = d_norm[-4:]
+            state["caller_provided_phone_last4"] = dest_l4
+            state["phone_last4"] = dest_l4
 
     if not state.get("account_id"):
         if not explicit_session:
