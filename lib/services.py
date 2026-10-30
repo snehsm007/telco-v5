@@ -2493,29 +2493,62 @@ def run_troubleshooting_and_sms_impl(
     steps = guide.get(f"steps_{step_lang}", guide.get("steps_en", []))
     short_steps = steps[:2]
 
-    sms_sent = bool(send_sms_guide) and str(send_sms_guide).lower() not in {"false", "0", "no"}
-    if sms_sent:
-        state["troubleshooting_sms_sent"] = True
+    sms_attempts = int(state.get("troubleshooting_sms_attempts", 0)) + 1
+    state["troubleshooting_sms_attempts"] = sms_attempts
 
+    sms_requested = bool(send_sms_guide) and str(send_sms_guide).strip().lower() not in {"false", "0", "no", "none"}
     p_l4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or ACCOUNTS[0]["phone"][-4:])
+
+    fallback_verbal = (sms_attempts >= 2) or (not sms_requested) or (not p_l4)
+
+    if sms_requested and sms_attempts == 1 and p_l4:
+        sms_sent = True
+        state["troubleshooting_sms_sent"] = True
+    else:
+        sms_sent = False
+
     ref = tracking_id("TBS", state.get("account_id", ""), guide_key)
     state["last_tracking_id"] = ref
 
-    return ok_reply(
-        {
-            "diagnostic_status": "completed",
-            "service_type": st,
-            "remote_signal_sent": True,
-            "concise_spoken_steps": short_steps,
-            "full_steps": steps,
-            "sms_guide_sent": sms_sent,
-            "sms_destination_last4": p_l4,
-            "technician_dispatch_available": True,
-            "modem_status": "online_resyncing",
-        },
+    payload: dict[str, Any] = {
+        "diagnostic_status": "completed",
+        "service_type": st,
+        "remote_signal_sent": True,
+        "verbal_steps": list(steps),
+        "concise_spoken_steps": short_steps,
+        "full_steps": list(steps),
+        "sms_guide_sent": sms_sent,
+        "sms_destination_last4": p_l4,
+        "technician_dispatch_available": True,
+        "modem_status": "online_resyncing",
+    }
+
+    if fallback_verbal:
+        action_text = localized_text(
+            lang,
+            "Read the verbal_steps aloud directly to the caller. Do not resend SMS or escalate to a representative.",
+            "Lisez les verbal_steps à voix haute directement au client. Ne renvoyez pas de SMS et ne transférez pas à un représentant.",
+            "Lea los verbal_steps en voz alta directamente al cliente. No reenvíe SMS ni transfiera a un representante.",
+        )
+        spoken_text = localized_text(
+            lang,
+            "I can walk you through the troubleshooting steps directly over the phone.",
+            "Je peux vous guider directement par téléphone à travers les étapes de dépannage.",
+            "Puedo guiarlo directamente por téléphone a través de los pasos de solución de problemas.",
+        )
+        payload["agent_action"] = action_text
+        payload["spoken_message"] = spoken_text
+
+    rep = ok_reply(
+        payload,
         ref,
         language=lang,
     )
+    if fallback_verbal:
+        rep["agent_action"] = payload["agent_action"]
+        rep["spoken_message"] = payload["spoken_message"]
+    rep["verbal_steps"] = list(steps)
+    return rep
 
 
 # ============================================================================
