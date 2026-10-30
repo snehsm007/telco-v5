@@ -1599,8 +1599,20 @@ def send_login_code_impl(  # pragma: no cover
         state["mfa_email_code_sent"] = True
         email_on_file = state.get("contact_email") or "user@example.com"
         first_char = email_on_file[:1].lower() if email_on_file else "u"
-        masked = f"{first_char}***@***"
-        spoken = spoken_line("id_verification_email_otp", lang)
+        domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
+        masked = f"{first_char}***@{domain}"
+        spoken = localized_text(
+            lang,
+            f"For your security, I just sent a 6-digit verification code to the email address on file starting with '{first_char}' — please read it back to me.",
+            f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez me le lire.",
+            f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor léamelo.",
+        )
+        action_text = localized_text(
+            lang,
+            f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
+            f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
+            f"Mencione la dirección únicamente como 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
+        )
         reply = ok_reply(
             {
                 "sent": True,
@@ -1611,6 +1623,7 @@ def send_login_code_impl(  # pragma: no cover
                 "masked_email": masked,
                 "expires_in_minutes": 10,
                 "spoken_message": spoken,
+                "agent_action": action_text,
             },
             reference,
             language=lang,
@@ -1618,6 +1631,7 @@ def send_login_code_impl(  # pragma: no cover
         reply["code_sent"] = True
         reply["channel"] = "email"
         reply["spoken_message"] = spoken
+        reply["agent_action"] = action_text
         return reply
 
     spoken = spoken_line("id_verification_otp", lang)

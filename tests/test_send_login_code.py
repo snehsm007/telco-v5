@@ -141,7 +141,9 @@ def test_send_login_code_email_masked_format_mirrors_persona(monkeypatch) -> Non
     monkeypatch.setattr(tool, "context", session_marcus, raising=False)
     reply_marcus = tool.send_login_code(channel="email")
     assert reply_marcus["status"] == "ok"
-    assert reply_marcus["data"]["masked_email"] == "m***@***"
+    assert reply_marcus["data"]["masked_email"] == "m***@example.com"
+    assert "starting with 'm'" in reply_marcus["data"]["spoken_message"]
+    assert "starting with m" in reply_marcus["data"]["agent_action"]
 
     session_riley = SimpleNamespace(
         state={
@@ -154,4 +156,48 @@ def test_send_login_code_email_masked_format_mirrors_persona(monkeypatch) -> Non
     monkeypatch.setattr(tool, "context", session_riley, raising=False)
     reply_riley = tool.send_login_code(channel="email")
     assert reply_riley["status"] == "ok"
-    assert reply_riley["data"]["masked_email"] == "r***@***"
+    assert reply_riley["data"]["masked_email"] == "r***@example.com"
+
+
+def test_send_login_code_email_spoken_phrases_locales(monkeypatch) -> None:
+    # en-US
+    session_en = SimpleNamespace(
+        state={
+            "account_id": "ACC-0198",
+            "contact_email": "user0198@example.com",
+            "auth_status": "none",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_en, raising=False)
+    res_en = tool.send_login_code(channel="email", language="en-US")
+    assert res_en["data"]["masked_email"] == "u***@example.com"
+    assert "starting with 'u'" in res_en["data"]["spoken_message"]
+    assert "starting with u" in res_en["data"]["agent_action"]
+
+    # fr-CA
+    session_fr = SimpleNamespace(
+        state={
+            "account_id": "ACC-0198",
+            "contact_email": "user0198@example.com",
+            "auth_status": "none",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_fr, raising=False)
+    res_fr = tool.send_login_code(channel="email", language="fr-CA")
+    assert res_fr["data"]["masked_email"] == "u***@example.com"
+    assert "commençant par « u »" in res_fr["data"]["spoken_message"]
+    assert "commençant par u" in res_fr["data"]["agent_action"]
+
+    # es-US
+    session_es = SimpleNamespace(
+        state={
+            "account_id": "ACC-0198",
+            "contact_email": "user0198@example.com",
+            "auth_status": "none",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_es, raising=False)
+    res_es = tool.send_login_code(channel="email", language="es-US")
+    assert res_es["data"]["masked_email"] == "u***@example.com"
+    assert "comienza con 'u'" in res_es["data"]["spoken_message"]
+    assert "comenzando con u" in res_es["data"]["agent_action"]
