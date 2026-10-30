@@ -157,6 +157,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {
         "fr-CA": "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté.",
         "es-US": "Le comunicaré ahora con un especialista de facturación; tendrá toda la información que ya conversamos.",
     },
+    "refund_threshold_specialist_reason": {
+        "en-US": "Because this refund exceeds our self-service limit, your request requires billing specialist approval.",
+        "fr-CA": "Comme ce remboursement dépasse notre limite libre-service, votre demande nécessite l'approbation d'un spécialiste de la facturation.",
+        "es-US": "Debido a que este reembolso excede nuestro límite de autoservicio, su solicitud requiere la aprobación de un especialista de facturación.",
+    },
     "service_alert_banner": {
         "en-US": "Please note: there is an active regional service advisory in parts of Montreal today.",
         "fr-CA": "Veuillez noter qu'un avis de service régional est actuellement en vigueur dans certains secteurs de Montréal.",
@@ -727,6 +732,7 @@ AGENT_VERBATIM_KEYS: dict[str, tuple[str, ...]] = {
         "id_verification_pin",
         "payment_method_preamble",
         "refund_confirmation_pattern",
+        "refund_threshold_specialist_reason",
         "transfer_to_specialist",
         "live_agent_handoff",
         "business_handoff",
