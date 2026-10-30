@@ -2026,6 +2026,7 @@ def setup_payment_arrangement_impl(  # pragma: no cover
         base_due = date.fromisoformat(FAKE_BILLING_LEDGER["payment_due_date"])
         new_due = (base_due + timedelta(days=ext_days)).isoformat()
 
+    bal_str = display_amount(bal)
     inst_amt = display_amount(round(bal / Decimal(inst_count), 2))
 
     state["payment_arrangement_active"] = True
@@ -2036,18 +2037,47 @@ def setup_payment_arrangement_impl(  # pragma: no cover
 
     arr_id = tracking_id("ARR", account_id, str(extension_days))
     state["last_tracking_id"] = arr_id
-    return ok_reply(
-        {
-            "arrangement_id": arr_id,
-            "arrangement_active": True,
-            "deferred_amount": display_amount(bal),
-            "installments": inst_count,
-            "installment_amount": inst_amt,
-            "new_due_date": new_due,
-            "service_restored": True,
-            "restoration_eta_minutes": 15,
-        },
+
+    inst_label_en = "installment" if inst_count == 1 else "installments"
+    inst_label_fr = "versement" if inst_count == 1 else "versements"
+    inst_label_es = "cuota" if inst_count == 1 else "cuotas"
+
+    spoken_summary = localized_text(
+        lang,
+        f"Payment arrangement {arr_id} is active for ${bal_str} in {inst_count} {inst_label_en} of ${inst_amt} due {new_due}. Your suspended service has been restored and will be back on within 15 minutes.",
+        f"L'entente de paiement {arr_id} est active pour {bal_str} $ en {inst_count} {inst_label_fr} de {inst_amt} $ exigibles le {new_due}. Votre service suspendu a été rétabli et sera de nouveau fonctionnel d'ici 15 minutes.",
+        f"El acuerdo de pago {arr_id} está activo por ${bal_str} en {inst_count} {inst_label_es} de ${inst_amt} con vencimiento el {new_due}. Su servicio suspendido ha sido restablecido y estará funcionando dentro de 15 minutos.",
+    )
+
+    arrangement_action = localized_text(
+        lang,
+        f"confirm payment arrangement {arr_id} is active for ${bal_str} in {inst_count} {inst_label_en} of ${inst_amt} due {new_due} and suspended service has been restored within 15 minutes",
+        f"confirmez que l'entente de paiement {arr_id} est active pour {bal_str} $ en {inst_count} {inst_label_fr} de {inst_amt} $ exigibles le {new_due} et que le service suspendu a été rétabli d'ici 15 minutes",
+        f"confirme que el acuerdo de pago {arr_id} está activo por ${bal_str} en {inst_count} {inst_label_es} de ${inst_amt} con vencimiento el {new_due} y que el servicio suspendido ha sido restablecido dentro de 15 minutos",
+    )
+
+    reply_data: dict[str, Any] = {
+        "arrangement_id": arr_id,
+        "arrangement_active": True,
+        "deferred_amount": bal_str,
+        "installments": inst_count,
+        "installment_amount": inst_amt,
+        "new_due_date": new_due,
+        "service_restored": True,
+        "restoration_eta_minutes": 15,
+        "confirmation_number": arr_id,
+        "spoken_summary": spoken_summary,
+        "spoken_message": spoken_summary,
+        "agent_action": arrangement_action,
+    }
+    rep = ok_reply(
+        reply_data,
         arr_id,
         language=lang,
     )
+    rep["agent_action"] = arrangement_action
+    rep["spoken_summary"] = spoken_summary
+    rep["spoken_message"] = spoken_summary
+    rep["confirmation_number"] = arr_id
+    return rep
 # --- END GENERATED SHARED BUNDLE ---
