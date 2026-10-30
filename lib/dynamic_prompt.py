@@ -537,6 +537,20 @@ def _dp_match_explicit_switch(low: str) -> str:
 
 def detect_utterance_language(utterance: str, current_language: str = "en-US") -> str:
     """Detect language from an utterance with contextual inertia on silence and numbers."""
+    raw = str(utterance or "").strip()
+    if re.fullmatch(
+        r"(?:\[?(?:dtmf|touch-?tone|keypad|option|choice|touche|user)?\s*[:#-]?\s*)?2(?:[.#*]|\]|\s)*",
+        raw,
+        re.IGNORECASE,
+    ):
+        return "fr-CA"
+    if re.fullmatch(
+        r"(?:\[?(?:dtmf|touch-?tone|keypad|option|choice|touche|user)?\s*[:#-]?\s*)?1(?:[.#*]|\]|\s)*",
+        raw,
+        re.IGNORECASE,
+    ):
+        return "en-US"
+
     cleaned = re.sub(r"\[(?:pause|silence)\]", " ", str(utterance or ""), flags=re.IGNORECASE)
     cleaned = re.sub(r"[0-9\W_]+", " ", cleaned).strip()
     if not cleaned:
