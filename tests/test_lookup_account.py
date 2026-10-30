@@ -189,11 +189,25 @@ def test_lookup_account_impl_direct_name() -> None:
     reply = lookup_account_impl(full_name="Taylor", state=state)
     assert reply["status"] == "ok"
     assert state["account_id"] == "ACC-1002"
+    assert state["lookup_by_name"] is True
 
     state2: dict = {}
     reply2 = lookup_account_impl(full_name="Marcus Thorne", state=state2)
     assert reply2["status"] == "ok"
     assert state2["account_id"] == "A1001"
+    assert state2["lookup_by_name"] is True
+
+    # Identifier as name
+    state3: dict = {}
+    reply3 = lookup_account_impl(identifier="Marcus Chen", state=state3)
+    assert reply3["status"] == "ok"
+    assert state3["lookup_by_name"] is True
+
+    # Identifier as phone
+    state4: dict = {}
+    reply4 = lookup_account_impl(identifier="202-555-0143", state=state4)
+    assert reply4["status"] == "ok"
+    assert state4["lookup_by_name"] is False
 
 
 def test_lookup_account_international_phone(monkeypatch) -> None:

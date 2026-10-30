@@ -98,4 +98,7 @@ def test_paretoloop_cherry_picked_instruction_invariants() -> None:
 
     tech_txt = (APP_DIR / "agents" / "tech_support" / "instruction.txt").read_text(encoding="utf-8")
     assert "The caller explicitly asks about a network outage or requests a regional outage check" in tech_txt
+    assert '<step name="No Service Verbal Device Troubleshooting">' in tech_txt
+    assert "provide verbal device troubleshooting steps before escalating" in tech_txt
+
 

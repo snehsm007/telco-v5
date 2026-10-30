@@ -116,6 +116,11 @@ def test_verify_login_populates_card_and_bank_last4(monkeypatch) -> None:
     assert reply["status"] == "ok"
     assert session.state["card_last4"] == "7742"
     assert session.state["bank_last4"] == "6789"
+    # card_last4 and bank_last4 must be omitted from reply payload to avoid premature payment method offer
+    assert "card_last4" not in reply.get("data", {})
+    assert "bank_last4" not in reply.get("data", {})
+    assert "card_last4" not in reply
+    assert "bank_last4" not in reply
 
 
 def test_verify_login_does_not_overwrite_caller_entered_card_last4(monkeypatch) -> None:
@@ -127,6 +132,10 @@ def test_verify_login_does_not_overwrite_caller_entered_card_last4(monkeypatch) 
     assert reply["status"] == "ok"
     assert session.state["card_last4"] == "1111"
     assert session.state["bank_last4"] == "6789"
+    assert "card_last4" not in reply.get("data", {})
+    assert "bank_last4" not in reply.get("data", {})
+    assert "card_last4" not in reply
+    assert "bank_last4" not in reply
 
 
 

@@ -262,6 +262,15 @@
       }
     },
     {
+      "name": "lookup_by_name",
+      "description": "True when caller account was identified via caller name lookup.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
       "name": "last_user_utterance",
       "description": "Verbatim transcript of most recent caller utterance.",
       "schema": {

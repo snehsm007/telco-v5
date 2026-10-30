@@ -674,6 +674,7 @@ def lookup_account_impl(
 
     state["account_id"] = account["account_id"]
     state["identified"] = True
+    state["lookup_by_name"] = bool(resolved_by_name)
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False
@@ -907,19 +908,20 @@ def send_login_code_impl(
             dest_last4 = str(acc["linked_mobile_last4"])
 
     if norm_chan == "sms" and not dest_last4:
-        action_text = localized_text(
-            lang,
-            "Ask for the 10-digit mobile number on the account and call lookup_account with it to identify the account, then send the code to the mobile on file; or offer PIN authentication.",
-            "Demander le numéro de mobile à 10 chiffres au dossier et appeler lookup_account avec celui-ci pour identifier le compte, puis envoyer le code au mobile au dossier; ou proposer l'authentification par NIP.",
-            "Pida el número de móvil de 10 dígitos en la cuenta y llame a lookup_account con él para identificar la cuenta, luego envíe el código al móvil registrado; u ofrezca autenticación por PIN.",
-        )
-        return error_reply(
-            "NO_MOBILE_ON_FILE",
-            agent_action=action_text,
-            reference=reference,
-            language=lang,
-            data={"agent_action": action_text},
-        )
+        if not state.get("lookup_by_name"):
+            action_text = localized_text(
+                lang,
+                "Ask for the 10-digit mobile number on the account and call lookup_account with it to identify the account, then send the code to the mobile on file; or offer PIN authentication.",
+                "Demander le numéro de mobile à 10 chiffres au dossier et appeler lookup_account avec celui-ci pour identifier le compte, puis envoyer le code au mobile au dossier; ou proposer l'authentification par NIP.",
+                "Pida el número de móvil de 10 dígitos en la cuenta y llame a lookup_account con él para identificar la cuenta, luego envíe el código al móvil registrado; u ofrezca autenticación por PIN.",
+            )
+            return error_reply(
+                "NO_MOBILE_ON_FILE",
+                agent_action=action_text,
+                reference=reference,
+                language=lang,
+                data={"agent_action": action_text},
+            )
 
     state["login_channel"] = norm_chan
     state["login_code_sent"] = True
@@ -1063,8 +1065,6 @@ def verify_login_impl(
                 "logged_in": True,
                 "auth_status": "pass",
                 "current_balance": state.get("current_balance", "85.50"),
-                "card_last4": state.get("card_last4", "7742"),
-                "bank_last4": state.get("bank_last4", "6789"),
                 "is_suspended": state.get("is_suspended", False),
             },
             reference,
@@ -1220,8 +1220,6 @@ def verify_login_impl(
             "logged_in": True,
             "auth_status": "pass",
             "current_balance": state.get("current_balance", "85.50"),
-            "card_last4": state.get("card_last4", "7742"),
-            "bank_last4": state.get("bank_last4", "6789"),
             "is_suspended": state.get("is_suspended", False),
         },
         reference,

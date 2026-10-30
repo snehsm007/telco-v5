@@ -1476,6 +1476,7 @@ def lookup_account_impl(  # pragma: no cover
 
     state["account_id"] = account["account_id"]
     state["identified"] = True
+    state["lookup_by_name"] = bool(resolved_by_name)
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False
@@ -1692,8 +1693,6 @@ def verify_login_impl(  # pragma: no cover
                 "logged_in": True,
                 "auth_status": "pass",
                 "current_balance": state.get("current_balance", "85.50"),
-                "card_last4": state.get("card_last4", "7742"),
-                "bank_last4": state.get("bank_last4", "6789"),
                 "is_suspended": state.get("is_suspended", False),
             },
             reference,
@@ -1849,8 +1848,6 @@ def verify_login_impl(  # pragma: no cover
             "logged_in": True,
             "auth_status": "pass",
             "current_balance": state.get("current_balance", "85.50"),
-            "card_last4": state.get("card_last4", "7742"),
-            "bank_last4": state.get("bank_last4", "6789"),
             "is_suspended": state.get("is_suspended", False),
         },
         reference,
