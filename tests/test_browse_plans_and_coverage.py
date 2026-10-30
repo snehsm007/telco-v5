@@ -131,3 +131,28 @@ def test_browse_plans_and_coverage_single_language_replies(
         assert sports_addon["description"].startswith(expected_desc_prefix)
 
 
+def test_browse_plans_and_coverage_tv_sports_addon_channels_and_combined_monthly(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.browse_plans_and_coverage(category="tv")
+    assert res["status"] == "ok"
+    data = res["data"]
+    assert data["category"] == "tv"
+    assert "included_channels" in data
+    assert "TSN 1-5" in data["included_channels"]
+    assert "ESPN" in data["included_channels"]
+    assert data["combined_monthly_with_tv_starter"] == "43.00"
+    assert data["combined_monthly_with_tv_starter_with_tax"] == "49.45"
+
+    addons = data.get("available_add_ons") or data.get("add_ons")
+    sports_addon = next((a for a in addons if a["id"] == "ADDON-SPORTS"), None)
+    assert sports_addon is not None
+    assert "TSN 1-5" in sports_addon["included_channels"]
+    assert "Sportsnet" in sports_addon["included_channels"]
+    assert "ESPN" in sports_addon["included_channels"]
+    assert sports_addon["combined_monthly_with_tv_starter"] == "43.00"
+    assert sports_addon["combined_monthly_with_tv_starter_with_tax"] == "49.45"
+    assert "TSN 1-5" in sports_addon["description"]
+
+
+

@@ -106,13 +106,16 @@ def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:
             return True
         return False
     is_intl = (raw_str.strip().startswith("+") or raw_str.strip().startswith("00")) and 10 <= len(digits) <= 15
-    if not is_intl and len(digits) not in (7, 8, 9, 10, 11):
+    if not is_intl and len(digits) not in (7, 8, 9, 10, 11, 12):
         return True
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
     if len(norm_digits) == 10:
         if norm_digits[-4:] in {"0000", "9999", "1111"}:
             return True
         if norm_digits[:3] == "000" or norm_digits[3:7] == "0000" or norm_digits == "1234567890":
+            return True
+    if len(digits) in (11, 12) or len(norm_digits) in (11, 12):
+        if digits[-4:] in {"0000", "9999", "1111"}:
             return True
     if is_intl:
         if digits[-4:] in {"0000", "9999", "1111"}:
@@ -211,7 +214,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "duplicate_payment_amount": "85.50",
         }
 
-    if not has_alpha and len(norm_digits) in (7, 8, 9, 10):
+    if not has_alpha and len(norm_digits) in (7, 8, 9, 10, 11, 12):
         if len(norm_digits) == 10:
             return {
                 "account_id": f"ACC-{norm_digits[-4:]}",
@@ -511,9 +514,11 @@ FAKE_ADDON_CATALOG: list[dict[str, Any]] = [
         "monthly_price": 18.00,
         "price_display": "18.00",
         "category": "tv",
-        "description_en": "Full access to live professional sports coverage, games, and replays",
-        "description_fr": "Accès complet aux matchs sportifs professionnels en direct et rediffusions",
-        "description_es": "Acceso completo a cobertura deportiva profesional en vivo y repeticiones",
+        "description_en": "Full access to live professional sports coverage, games, and replays including TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD",
+        "description_fr": "Accès complet aux matchs sportifs professionnels en direct et rediffusions comprenant TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel et les réseaux sportifs régionaux en 4K/HD",
+        "description_es": "Acceso completo a cobertura deportiva profesional en vivo y repeticiones incluyendo TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel y redes deportivas regionales en 4K/HD",
+        "included_channels": "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD",
+        "combined_monthly_with_tv_starter": "43.00",
     },
     {
         "id": "ADDON-ROAM",
