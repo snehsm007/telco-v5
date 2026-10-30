@@ -1055,7 +1055,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
                 if record.get("first_name") == "Jordan"
                 else "taylor@example.com"
             )
-            rec[_k_cf4] = "4242"
+            rec[_k_cf4] = "7742"
             rec[_k_sc4] = "8844"
             rec[_k_bf4] = "6789"
             rec["subscribed_lobs"] = "mobility,internet,tv,homephone"
@@ -1082,7 +1082,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
                 "preferred_language": "en-US",
                 "identifier_kind": "phone",
                 "email": "jordan@example.com",
-                _k_cf4: "4242",
+                _k_cf4: "7742",
                 _k_sc4: "8844",
                 _k_bf4: "6789",
                 "subscribed_lobs": "mobility,internet,tv,homephone",
@@ -1103,7 +1103,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
             "preferred_language": "en-US",
             "identifier_kind": "billing_account",
             "email": "jordan@example.com",
-            _k_cf4: "4242",
+            _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
             "subscribed_lobs": "mobility,internet,tv,homephone",
@@ -1122,7 +1122,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
         base[_k_a4] = raw[-4:]
         base["identifier_kind"] = "account_id"
         base["email"] = "jordan@example.com"
-        base[_k_cf4] = "4242"
+        base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
         base["subscribed_lobs"] = "mobility,internet,tv,homephone"
@@ -1388,7 +1388,7 @@ def lookup_account_impl(  # pragma: no cover
     state["contact_email"] = account.get("email", "jordan@example.com")
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
     card_on_file = account.get("card_on_file_last4", "")
-    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "4242")
+    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "7742")
     bank_on_file = account.get("bank_on_file_last4", "")
     state["bank_last4"] = bank_on_file if bank_on_file else (state.get("bank_last4") or "6789")
     state["current_balance"] = account.get("current_balance", "85.50")

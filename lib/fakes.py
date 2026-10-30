@@ -151,7 +151,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
                 if record.get("first_name") == "Jordan"
                 else "taylor@example.com"
             )
-            rec[_k_cf4] = "4242"
+            rec[_k_cf4] = "7742"
             rec[_k_sc4] = "8844"
             rec[_k_bf4] = "6789"
             rec["subscribed_lobs"] = "mobility,internet,tv,homephone"
@@ -178,7 +178,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
                 "preferred_language": "en-US",
                 "identifier_kind": "phone",
                 "email": "jordan@example.com",
-                _k_cf4: "4242",
+                _k_cf4: "7742",
                 _k_sc4: "8844",
                 _k_bf4: "6789",
                 "subscribed_lobs": "mobility,internet,tv,homephone",
@@ -199,7 +199,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
             "preferred_language": "en-US",
             "identifier_kind": "billing_account",
             "email": "jordan@example.com",
-            _k_cf4: "4242",
+            _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
             "subscribed_lobs": "mobility,internet,tv,homephone",
@@ -218,7 +218,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
         base[_k_a4] = raw[-4:]
         base["identifier_kind"] = "account_id"
         base["email"] = "jordan@example.com"
-        base[_k_cf4] = "4242"
+        base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
         base["subscribed_lobs"] = "mobility,internet,tv,homephone"
@@ -256,7 +256,7 @@ FAKE_BILLING_LEDGER: dict[str, Any] = {
     "past_due_balance": 85.50,
     "currency": "CAD",
     "max_self_serve_credit_usd": 25.00,
-    ("default_card_" + "last" + "4"): "4242",
+    ("default_card_" + "last" + "4"): "7742",
     ("secondary_card_" + "last" + "4"): "8844",
     ("bank_account_" + "last" + "4"): "6789",
     "recent_line_items": [

@@ -98,14 +98,14 @@ def test_setup_autopay_localization(monkeypatch) -> None:
 
 def test_setup_autopay_payment_methods_on_file(monkeypatch) -> None:
     session = SimpleNamespace(
-        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "4242", "bank_last4": "6789"}
+        state={"account_id": "A1001", "auth_status": "pass", "card_last4": "7742", "bank_last4": "6789"}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
     reply = tool.setup_autopay(payment_method="card_on_file")
     assert reply["status"] == "ok"
     assert "payment_methods_on_file" in reply["data"]
     methods = reply["data"]["payment_methods_on_file"]
-    assert any(m.get("type") == "card" and m.get("last4") == "4242" for m in methods)
+    assert any(m.get("type") == "card" and m.get("last4") == "7742" for m in methods)
     assert any(m.get("type") == "card" and m.get("last4") == "8844" for m in methods)
     assert any(m.get("type") == "bank" and m.get("last4") == "6789" for m in methods)
 

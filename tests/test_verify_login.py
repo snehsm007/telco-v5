@@ -114,7 +114,7 @@ def test_verify_login_populates_card_and_bank_last4(monkeypatch) -> None:
     monkeypatch.setattr(tool, "context", session, raising=False)
     reply = tool.verify_login(code="123456")
     assert reply["status"] == "ok"
-    assert session.state["card_last4"] == "4242"
+    assert session.state["card_last4"] == "7742"
     assert session.state["bank_last4"] == "6789"
 
 

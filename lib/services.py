@@ -187,7 +187,7 @@ def _hydrate_default_account_if_needed(state: dict[str, Any]) -> None:
     state["phone_last4"] = default_acc["phone"][-4:]
     state.setdefault("contact_email", default_acc.get("email", "jordan@example.com"))
     state.setdefault("service_address", default_acc.get("address", "123 Maple Avenue, Montreal, QC"))
-    state.setdefault("card_last4", default_acc.get("card_on_file_last4", "4242"))
+    state.setdefault("card_last4", default_acc.get("card_on_file_last4", "7742"))
     state.setdefault("bank_last4", default_acc.get("bank_on_file_last4", "6789"))
     state.setdefault("current_balance", default_acc.get("current_balance", "85.50"))
     state.setdefault("past_due_balance", default_acc.get("past_due_balance", "85.50"))
@@ -689,7 +689,7 @@ def lookup_account_impl(
     state["contact_email"] = account.get("email", "jordan@example.com")
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
     card_on_file = account.get("card_on_file_last4", "")
-    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "4242")
+    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "7742")
     bank_on_file = account.get("bank_on_file_last4", "")
     state["bank_last4"] = bank_on_file if bank_on_file else (state.get("bank_last4") or "6789")
     state["current_balance"] = account.get("current_balance", "85.50")
@@ -958,7 +958,7 @@ def verify_login_impl(
             if b_l4 and not state.get("bank_last4"):
                 state["bank_last4"] = b_l4
         if not state.get("card_last4"):
-            state["card_last4"] = "4242"
+            state["card_last4"] = "7742"
         if not state.get("bank_last4"):
             state["bank_last4"] = "6789"
         return ok_reply(
@@ -967,7 +967,7 @@ def verify_login_impl(
                 "logged_in": True,
                 "auth_status": "pass",
                 "current_balance": state.get("current_balance", "85.50"),
-                "card_last4": state.get("card_last4", "4242"),
+                "card_last4": state.get("card_last4", "7742"),
                 "bank_last4": state.get("bank_last4", "6789"),
                 "is_suspended": state.get("is_suspended", False),
             },
@@ -1098,7 +1098,7 @@ def verify_login_impl(
         if b_l4 and not state.get("bank_last4"):
             state["bank_last4"] = b_l4
     if not state.get("card_last4"):
-        state["card_last4"] = "4242"
+        state["card_last4"] = "7742"
     if not state.get("bank_last4"):
         state["bank_last4"] = "6789"
 
@@ -1124,7 +1124,7 @@ def verify_login_impl(
             "logged_in": True,
             "auth_status": "pass",
             "current_balance": state.get("current_balance", "85.50"),
-            "card_last4": state.get("card_last4", "4242"),
+            "card_last4": state.get("card_last4", "7742"),
             "bank_last4": state.get("bank_last4", "6789"),
             "is_suspended": state.get("is_suspended", False),
         },
@@ -1270,7 +1270,7 @@ def get_billing_summary_impl(
 
     bal = str(state.get("current_balance") or "85.50")
     past_due = str(state.get("past_due_balance") or "85.50")
-    card_l4 = str(state.get("card_last4") or "4242")
+    card_l4 = str(state.get("card_last4") or "7742")
     bank_l4 = str(state.get("bank_last4") or "6789")
     is_susp = bool(state.get("is_suspended", False))
     susp_reason = str(state.get("suspension_reason") or "")
@@ -1503,7 +1503,7 @@ def process_bill_payment_impl(
     if is_bank:
         l4 = l4_parsed or str(state.get("bank_last4") or "6789")[-4:]
     else:
-        l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or "4242")[-4:]
+        l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or "7742")[-4:]
 
     if l4 in DECLINED_CARD_LAST4:
         failures = read_count(state, "payment_failure_count") + 1
@@ -1745,7 +1745,7 @@ def setup_autopay_impl(
 
     _record_audit(state)
 
-    def_c4 = str(state.get("card_last4") or "4242")[-4:]
+    def_c4 = str(state.get("card_last4") or "7742")[-4:]
     sec_c4 = "8844"
     def_b4 = str(state.get("bank_last4") or "6789")[-4:]
     methods_on_file = [
@@ -1958,7 +1958,7 @@ def setup_autopay_impl(
             "autopay_enrolled": True,
             "payment_method": method_name,
             "masked_last4": digits,
-            "card_last4": digits if method_name == "card" else state.get("card_last4", "4242"),
+            "card_last4": digits if method_name == "card" else state.get("card_last4", "7742"),
             "billing_day": bday,
             "autopay_discount_monthly": "5.00",
             "next_draft_date": next_date,
@@ -2078,7 +2078,7 @@ def process_refund_or_dispute_impl(
                 "applied_amount": amt_disp,
                 "applied_amount_display": amt_disp,
                 "credit_amount": amt_disp,
-                "card_last4": state.get("card_last4", "4242"),
+                "card_last4": state.get("card_last4", "7742"),
                 "settlement_days": 5,
                 "confirmation_number": ref,
                 "spoken_message": full_confirm,

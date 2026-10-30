@@ -165,3 +165,22 @@ def test_read_count_duck_typed_adk_state_and_edge_cases() -> None:
     assert read_count(adk_state, "inf") == 0  # type: ignore[arg-type]
     assert read_count(adk_state, "missing") == 0  # type: ignore[arg-type]
     assert read_count(object(), "attempts") == 0  # type: ignore[arg-type]
+
+
+def test_fake_on_file_primary_card_is_non_canonical_7742() -> None:
+    from lib.fakes import FAKE_BILLING_LEDGER, find_account
+
+    acc1 = find_account("2025550143")
+    assert acc1 is not None
+    assert acc1["card_on_file_last4"] == "7742"
+    assert acc1["secondary_card_last4"] == "8844"
+    assert acc1["bank_on_file_last4"] == "6789"
+
+    acc_synth = find_account("5145550199")
+    assert acc_synth is not None
+    assert acc_synth["card_on_file_last4"] == "7742"
+
+    assert FAKE_BILLING_LEDGER["default_card_last4"] == "7742"
+    assert FAKE_BILLING_LEDGER["secondary_card_last4"] == "8844"
+    assert FAKE_BILLING_LEDGER["bank_account_last4"] == "6789"
+

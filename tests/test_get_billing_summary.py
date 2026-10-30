@@ -86,7 +86,7 @@ def test_get_billing_summary_restoration_facts_when_payment_covers_past_due(monk
     assert data["last_payment"]["covers_past_due"] is True
     assert data["last_payment"]["amount"] == "85.50"
     assert data["last_payment"]["posted_date"] == "2026-10-15"
-    assert data["last_payment"]["method_last4"] == "4242"
+    assert data["last_payment"]["method_last4"] == "7742"
 
     # When past-due balance is present and unverified, service is suspended and requires payment
     session_past_due = SimpleNamespace(
@@ -112,7 +112,7 @@ def test_get_billing_summary_reconciles_and_surfaces_payment_methods(monkeypatch
             "account_id": "A1001",
             "auth_status": "pass",
             "current_balance": "85.50",
-            "card_last4": "4242",
+            "card_last4": "7742",
             "bank_last4": "6789",
         }
     )
@@ -140,7 +140,7 @@ def test_get_billing_summary_reconciles_and_surfaces_payment_methods(monkeypatch
     # Payment methods on file
     methods = data["payment_methods_on_file"]
     assert len(methods) == 3
-    assert methods[0] == {"type": "card", "last4": "4242", "primary": True}
+    assert methods[0] == {"type": "card", "last4": "7742", "primary": True}
     assert methods[1] == {"type": "card", "last4": "8844"}
     assert methods[2] == {"type": "bank", "last4": "6789"}
 
