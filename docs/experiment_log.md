@@ -50,9 +50,4 @@ Gate 3 requires **Strict `3/3` >= 90% AND 100% Majority (`>=2/3`, zero `0/3` or 
 | 42 | 2026-10-30 | `8c0b67e` | Sports addon channel lineup: enrich FAKE_ADDON_CATALOG ADDON-SPORTS with full channel lineup across EN/FR/ES, included_channels, and combined TV starter billing ($43.00 pre-tax, $49.45 with tax) across browse_plans_and_coverage and commit_plan_or_order | SMOKE (8 evals) | `8/8 (100.0%)` | `8/8 (100.0%)` | `24/24 (100.0%)` | KEPT | Lane B exp2 smoke `b2966add-b000-4308-956e-3199ad95e73d` (`smoke-d7e21b5`: 8/8 strict 3/3, 24/24 individual trials = 100.0%; VE-01/11/40/44/45/46/49/50 3/3) |
 | 43 | 2026-10-30 | `841c825` | Payment arrangement restoration summary: add localized spoken_summary, spoken_message, agent_action, and confirmation_number to setup_payment_arrangement confirming arrangement active and suspended service restored within 15 minutes | SMOKE (6 evals) | `6/6 (100.0%)` | `6/6 (100.0%)` | `18/18 (100.0%)` | KEPT | Lane C exp3 smoke `9cb51490-8527-46d1-8fa8-e151fe0cc367` (`smoke-841c825`: VE-30 2/3→3/3 cured; VE-17/18/29/31/34 3/3) |
 | 44 | 2026-10-30 | `edf9e71` | Autopay card on file default: in billing Configure Autopay step, use card_on_file or bank_on_file when caller names card or bank without providing a specific 4-digit ending, reserving new_card strictly for new endings not on file or explicit new card additions | SMOKE (6 evals) | `4/6 (66.7%)` | `6/6 (100.0%)` | `16/18 (88.9%)` | KEPT | Lane A exp1 smoke `875f4785-fc5a-4eb0-b8e4-abd6331120f8` (`smoke-edf9e71`: VE-32 1/3→3/3 cured; VE-17/18/34 3/3, VE-16/33 2/3) |
-
-
-
-
-
-
+| 45 | 2026-10-30 | `193e02b` | Outage negative always offer SMS guide: in tech_support No Outage Found step, always speak full returned spoken_message offering SMS troubleshooting guide (even when sending verification code in same turn) and act on answer; tighten M4 XML indentation to keep instruction under 12k chars | SMOKE (6 evals) | `5/6 (83.3%)` | `6/6 (100.0%)` | `17/18 (94.4%)` | KEPT | Lane B exp2 smoke `7e70ba46-7918-4760-8560-475c1eb62f1e` (`smoke-da97e41`: VE-03/05/40/41/42 3/3, VE-04 2/3 majority pass) |
