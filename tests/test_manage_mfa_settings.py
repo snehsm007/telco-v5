@@ -358,3 +358,80 @@ def test_manage_mfa_settings_enable_email_and_sms_channels() -> None:
     assert state_sms["preferred_mfa_channel"] == "sms"
 
 
+def test_manage_mfa_settings_backup_email_resend_confirmation(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "mfa_enabled": True,
+            "contact_email": "arthur.sterling@example.com",
+            "account_id": "ACC100",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    # Initial lost-authenticator step-up request
+    first_call = tool.manage_mfa_settings(lost_authenticator=True, language="en-US")
+    assert first_call["status"] == "ok"
+    assert first_call["data"]["requires_email_step_up"] is True
+    assert "code_resent" not in first_call["data"]
+    assert "just sent a 6-digit verification code" in first_call["data"]["spoken_message"]
+    assert session.state["mfa_email_code_sent"] is True
+
+    # Resend request (second call when code already sent but not verified)
+    resend_call = tool.manage_mfa_settings(lost_authenticator=True, language="en-US")
+    assert resend_call["status"] == "ok"
+    assert resend_call["data"]["requires_email_step_up"] is True
+    assert resend_call["data"]["code_resent"] is True
+    assert resend_call.get("code_resent") is True
+    assert "I have resent the 6-digit verification code" in resend_call["data"]["spoken_message"]
+    assert "Confirm that the 6-digit verification code was resent" in resend_call["data"]["agent_action"]
+    assert "starting with 'a'" in resend_call["data"]["spoken_message"]
+
+
+def test_manage_mfa_settings_backup_email_resend_locales() -> None:
+    from lib.services import manage_mfa_settings_impl
+
+    # en-US
+    state_en = {
+        "auth_status": "pass",
+        "mfa_enabled": True,
+        "contact_email": "beatrice@example.com",
+        "account_id": "ACC101",
+        "mfa_email_code_sent": True,
+    }
+    r_en = manage_mfa_settings_impl(lost_authenticator=True, language="en-US", state=state_en)
+    assert r_en["status"] == "ok"
+    assert r_en["data"]["code_resent"] is True
+    assert "I have resent the 6-digit verification code to the email address on file starting with 'b'" in r_en["data"]["spoken_message"]
+    assert "Confirm that the 6-digit verification code was resent" in r_en["data"]["agent_action"]
+
+    # fr-CA
+    state_fr = {
+        "auth_status": "pass",
+        "mfa_enabled": True,
+        "contact_email": "claire@example.com",
+        "account_id": "ACC102",
+        "mfa_email_code_sent": True,
+    }
+    r_fr = manage_mfa_settings_impl(lost_authenticator=True, language="fr-CA", state=state_fr)
+    assert r_fr["status"] == "ok"
+    assert r_fr["data"]["code_resent"] is True
+    assert "J'ai renvoyé le code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « c »" in r_fr["data"]["spoken_message"]
+    assert "Confirmez que le code de vérification à 6 chiffres a été renvoyé" in r_fr["data"]["agent_action"]
+
+    # es-US
+    state_es = {
+        "auth_status": "pass",
+        "mfa_enabled": True,
+        "contact_email": "diego@example.com",
+        "account_id": "ACC103",
+        "mfa_email_code_sent": True,
+    }
+    r_es = manage_mfa_settings_impl(lost_authenticator=True, language="es-US", state=state_es)
+    assert r_es["status"] == "ok"
+    assert r_es["data"]["code_resent"] is True
+    assert "He reenviado el código de verificación de 6 dígitos al correo electrónico registrado que comienza con 'd'" in r_es["data"]["spoken_message"]
+    assert "Confirme que el código de verificación de 6 dígitos se reenvió" in r_es["data"]["agent_action"]
+
+
+

@@ -110,3 +110,10 @@ def test_billing_autopay_instruction_invariants() -> None:
     assert 'use payment_method="new_card" only when the caller specifies a 4-digit card ending not on file or explicitly asks to add a new card' in billing_txt
 
 
+def test_router_lookup_by_name_instruction_invariants() -> None:
+    router_txt = (APP_DIR / "agents" / "router" / "instruction.txt").read_text(encoding="utf-8")
+    assert '<step name="Lookup Account Record">' in router_txt
+    assert "- full_name: the caller's full name when provided" in router_txt
+    assert "When the caller gives their name (or does not have their phone or account number), call {@TOOL: lookup_account} immediately with full_name" in router_txt
+
+
