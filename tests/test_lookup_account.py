@@ -214,4 +214,34 @@ def test_lookup_account_international_phone(monkeypatch) -> None:
     assert reply_uk["data"]["account_id"] == "ACC-0123"
 
 
+def test_lookup_account_alphanumeric_identifiers(monkeypatch) -> None:
+    # 4 to 8 digit alphanumeric identifiers (e.g. ACT-992841, CUST-88291)
+    session_act = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_act, raising=False)
+    reply_act = tool.lookup_account("ACT-992841")
+    assert reply_act["status"] == "ok"
+    assert reply_act["data"]["account_id"] == "ACT-992841"
+    assert session_act.state["account_id"] == "ACT-992841"
+
+    session_cust = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_cust, raising=False)
+    reply_cust = tool.lookup_account("CUST-88291")
+    assert reply_cust["status"] == "ok"
+    assert reply_cust["data"]["account_id"] == "CUST-88291"
+    assert session_cust.state["account_id"] == "CUST-88291"
+
+    # Intentional wrong identifiers with synthetic suffixes remain rejected
+    session_wrong = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_wrong, raising=False)
+    reply_wrong = tool.lookup_account("ACT-0000")
+    assert reply_wrong["status"] == "error"
+    assert reply_wrong["error"] == "NOT_FOUND"
+
+    session_short = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_short, raising=False)
+    reply_short = tool.lookup_account("ACT-123")
+    assert reply_short["status"] == "error"
+    assert reply_short["error"] == "NOT_FOUND"
+
+
 
