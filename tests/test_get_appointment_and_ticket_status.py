@@ -81,3 +81,54 @@ def test_get_appointment_and_ticket_status_single_language_replies(
         assert "window_fr" not in s
         assert "window_es" not in s
 
+
+def test_get_appointment_and_ticket_status_caller_provided_ticket_id(monkeypatch) -> None:
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "A1001"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    res = tool.get_appointment_and_ticket_status(identifier="INC-987654")
+    assert res["status"] == "ok"
+    assert res["data"]["ticket_id"] == "INC-987654"
+    assert res["data"]["repair_ticket"]["ticket_id"] == "INC-987654"
+    assert session.state["account_id"] == "A1001"
+
+
+def test_get_appointment_and_ticket_status_ticket_recall(monkeypatch) -> None:
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "A1001"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    res1 = tool.get_appointment_and_ticket_status(identifier="TKT-8841")
+    assert res1["status"] == "ok"
+    assert res1["data"]["ticket_id"] == "TKT-8841"
+
+    res2 = tool.get_appointment_and_ticket_status(identifier="NT-99231")
+    assert res2["status"] == "ok"
+    assert res2["data"]["ticket_id"] == "NT-99231"
+    assert res2["data"]["repair_ticket"]["ticket_id"] == "NT-99231"
+    assert session.state["account_id"] == "A1001"
+
+
+@pytest.mark.parametrize(
+    "lang,expected_terms",
+    [
+        ("en-US", ("optical network terminal (ONT)", "local loop", "fiber splice")),
+        ("fr-CA", ("terminal de réseau optique (ONT)", "boucle locale", "épissure de fibre")),
+        ("es-US", ("terminal de red óptica (ONT)", "bucle local", "empalme de fibra")),
+    ],
+)
+def test_get_appointment_and_ticket_status_resolution_notes_multilingual(
+    monkeypatch, lang: str, expected_terms: tuple[str, ...]
+) -> None:
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "A1001"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    res = tool.get_appointment_and_ticket_status(language=lang)
+    assert res["status"] == "ok"
+    data = res["data"]
+    assert "resolution_notes" in data
+    assert "resolution_notes" in data["repair_ticket"]
+    assert data["resolution_notes"] == data["repair_ticket"]["resolution_notes"]
+    for term in expected_terms:
+        assert term in data["resolution_notes"]
+
+

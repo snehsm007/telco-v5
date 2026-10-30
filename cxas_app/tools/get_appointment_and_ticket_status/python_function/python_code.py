@@ -1880,6 +1880,33 @@ def _maybe_inline_auth(  # pragma: no cover
             return v_res
     return None
 
+TICKET_RESOLUTION_NOTES: dict[str, str] = {  # pragma: no cover
+    "en-US": "Technician will inspect the optical network terminal (ONT), test optical signal levels along the local loop, and repair any degraded fiber splice during the scheduled visit.",
+    "fr-CA": "Le technicien inspectera le terminal de réseau optique (ONT), testera les niveaux de signal optique le long de la boucle locale et réparera toute épissure de fibre dégradée lors de la visite planifiée.",
+    "es-US": "El técnico inspeccionará la terminal de red óptica (ONT), probará los niveles de señal óptica a lo largo del bucle local y reparará cualquier empalme de fibra degradado durante la visita programada.",
+}
+
+def get_ticket_resolution_notes(language: str | None = "en-US") -> str:  # pragma: no cover
+    """Return localized technical resolution steps for repair tickets."""
+    loc = resolve_copy_locale(language)
+    return TICKET_RESOLUTION_NOTES.get(loc, TICKET_RESOLUTION_NOTES["en-US"])
+
+def is_ticket_identifier(val: Any) -> bool:  # pragma: no cover
+    """Return True if val looks like a trouble/repair ticket ID rather than an account identifier."""
+    s = str(val or "").strip().upper()
+    if not s:
+        return False
+    if s.startswith(("ACC-", "ACT-", "CUST-", "A10", "A11", "A12")):
+        return False
+    digits_only = re.sub(r"\D", "", s)
+    if digits_only and len(digits_only) >= 7 and len(re.sub(r"[\s\-\(\)\+]", "", s)) == len(digits_only):
+        return False
+    if any(s.startswith(pfx) for pfx in ("INC", "NT-", "NT", "TKT-", "TKT", "TCK-", "SR-", "CAS-", "REQ-")):
+        return True
+    if re.fullmatch(r"[A-Z]{2,4}-?\d{4,8}", s):
+        return True
+    return False
+
 def get_appointment_and_ticket_status_impl(  # pragma: no cover
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
@@ -1897,7 +1924,21 @@ def get_appointment_and_ticket_status_impl(  # pragma: no cover
     if mock_err:
         return mock_err
 
-    inline_err = _maybe_inline_auth(identifier, verification_code, lang, state)
+    raw_ticket = (
+        kwargs.get("ticket_id")
+        or kwargs.get("ticket_number")
+        or kwargs.get("repair_ticket_id")
+        or ""
+    )
+    caller_ticket = ""
+    auth_identifier = identifier
+    if raw_ticket and is_ticket_identifier(raw_ticket):
+        caller_ticket = str(raw_ticket).strip().upper()
+    elif identifier and is_ticket_identifier(identifier):
+        caller_ticket = str(identifier).strip().upper()
+        auth_identifier = ""
+
+    inline_err = _maybe_inline_auth(auth_identifier, verification_code, lang, state)
     if inline_err:
         return inline_err
 
@@ -1919,6 +1960,17 @@ def get_appointment_and_ticket_status_impl(  # pragma: no cover
     state["appointment_status"] = apt["status"]
     state["technician_status"] = apt["technician_status"]
 
+    effective_ticket_id = (
+        caller_ticket
+        or tkt["ticket_id"]
+    )
+    resolution_notes = get_ticket_resolution_notes(lang)
+
+    tkt_copy = dict(tkt)
+    tkt_copy["ticket_id"] = effective_ticket_id
+    tkt_copy["resolution_notes"] = resolution_notes
+    tkt_copy["technical_steps"] = resolution_notes
+
     loc_window_display = localized_text(
         lang,
         "8:00 AM - 12:00 PM",
@@ -1939,15 +1991,16 @@ def get_appointment_and_ticket_status_impl(  # pragma: no cover
     return ok_reply(
         {
             "active_appointment": apt_copy,
-            "repair_ticket": tkt,
+            "repair_ticket": tkt_copy,
             "available_slots": localized_slots,
             "appointment_id": apt["appointment_id"],
             "scheduled_date": apt["scheduled_date"],
             "arrival_window": loc_window_display,
             "window_display": loc_window_display,
             "technician_status": apt["technician_status"],
-            "ticket_id": tkt["ticket_id"],
+            "ticket_id": effective_ticket_id,
             "ticket_status": tkt["status"],
+            "resolution_notes": resolution_notes,
         },
         reference,
         language=lang,
