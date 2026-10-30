@@ -1896,6 +1896,77 @@ def display_amount(value: Any) -> str:  # pragma: no cover
         raise ValueError(f"not an amount: {value!r}")
     return str(amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
 
+CATALOG_COPY: dict[str, dict[str, str]] = {  # pragma: no cover
+    "Account credit": {
+        "en-US": "Account credit",
+        "fr-CA": "Crédit au compte",
+        "es-US": "Crédito en cuenta",
+    },
+    "Wi-Fi 6 Gateway (included at $0/month)": {
+        "en-US": "Wi-Fi 6 Gateway (included at $0/month)",
+        "fr-CA": "Borne Wi-Fi 6 (incluse à 0 $/mois)",
+        "es-US": "Módem Wi-Fi 6 (incluido a $0/mes)",
+    },
+    "Wi-Fi 6 Giga Hub with whole-home mesh pod (included at $0/month)": {
+        "en-US": "Wi-Fi 6 Giga Hub with whole-home mesh pod (included at $0/month)",
+        "fr-CA": "Borne Wi-Fi 6 Giga Hub avec capsule Wi-Fi intégrale (incluse à 0 $/mois)",
+        "es-US": "Módem Wi-Fi 6 Giga Hub con repetidor mesh para todo el hogar (incluido a $0/mes)",
+    },
+    "4K TV Terminal (included)": {
+        "en-US": "4K TV Terminal (included)",
+        "fr-CA": "Terminal Télé 4K (inclus)",
+        "es-US": "Terminal de TV 4K (incluido)",
+    },
+    "Home Phone Terminal": {
+        "en-US": "Home Phone Terminal",
+        "fr-CA": "Terminal de téléphonie résidentielle",
+        "es-US": "Terminal de telefonía residencial",
+    },
+    "SIM / eSIM card (included at $0)": {
+        "en-US": "SIM / eSIM card (included at $0)",
+        "fr-CA": "Carte SIM / eSIM (incluse à 0 $)",
+        "es-US": "Tarjeta SIM / eSIM (incluida a $0)",
+    },
+    "Smart Security Hub": {
+        "en-US": "Smart Security Hub",
+        "fr-CA": "Centrale de sécurité intelligente",
+        "es-US": "Centro de seguridad inteligente",
+    },
+    "Wi-Fi 6 Giga Hub gateway (included at $0/month); compatible with all standard Wi-Fi devices and whole-home mesh pods": {
+        "en-US": "Wi-Fi 6 Giga Hub gateway (included at $0/month); compatible with all standard Wi-Fi devices and whole-home mesh pods",
+        "fr-CA": "Borne Wi-Fi 6 Giga Hub (incluse à 0 $/mois); compatible avec tous les appareils Wi-Fi standard et les capsules Wi-Fi",
+        "es-US": "Módem Wi-Fi 6 Giga Hub (incluido a $0/mes); compatible con todos los dispositivos Wi-Fi estándar y repetidores mesh",
+    },
+    "Compatible with all unlocked 4G LTE and 5G smartphones": {
+        "en-US": "Compatible with all unlocked 4G LTE and 5G smartphones",
+        "fr-CA": "Compatible avec tous les téléphones intelligents 4G LTE et 5G déverrouillés",
+        "es-US": "Compatible con todos los teléfonos inteligentes 4G LTE y 5G desbloqueados",
+    },
+    "Compatible with Fibe TV 4K receiver and mobile TV app": {
+        "en-US": "Compatible with Fibe TV 4K receiver and mobile TV app",
+        "fr-CA": "Compatible avec le récepteur Télé Fibe 4K et l'application mobile",
+        "es-US": "Compatible con el receptor Fibe TV 4K y la aplicación móvil de TV",
+    },
+    "Standard analog phone jack compatible": {
+        "en-US": "Standard analog phone jack compatible",
+        "fr-CA": "Compatible avec les prises téléphoniques analogiques standard",
+        "es-US": "Compatible con conector telefónico analógico estándar",
+    },
+    "Compatible with Telco smart security sensors and mobile app": {
+        "en-US": "Compatible with Telco smart security sensors and mobile app",
+        "fr-CA": "Compatible avec les capteurs de sécurité intelligents Telco et l'application mobile",
+        "es-US": "Compatible con los sensores de seguridad inteligentes de Telco y la aplicación móvil",
+    },
+}
+
+def localize_catalog_copy(text: str, language: str | None = "en-US") -> str:  # pragma: no cover
+    """Return catalog copy localized for the caller's target language."""
+    loc = resolve_copy_locale(language)
+    entry = CATALOG_COPY.get(text)
+    if entry:
+        return entry.get(loc, text)
+    return text
+
 def get_billing_summary_impl(  # pragma: no cover
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
@@ -1935,10 +2006,16 @@ def get_billing_summary_impl(  # pragma: no cover
     pay_arr = bool(state.get("payment_arrangement_active", False))
     line_items = FAKE_BILLING_LEDGER.get("recent_line_items", [])
     recent_pmts = FAKE_BILLING_LEDGER.get("recent_payments", [])
-    adjustments = FAKE_BILLING_LEDGER.get(
+    raw_adjustments = FAKE_BILLING_LEDGER.get(
         "adjustments",
         [{"description": "Account credit", "amount": "-51.00"}],
     )
+    adjustments = []
+    for adj in raw_adjustments:
+        adj_copy = dict(adj)
+        desc = adj.get("description", "")
+        adj_copy["description"] = localize_catalog_copy(desc, lang)
+        adjustments.append(adj_copy)
 
     charges_dec = sum(
         (Decimal(str(item.get("amount", 0))) for item in line_items),
@@ -2013,15 +2090,29 @@ def get_billing_summary_impl(  # pragma: no cover
 
     if covers_past_due:
         service_status = "eligible_for_restoration"
-        restoration_hint = (
+        restoration_hint = localized_text(
+            lang,
             f"A payment of ${display_amount(last_pmt_dec)} posted on {last_pmt_date} covers the past-due balance. "
             "If the caller reports their service is suspended or not working after paying, "
             "execute service restoration immediately via execute_suspend_restore(action='restore') "
-            "without troubleshooting or requiring another payment."
+            "without troubleshooting or requiring another payment.",
+            f"Un paiement de {display_amount(last_pmt_dec)} $ inscrit le {last_pmt_date} couvre le solde en souffrance. "
+            "Si l'appelant signale que son service est suspendu ou ne fonctionne pas après avoir payé, "
+            "effectuez immédiatement le rétablissement du service via execute_suspend_restore(action='restore') "
+            "sans dépannage ni exiger d'autre paiement.",
+            f"Un pago de ${display_amount(last_pmt_dec)} registrado el {last_pmt_date} cubre el saldo vencido. "
+            "Si el cliente informa que su servicio está suspendido o no funciona después de pagar, "
+            "ejecute la restauración del servicio de inmediato a través de execute_suspend_restore(action='restore') "
+            "sin solucionar problemas ni exigir otro pago.",
         )
     elif is_susp:
         service_status = "suspended"
-        restoration_hint = "Payment of past due balance is required before service restoration can be executed."
+        restoration_hint = localized_text(
+            lang,
+            "Payment of past due balance is required before service restoration can be executed.",
+            "Le paiement du solde en souffrance est requis avant de pouvoir rétablir le service.",
+            "Se requiere el pago del saldo vencido antes de poder ejecutar la restauración del servicio.",
+        )
     else:
         service_status = "active"
         restoration_hint = ""

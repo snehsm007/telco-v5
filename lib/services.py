@@ -15,6 +15,7 @@ from typing import Any
 
 from lib.copy import (
     SPOKEN_LINES,
+    localize_catalog_copy,
     localized_text,
     resolve_copy_locale,
     resolve_locale,
@@ -1345,10 +1346,16 @@ def get_billing_summary_impl(
     pay_arr = bool(state.get("payment_arrangement_active", False))
     line_items = FAKE_BILLING_LEDGER.get("recent_line_items", [])
     recent_pmts = FAKE_BILLING_LEDGER.get("recent_payments", [])
-    adjustments = FAKE_BILLING_LEDGER.get(
+    raw_adjustments = FAKE_BILLING_LEDGER.get(
         "adjustments",
         [{"description": "Account credit", "amount": "-51.00"}],
     )
+    adjustments = []
+    for adj in raw_adjustments:
+        adj_copy = dict(adj)
+        desc = adj.get("description", "")
+        adj_copy["description"] = localize_catalog_copy(desc, lang)
+        adjustments.append(adj_copy)
 
     charges_dec = sum(
         (Decimal(str(item.get("amount", 0))) for item in line_items),
@@ -1423,15 +1430,29 @@ def get_billing_summary_impl(
 
     if covers_past_due:
         service_status = "eligible_for_restoration"
-        restoration_hint = (
+        restoration_hint = localized_text(
+            lang,
             f"A payment of ${display_amount(last_pmt_dec)} posted on {last_pmt_date} covers the past-due balance. "
             "If the caller reports their service is suspended or not working after paying, "
             "execute service restoration immediately via execute_suspend_restore(action='restore') "
-            "without troubleshooting or requiring another payment."
+            "without troubleshooting or requiring another payment.",
+            f"Un paiement de {display_amount(last_pmt_dec)} $ inscrit le {last_pmt_date} couvre le solde en souffrance. "
+            "Si l'appelant signale que son service est suspendu ou ne fonctionne pas après avoir payé, "
+            "effectuez immédiatement le rétablissement du service via execute_suspend_restore(action='restore') "
+            "sans dépannage ni exiger d'autre paiement.",
+            f"Un pago de ${display_amount(last_pmt_dec)} registrado el {last_pmt_date} cubre el saldo vencido. "
+            "Si el cliente informa que su servicio está suspendido o no funciona después de pagar, "
+            "ejecute la restauración del servicio de inmediato a través de execute_suspend_restore(action='restore') "
+            "sin solucionar problemas ni exigir otro pago.",
         )
     elif is_susp:
         service_status = "suspended"
-        restoration_hint = "Payment of past due balance is required before service restoration can be executed."
+        restoration_hint = localized_text(
+            lang,
+            "Payment of past due balance is required before service restoration can be executed.",
+            "Le paiement du solde en souffrance est requis avant de pouvoir rétablir le service.",
+            "Se requiere el pago del saldo vencido antes de poder ejecutar la restauración del servicio.",
+        )
     else:
         service_status = "active"
         restoration_hint = ""
@@ -2661,6 +2682,10 @@ def browse_plans_and_coverage_impl(
             continue
         p_copy = {k: v for k, v in p.items() if not k.endswith(("_en", "_fr", "_es"))}
         p_copy["features"] = p.get(f"features_{feat_lang}", p.get("features_en", ""))
+        if "included_modem" in p_copy:
+            p_copy["included_modem"] = localize_catalog_copy(p_copy["included_modem"], lang)
+        if "modem_compatibility" in p_copy:
+            p_copy["modem_compatibility"] = localize_catalog_copy(p_copy["modem_compatibility"], lang)
         p_copy["estimated_tax"] = str(p_tax)
         p_copy["estimated_total_monthly"] = str(p_total)
         p_copy["monthly_total_with_tax"] = str(p_total)
@@ -2675,6 +2700,10 @@ def browse_plans_and_coverage_impl(
             p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             p_total = p_price + p_tax
             p_copy["features"] = p.get(f"features_{feat_lang}", p.get("features_en", ""))
+            if "included_modem" in p_copy:
+                p_copy["included_modem"] = localize_catalog_copy(p_copy["included_modem"], lang)
+            if "modem_compatibility" in p_copy:
+                p_copy["modem_compatibility"] = localize_catalog_copy(p_copy["modem_compatibility"], lang)
             p_copy["estimated_tax"] = str(p_tax)
             p_copy["estimated_total_monthly"] = str(p_total)
             p_copy["monthly_total_with_tax"] = str(p_total)
@@ -2829,10 +2858,16 @@ def commit_plan_or_order_impl(
     )
 
     if not _is_truthy_bool(confirmed):
+        action_text = localized_text(
+            lang,
+            "read the quote and get an explicit yes, then call again with confirmed=true",
+            "lisez le devis et obtenez un accord explicite, puis rappelez avec confirmed=true",
+            "lea la cotización y obtenga un sí explícito, luego llame nuevamente con confirmed=true",
+        )
         return error_reply(
             "REQUIRES_CONFIRMATION",
             message=quote_summary,
-            agent_action="read the quote and get an explicit yes, then call again with confirmed=true",
+            agent_action=action_text,
             reference=reference,
             data={
                 "plan_id": chosen_plan_id,
@@ -3614,11 +3649,17 @@ def execute_suspend_restore_impl(
                 language=lang,
             )
 
+        action_text = localized_text(
+            lang,
+            "Take the payment first (process_bill_payment), then restore.",
+            "Effectuez d'abord le paiement (process_bill_payment), puis rétablissez le service.",
+            "Tome el pago primero (process_bill_payment), luego restaure.",
+        )
         return error_reply(
             "PAST_DUE_BALANCE_REQUIRED",
             reference=reference,
             language=lang,
-            agent_action="Take the payment first (process_bill_payment), then restore.",
+            agent_action=action_text,
             data={
                 "past_due_balance": display_amount(past_due_dec),
                 "payment_required": True,

@@ -762,3 +762,76 @@ AGENT_VERBATIM_KEYS: dict[str, tuple[str, ...]] = {
         "empathy_protocol",
     ),
 }
+
+CATALOG_COPY: dict[str, dict[str, str]] = {
+    "Account credit": {
+        "en-US": "Account credit",
+        "fr-CA": "Crédit au compte",
+        "es-US": "Crédito en cuenta",
+    },
+    "Wi-Fi 6 Gateway (included at $0/month)": {
+        "en-US": "Wi-Fi 6 Gateway (included at $0/month)",
+        "fr-CA": "Borne Wi-Fi 6 (incluse à 0 $/mois)",
+        "es-US": "Módem Wi-Fi 6 (incluido a $0/mes)",
+    },
+    "Wi-Fi 6 Giga Hub with whole-home mesh pod (included at $0/month)": {
+        "en-US": "Wi-Fi 6 Giga Hub with whole-home mesh pod (included at $0/month)",
+        "fr-CA": "Borne Wi-Fi 6 Giga Hub avec capsule Wi-Fi intégrale (incluse à 0 $/mois)",
+        "es-US": "Módem Wi-Fi 6 Giga Hub con repetidor mesh para todo el hogar (incluido a $0/mes)",
+    },
+    "4K TV Terminal (included)": {
+        "en-US": "4K TV Terminal (included)",
+        "fr-CA": "Terminal Télé 4K (inclus)",
+        "es-US": "Terminal de TV 4K (incluido)",
+    },
+    "Home Phone Terminal": {
+        "en-US": "Home Phone Terminal",
+        "fr-CA": "Terminal de téléphonie résidentielle",
+        "es-US": "Terminal de telefonía residencial",
+    },
+    "SIM / eSIM card (included at $0)": {
+        "en-US": "SIM / eSIM card (included at $0)",
+        "fr-CA": "Carte SIM / eSIM (incluse à 0 $)",
+        "es-US": "Tarjeta SIM / eSIM (incluida a $0)",
+    },
+    "Smart Security Hub": {
+        "en-US": "Smart Security Hub",
+        "fr-CA": "Centrale de sécurité intelligente",
+        "es-US": "Centro de seguridad inteligente",
+    },
+    "Wi-Fi 6 Giga Hub gateway (included at $0/month); compatible with all standard Wi-Fi devices and whole-home mesh pods": {
+        "en-US": "Wi-Fi 6 Giga Hub gateway (included at $0/month); compatible with all standard Wi-Fi devices and whole-home mesh pods",
+        "fr-CA": "Borne Wi-Fi 6 Giga Hub (incluse à 0 $/mois); compatible avec tous les appareils Wi-Fi standard et les capsules Wi-Fi",
+        "es-US": "Módem Wi-Fi 6 Giga Hub (incluido a $0/mes); compatible con todos los dispositivos Wi-Fi estándar y repetidores mesh",
+    },
+    "Compatible with all unlocked 4G LTE and 5G smartphones": {
+        "en-US": "Compatible with all unlocked 4G LTE and 5G smartphones",
+        "fr-CA": "Compatible avec tous les téléphones intelligents 4G LTE et 5G déverrouillés",
+        "es-US": "Compatible con todos los teléfonos inteligentes 4G LTE y 5G desbloqueados",
+    },
+    "Compatible with Fibe TV 4K receiver and mobile TV app": {
+        "en-US": "Compatible with Fibe TV 4K receiver and mobile TV app",
+        "fr-CA": "Compatible avec le récepteur Télé Fibe 4K et l'application mobile",
+        "es-US": "Compatible con el receptor Fibe TV 4K y la aplicación móvil de TV",
+    },
+    "Standard analog phone jack compatible": {
+        "en-US": "Standard analog phone jack compatible",
+        "fr-CA": "Compatible avec les prises téléphoniques analogiques standard",
+        "es-US": "Compatible con conector telefónico analógico estándar",
+    },
+    "Compatible with Telco smart security sensors and mobile app": {
+        "en-US": "Compatible with Telco smart security sensors and mobile app",
+        "fr-CA": "Compatible avec les capteurs de sécurité intelligents Telco et l'application mobile",
+        "es-US": "Compatible con los sensores de seguridad inteligentes de Telco y la aplicación móvil",
+    },
+}
+
+
+def localize_catalog_copy(text: str, language: str | None = "en-US") -> str:
+    """Return catalog copy localized for the caller's target language."""
+    loc = resolve_copy_locale(language)
+    entry = CATALOG_COPY.get(text)
+    if entry:
+        return entry.get(loc, text)
+    return text
+

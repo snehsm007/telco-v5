@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import pytest
 
 import cxas_app.tools.execute_suspend_restore.python_function.python_code as tool
 
@@ -177,3 +178,31 @@ def test_execute_suspend_localization(monkeypatch) -> None:
     reply = tool.execute_suspend_restore(action="suspend", language="fr-CA")
     assert reply["status"] == "ok"
     assert session.state["language"] == "fr-CA"
+
+
+@pytest.mark.parametrize(
+    "lang,expected_action_prefix",
+    [
+        ("en-US", "Take the payment first"),
+        ("fr-CA", "Effectuez d'abord le paiement"),
+        ("es-US", "Tome el pago primero"),
+    ],
+)
+def test_execute_restore_past_due_agent_action_localized(
+    monkeypatch, lang: str, expected_action_prefix: str
+) -> None:
+    session = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "account_id": "A1001",
+            "is_suspended": True,
+            "past_due_balance": "85.50",
+            "language": lang,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.execute_suspend_restore(action="restore", language=lang)
+    assert reply["status"] == "error"
+    assert reply["error"] == "PAST_DUE_BALANCE_REQUIRED"
+    assert reply["agent_action"].startswith(expected_action_prefix)
+
