@@ -253,6 +253,15 @@
       }
     },
     {
+      "name": "preferred_mfa_channel",
+      "description": "Subscribers active MFA delivery channel (sms, email, or authenticator_app).",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "last_user_utterance",
       "description": "Verbatim transcript of most recent caller utterance.",
       "schema": {

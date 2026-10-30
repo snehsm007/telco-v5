@@ -3643,12 +3643,74 @@ def manage_mfa_settings_impl(
         )
 
     if act == "enable":
+        pref_arg = str(preferred_mfa_channel or "").strip().lower()
+        alias_arg = str(
+            kwargs.get("channel")
+            or kwargs.get("method")
+            or kwargs.get("mfa_method")
+            or kwargs.get("mfa_channel")
+            or ""
+        ).strip().lower()
+        raw_chan = alias_arg if (alias_arg and pref_arg in ("", "sms")) else (pref_arg or "sms")
+
+        if any(w in raw_chan for w in ("authenticator", "app", "totp", "application")):
+            norm_channel = "authenticator_app"
+        elif any(w in raw_chan for w in ("email", "courriel", "correo")):
+            norm_channel = "email"
+        else:
+            norm_channel = "sms"
+
         state["mfa_enabled"] = True
+        state["preferred_mfa_channel"] = norm_channel
+
+        if norm_channel == "authenticator_app":
+            spoken = localized_text(
+                lang,
+                "Two-factor authentication has been enabled and is now active on your account using your authenticator app.",
+                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte à l'aide de votre application d'authentification.",
+                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta utilizando su aplicación de autenticación.",
+            )
+            action_text = localized_text(
+                lang,
+                "Confirm that authenticator app MFA is now enabled and active on the account; do not direct the caller to an online portal or external website.",
+                "Confirmez que l'A2F par application d'authentification est maintenant activée sur le compte; ne pas diriger le client vers un portail en ligne ou un site externe.",
+                "Confirme que la autenticación de dos factores por aplicación ya está habilitada en la cuenta; no dirija al cliente a un portal en línea ni sitio externo.",
+            )
+        elif norm_channel == "email":
+            spoken = localized_text(
+                lang,
+                "Two-factor authentication has been enabled and is now active on your account using your email on file.",
+                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte à l'aide de votre courriel au dossier.",
+                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta utilizando su correo electrónico registrado.",
+            )
+            action_text = localized_text(
+                lang,
+                "Confirm that email MFA is now enabled and active on the account; do not direct the caller to an online portal.",
+                "Confirmez que l'A2F par courriel est maintenant activée sur le compte; ne pas diriger le client vers un portail en ligne.",
+                "Confirme que la autenticación de dos factores por correo ya está habilitada en la cuenta; no dirija al cliente a un portal en línea.",
+            )
+        else:
+            spoken = localized_text(
+                lang,
+                "Two-factor authentication has been enabled and is now active on your account via text message.",
+                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte par message texte.",
+                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta a través de mensaje de texto.",
+            )
+            action_text = localized_text(
+                lang,
+                "Confirm that SMS text message MFA is now enabled and active on the account.",
+                "Confirmez que l'A2F par message texte est maintenant activée sur le compte.",
+                "Confirme que la autenticación de dos factores por mensaje de texto ya está habilitada en la cuenta.",
+            )
+
         return ok_reply(
             {
                 "mfa_updated": True,
                 "mfa_enabled": True,
-                "preferred_mfa_channel": preferred_mfa_channel or "sms",
+                "setup_complete": True,
+                "preferred_mfa_channel": norm_channel,
+                "spoken_message": spoken,
+                "agent_action": action_text,
             },
             reference,
             language=lang,

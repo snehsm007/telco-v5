@@ -303,3 +303,58 @@ def test_manage_mfa_settings_backup_email_derives_from_active_account() -> None:
     assert "starting with 'd'" in r_mfa_david["data"]["spoken_message"]
     assert state_david["contact_email"] == "david@example.com"
 
+
+def test_manage_mfa_settings_enable_authenticator_app_en_fr_es() -> None:
+    from lib.services import manage_mfa_settings_impl
+
+    # en-US
+    state_en = {"auth_status": "pass", "account_id": "A1001"}
+    r_en = manage_mfa_settings_impl(action="enable", preferred_mfa_channel="authenticator", language="en-US", state=state_en)
+    assert r_en["status"] == "ok"
+    assert r_en["data"]["setup_complete"] is True
+    assert r_en["data"]["preferred_mfa_channel"] == "authenticator_app"
+    assert "authenticator app" in r_en["data"]["spoken_message"]
+    assert "portal" in r_en["data"]["agent_action"]
+    assert state_en["preferred_mfa_channel"] == "authenticator_app"
+
+    # fr-CA
+    state_fr = {"auth_status": "pass", "account_id": "A1001"}
+    r_fr = manage_mfa_settings_impl(action="enable", channel="app", language="fr-CA", state=state_fr)
+    assert r_fr["status"] == "ok"
+    assert r_fr["data"]["setup_complete"] is True
+    assert r_fr["data"]["preferred_mfa_channel"] == "authenticator_app"
+    assert "application d'authentification" in r_fr["data"]["spoken_message"]
+    assert state_fr["preferred_mfa_channel"] == "authenticator_app"
+
+    # es-US
+    state_es = {"auth_status": "pass", "account_id": "A1001"}
+    r_es = manage_mfa_settings_impl(action="enable", method="totp", language="es-US", state=state_es)
+    assert r_es["status"] == "ok"
+    assert r_es["data"]["setup_complete"] is True
+    assert r_es["data"]["preferred_mfa_channel"] == "authenticator_app"
+    assert "aplicación de autenticación" in r_es["data"]["spoken_message"]
+    assert state_es["preferred_mfa_channel"] == "authenticator_app"
+
+
+def test_manage_mfa_settings_enable_email_and_sms_channels() -> None:
+    from lib.services import manage_mfa_settings_impl
+
+    # email
+    state_email = {"auth_status": "pass", "account_id": "A1001"}
+    r_email = manage_mfa_settings_impl(action="enable", channel="courriel", language="fr-CA", state=state_email)
+    assert r_email["status"] == "ok"
+    assert r_email["data"]["setup_complete"] is True
+    assert r_email["data"]["preferred_mfa_channel"] == "email"
+    assert "courriel au dossier" in r_email["data"]["spoken_message"]
+    assert state_email["preferred_mfa_channel"] == "email"
+
+    # sms default
+    state_sms = {"auth_status": "pass", "account_id": "A1001"}
+    r_sms = manage_mfa_settings_impl(action="enable", language="en-US", state=state_sms)
+    assert r_sms["status"] == "ok"
+    assert r_sms["data"]["setup_complete"] is True
+    assert r_sms["data"]["preferred_mfa_channel"] == "sms"
+    assert "text message" in r_sms["data"]["spoken_message"]
+    assert state_sms["preferred_mfa_channel"] == "sms"
+
+
