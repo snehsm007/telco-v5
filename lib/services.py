@@ -1814,6 +1814,8 @@ def setup_autopay_impl(
             if stated_last4:
                 state["pending_card_last4"] = stated_last4
 
+            req_last4 = stated_last4 or str(state.get("pending_card_last4") or "")
+
             if raw_digits and len(raw_digits) not in (4, 15, 16):
                 rep = error_reply(
                     "INVALID_CARD_DIGITS",
@@ -1840,12 +1842,20 @@ def setup_autopay_impl(
                 pci_line = spoken_line("payment_method_preamble", lang)
                 state["preamble_spoken"] = True
 
-            action_text = localized_text(
-                lang,
-                f"Say the preamble once, invite keypad entry once. {on_file_guidance}",
-                f"Lisez le préambule une fois, invitez à composer les chiffres sur le clavier une fois. {on_file_guidance}",
-                f"Diga el preámbulo una vez, invite a ingresar dígitos una vez. {on_file_guidance}",
-            )
+            if req_last4:
+                action_text = localized_text(
+                    lang,
+                    f"invite keypad entry for the NEW card ending in {req_last4} — it is not a card on file; never name an on-file card here; on the caller's next turn call setup_autopay again with the same card_last4 to complete enrollment",
+                    f"invitez à composer les chiffres sur le clavier pour la NOUVELLE carte se terminant par {req_last4} — ce n'est pas une carte enregistrée ; ne nommez jamais une carte enregistrée ici ; au prochain tour, rappelez setup_autopay avec le même card_last4 pour terminer l'inscription",
+                    f"invite a ingresar en el teclado la NUEVA tarjeta que termina en {req_last4} — no es una tarjeta registrada; nunca mencione una tarjeta registrada aquí; en el siguiente turno llame a setup_autopay nuevamente con el mismo card_last4 para completar la inscripción",
+                )
+            else:
+                action_text = localized_text(
+                    lang,
+                    "ask for the last four digits of the new card, then call again",
+                    "demandez les quatre derniers chiffres de la nouvelle carte, puis rappelez",
+                    "solicite los últimos cuatro dígitos de la nueva tarjeta, luego llame de nuevo",
+                )
             msg = pci_line or localized_text(
                 lang,
                 "Payment card digits required. Key in 15 or 16 digits using your phone keypad.",
@@ -1861,10 +1871,12 @@ def setup_autopay_impl(
                 data={
                     "spoken_line": pci_line,
                     "agent_action": action_text,
+                    "requested_card_last4": req_last4,
                     "payment_methods_on_file": methods_on_file,
                 },
             )
             rep["spoken_line"] = pci_line
+            rep["requested_card_last4"] = req_last4
             rep["payment_methods_on_file"] = methods_on_file
             return rep
 

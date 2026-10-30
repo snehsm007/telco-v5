@@ -696,6 +696,7 @@ def error_reply(  # pragma: no cover
         "task_completed",
         "user_goal_fulfilled",
         "must_escalate_immediately",
+        "requested_card_last4",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -1186,6 +1187,7 @@ def ok_reply(  # pragma: no cover
         "task_completed",
         "user_goal_fulfilled",
         "must_escalate_immediately",
+        "requested_card_last4",
     ):
         if key in payload:
             reply[key] = payload[key]

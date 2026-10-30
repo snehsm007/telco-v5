@@ -168,6 +168,7 @@ def ok_reply(
         "task_completed",
         "user_goal_fulfilled",
         "must_escalate_immediately",
+        "requested_card_last4",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -222,6 +223,7 @@ def error_reply(
         "task_completed",
         "user_goal_fulfilled",
         "must_escalate_immediately",
+        "requested_card_last4",
     ):
         if key in payload:
             reply[key] = payload[key]
