@@ -107,6 +107,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {
         "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
         "es-US": "Por su seguridad, necesito verificar su identidad. Por favor ingrese el PIN de 4 dígitos que configuró.",
     },
+    "account_dtmf_registered": {
+        "en-US": "Your keypad entry has been registered. For your security, please enter the 4-digit PIN you set up.",
+        "fr-CA": "Votre saisie au clavier a bien été enregistrée. Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
+        "es-US": "Su entrada por teclado ha sido registrada. Por su seguridad, ingrese el PIN de 4 dígitos que configuró.",
+    },
     "pin_dtmf_registered": {
         "en-US": "Your keypad PIN entry has been registered and your identity is verified.",
         "fr-CA": "Votre entrée DTMF au clavier a bien été enregistrée et votre identité est vérifiée.",
@@ -726,6 +731,7 @@ AGENT_VERBATIM_KEYS: dict[str, tuple[str, ...]] = {
     "router": (
         "recording_notice",
         "greeting_main",
+        "account_dtmf_registered",
         "live_agent_handoff",
         "business_handoff",
         "empathy_protocol",
@@ -735,6 +741,7 @@ AGENT_VERBATIM_KEYS: dict[str, tuple[str, ...]] = {
         "recording_notice",
         "id_verification_otp",
         "id_verification_pin",
+        "account_dtmf_registered",
         "pin_dtmf_registered",
         "payment_method_preamble",
         "refund_confirmation_pattern",

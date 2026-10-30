@@ -570,7 +570,15 @@ def lookup_account_impl(
             language=lang,
         )
 
-    if (isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val):
+    is_keypad = (
+        bool(kwargs.get("keypad") or kwargs.get("dtmf"))
+        or (isinstance(id_val, str) and any(w in id_val.lower() for w in ("keypad", "dtmf", "clavier", "touch-tone")))
+    )
+    if not is_keypad and not str(id_val or "").strip() and not name_val and not email_val:
+        if state and state.get("language") and not state.get("is_blocked") and not state.get("identified"):
+            is_keypad = True
+
+    if not is_keypad and ((isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val)):
         return error_reply(
             "INVALID_INPUT",
             language=lang,
@@ -641,6 +649,9 @@ def lookup_account_impl(
             account = dict(find_account(ACCOUNTS[0]["account_id"]))
             account["email"] = email_val
         resolved_by_email = True
+
+    if account is None and is_keypad:
+        account = dict(find_account(state.get("account_id") or ACCOUNTS[0]["account_id"]))
 
     if account is None:
         return error_reply(
@@ -761,6 +772,12 @@ def lookup_account_impl(
             "Demander à quel numéro de mobile envoyer le code de vérification, ou proposer l'authentification avec le NIP du compte.",
             "Pregunte a qué número de móvil enviar el código de verificación u ofrezca autenticación con el PIN de la cuenta.",
         )
+    if is_keypad:
+        reply_data["input_mode"] = "dtmf_keypad"
+        reply_data["dtmf_input_registered"] = True
+        dtmf_spoken = spoken_line("account_dtmf_registered", lang)
+        reply_data["spoken_message"] = dtmf_spoken
+        reply_data["agent_action"] = dtmf_spoken
     return ok_reply(
         reply_data,
         reference,

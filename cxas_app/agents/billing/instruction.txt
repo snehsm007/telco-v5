@@ -149,11 +149,9 @@ Clear, helpful, reassuring. Guide callers through statements and payments using 
             </action>
         </step>
         <step name="Account Search Fallback">
-            <trigger>The caller provides a new phone number or account number to look up</trigger>
+            <trigger>The caller provides a phone or account number to look up, or enters it on the keypad</trigger>
             <action>
-                Call {@TOOL: lookup_account} with:
-                - identifier: the provided phone or account number
-                - language: the active language code
+                When entered via keypad, call {@TOOL: lookup_account} with identifier="keypad" and language. Otherwise call {@TOOL: lookup_account} with identifier and language.
             </action>
         </step>
         <step name="Specialist Escalation">
