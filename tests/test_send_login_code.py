@@ -246,3 +246,25 @@ def test_send_login_code_caller_stated_email_override(monkeypatch) -> None:
     assert "commençant par « j »" in reply["data"]["spoken_message"]
     assert session.state["contact_email"] == "jl.dubois@example.fr"
 
+
+def test_send_login_code_with_existing_account_id_does_not_fail(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "ACC-8844",
+            "phone_last4": "8844",
+            "caller_provided_phone_last4": "8844",
+            "contact_email": "casey.miller@example.com",
+            "auth_status": "none",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.send_login_code(
+        channel="sms",
+        identifier="ACC-8844",
+        language="en-US",
+    )
+    assert reply["status"] == "ok"
+    assert reply["data"]["sent"] is True
+    assert reply["data"]["destination_last4"] == "8844"
+
+

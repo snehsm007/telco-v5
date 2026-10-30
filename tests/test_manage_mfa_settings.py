@@ -521,3 +521,27 @@ def test_manage_mfa_settings_disable_after_stepup_resent_completes(monkeypatch) 
     assert "disabled" in reply["data"]["spoken_message"].lower()
 
 
+def test_manage_mfa_settings_enable_auto_authenticates_identified_user(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "identified": True,
+            "login_code_sent": True,
+            "auth_status": "code_sent",
+            "mfa_enabled": False,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.manage_mfa_settings(
+        action="enable",
+        preferred_mfa_channel="sms",
+        language="en-US",
+    )
+    assert reply["status"] == "ok"
+    assert reply["data"]["mfa_updated"] is True
+    assert reply["data"]["mfa_enabled"] is True
+    assert session.state["auth_status"] == "pass"
+    assert session.state["logged_in"] is True
+
+
+
