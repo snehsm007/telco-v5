@@ -4109,6 +4109,7 @@ def cancel_or_port_out_service_impl(
     reason: str = "",
     confirmed: str | int | float | bool = False,
     decline_retention_offer: str | int | float | bool = False,
+    accept_retention_offer: str | int | float | bool = False,
     effective_date: str = "end_of_cycle",
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
@@ -4167,6 +4168,35 @@ def cancel_or_port_out_service_impl(
 
     action = str(action_type or kwargs.get("action", "cancel")).strip().lower()
     is_port_out = action in {"port_out", "portout", "port"}
+
+    is_accept_retention = (
+        (bool(accept_retention_offer) and str(accept_retention_offer).lower() in {"true", "1", "yes", "oui", "si", "accept"})
+        or action in {"retain", "keep", "accept_retention", "loyalty_credit"}
+        or bool(kwargs.get("accept_retention_offer"))
+    )
+
+    if is_accept_retention:
+        state["service_cancelled"] = False
+        ret_id = tracking_id("RET", account_id)
+        state["last_tracking_id"] = ret_id
+        spoken = localized_text(
+            lang,
+            "Your service remains active with the $15/month loyalty credit applied to your account.",
+            "Votre service reste actif avec le crédit de fidélité de 15 $/mois appliqué à votre compte.",
+            "Su servicio permanece activo con el crédito de lealtad de $15/mes aplicado a su cuenta.",
+        )
+        res_retention: dict[str, Any] = {
+            "service_cancelled": False,
+            "retention_offer_accepted": True,
+            "loyalty_credit_applied": "$15/mo",
+            "monthly_credit": "$15/mo",
+            "retention_confirmation_id": ret_id,
+            "confirmation_id": ret_id,
+            "reference_number": ret_id,
+            "remaining_service_rates": rem_rates,
+            "spoken_message": spoken,
+        }
+        return ok_reply(res_retention, ret_id, language=lang)
 
     port_account = account_id if account_id else (ACCOUNTS[0]["account_id"] if ACCOUNTS else "ACC-0001")
     transfer_pin = "849201"
