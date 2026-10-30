@@ -66,9 +66,11 @@ FAKE_ADDON_CATALOG: list[dict[str, Any]] = [  # pragma: no cover
         "monthly_price": 18.00,
         "price_display": "18.00",
         "category": "tv",
-        "description_en": "Full access to live professional sports coverage, games, and replays",
-        "description_fr": "Accès complet aux matchs sportifs professionnels en direct et rediffusions",
-        "description_es": "Acceso completo a cobertura deportiva profesional en vivo y repeticiones",
+        "description_en": "Full access to live professional sports coverage, games, and replays including TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD",
+        "description_fr": "Accès complet aux matchs sportifs professionnels en direct et rediffusions comprenant TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel et les réseaux sportifs régionaux en 4K/HD",
+        "description_es": "Acceso completo a cobertura deportiva profesional en vivo y repeticiones incluyendo TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel y redes deportivas regionales en 4K/HD",
+        "included_channels": "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD",
+        "combined_monthly_with_tv_starter": "43.00",
     },
     {
         "id": "ADDON-ROAM",
@@ -2222,6 +2224,22 @@ def commit_plan_or_order_impl(  # pragma: no cover
         f"{plan_name}: ${price_disp}/mes más ${tax_disp} de impuestos estimados (${total_disp} total mensual). Contrato: {contract_term}. Entrega/activación: {eff_date}.",
     )
 
+    quote_data = {
+        "plan_id": chosen_plan_id,
+        "plan_name": plan_name,
+        "monthly_price": price_disp,
+        "estimated_tax": tax_disp,
+        "monthly_total_with_tax": total_disp,
+        "contract_term": contract_term,
+        "delivery_eta": eff_date,
+        "quote_summary": quote_summary,
+    }
+    if chosen_plan_id == "ADDON-SPORTS" or (plan_info and plan_info.get("category") == "tv"):
+        quote_data["included_channels"] = "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD"
+        quote_data["combined_monthly_with_tv_starter"] = "43.00"
+        quote_data["combined_monthly_with_tv_starter_before_tax"] = "43.00"
+        quote_data["combined_monthly_with_tv_starter_with_tax"] = "49.45"
+
     if not _is_truthy_bool(confirmed):
         action_text = localized_text(
             lang,
@@ -2234,16 +2252,7 @@ def commit_plan_or_order_impl(  # pragma: no cover
             message=quote_summary,
             agent_action=action_text,
             reference=reference,
-            data={
-                "plan_id": chosen_plan_id,
-                "plan_name": plan_name,
-                "monthly_price": price_disp,
-                "estimated_tax": tax_disp,
-                "monthly_total_with_tax": total_disp,
-                "contract_term": contract_term,
-                "delivery_eta": eff_date,
-                "quote_summary": quote_summary,
-            },
+            data=quote_data,
             language=lang,
         )
 
@@ -2259,24 +2268,31 @@ def commit_plan_or_order_impl(  # pragma: no cover
         "Los demás servicios del paquete permanecen sin cambios.",
     )
 
+    order_payload = {
+        "order_id": order_ref,
+        "order_type": order_type or "plan_upgrade",
+        "plan_id": chosen_plan_id,
+        "plan_name": plan_name,
+        "new_monthly_price": price_disp,
+        "estimated_tax": tax_disp,
+        "monthly_total_with_tax": total_disp,
+        "contract_term": contract_term,
+        "quote_summary": quote_summary,
+        "effective_date": eff_date,
+        "throttled_speed_after_cap": "512 kbps",
+        "remaining_bundle_summary": bundle_summary,
+        "shipping_address_on_file": state.get("service_address", "123 Maple Avenue, Montreal, QC"),
+        "sms_receipt_sent": True,
+        "destination_phone_last4": p_l4,
+    }
+    if chosen_plan_id == "ADDON-SPORTS" or (plan_info and plan_info.get("category") == "tv"):
+        order_payload["included_channels"] = "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD"
+        order_payload["combined_monthly_with_tv_starter"] = "43.00"
+        order_payload["combined_monthly_with_tv_starter_before_tax"] = "43.00"
+        order_payload["combined_monthly_with_tv_starter_with_tax"] = "49.45"
+
     return ok_reply(
-        {
-            "order_id": order_ref,
-            "order_type": order_type or "plan_upgrade",
-            "plan_id": chosen_plan_id,
-            "plan_name": plan_name,
-            "new_monthly_price": price_disp,
-            "estimated_tax": tax_disp,
-            "monthly_total_with_tax": total_disp,
-            "contract_term": contract_term,
-            "quote_summary": quote_summary,
-            "effective_date": eff_date,
-            "throttled_speed_after_cap": "512 kbps",
-            "remaining_bundle_summary": bundle_summary,
-            "shipping_address_on_file": state.get("service_address", "123 Maple Avenue, Montreal, QC"),
-            "sms_receipt_sent": True,
-            "destination_phone_last4": p_l4,
-        },
+        order_payload,
         order_ref,
         language=lang,
     )

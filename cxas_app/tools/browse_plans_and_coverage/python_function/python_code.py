@@ -58,9 +58,11 @@ FAKE_ADDON_CATALOG: list[dict[str, Any]] = [  # pragma: no cover
         "monthly_price": 18.00,
         "price_display": "18.00",
         "category": "tv",
-        "description_en": "Full access to live professional sports coverage, games, and replays",
-        "description_fr": "Accès complet aux matchs sportifs professionnels en direct et rediffusions",
-        "description_es": "Acceso completo a cobertura deportiva profesional en vivo y repeticiones",
+        "description_en": "Full access to live professional sports coverage, games, and replays including TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD",
+        "description_fr": "Accès complet aux matchs sportifs professionnels en direct et rediffusions comprenant TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel et les réseaux sportifs régionaux en 4K/HD",
+        "description_es": "Acceso completo a cobertura deportiva profesional en vivo y repeticiones incluyendo TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel y redes deportivas regionales en 4K/HD",
+        "included_channels": "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD",
+        "combined_monthly_with_tv_starter": "43.00",
     },
     {
         "id": "ADDON-ROAM",
@@ -1433,6 +1435,11 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
         a_copy["estimated_tax"] = str(a_tax)
         a_copy["estimated_total_monthly"] = str(a_total)
         a_copy["monthly_total_with_tax"] = str(a_total)
+        if a.get("category") == "tv" or a.get("id") == "ADDON-SPORTS":
+            a_copy["included_channels"] = "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD"
+            a_copy["combined_monthly_with_tv_starter"] = "43.00"
+            a_copy["combined_monthly_with_tv_starter_before_tax"] = "43.00"
+            a_copy["combined_monthly_with_tv_starter_with_tax"] = "49.45"
         addons_enriched.append(a_copy)
 
     state["shortlisted_plan_ids"] = ",".join(p["id"] for p in shortlist)
@@ -1446,17 +1453,24 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
         "Mes a mes sin contrato anual, cargo de activación de $0",
     )
 
+    browse_payload = {
+        "category": cat,
+        "shortlisted_plans": shortlist,
+        "available_add_ons": addons_enriched,
+        "add_ons": addons_enriched,
+        "fiber_coverage_available": True,
+        "five_g_coverage_available": True,
+        "throttled_speed_after_cap": "512 kbps",
+        "contract_term": contract_term,
+    }
+    if cat == "tv":
+        browse_payload["included_channels"] = "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD"
+        browse_payload["combined_monthly_with_tv_starter"] = "43.00"
+        browse_payload["combined_monthly_with_tv_starter_before_tax"] = "43.00"
+        browse_payload["combined_monthly_with_tv_starter_with_tax"] = "49.45"
+
     return ok_reply(
-        {
-            "category": cat,
-            "shortlisted_plans": shortlist,
-            "available_add_ons": addons_enriched,
-            "add_ons": addons_enriched,
-            "fiber_coverage_available": True,
-            "five_g_coverage_available": True,
-            "throttled_speed_after_cap": "512 kbps",
-            "contract_term": contract_term,
-        },
+        browse_payload,
         ref,
         language=lang,
     )
