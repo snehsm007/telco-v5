@@ -191,7 +191,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "preferred_language": "en-US",
             "identifier_kind": "phone",
             "email": f"user{last4}@example.com",
-            _k_cf4: "4242",
+            _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
             "subscribed_lobs": "mobility,internet,tv,homephone",

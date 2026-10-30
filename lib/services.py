@@ -1946,9 +1946,25 @@ def setup_autopay_impl(
             state["card_capture_prompted"] = True
             preamble_spoken = bool(state.get("preamble_spoken"))
             if preamble_spoken:
-                pci_line = ""
+                if req_last4:
+                    pci_line = localized_text(
+                        lang,
+                        f"Key in your card ending in {req_last4} using your phone keypad.",
+                        f"Composez votre carte se terminant par {req_last4} à l'aide du clavier de votre téléphone.",
+                        f"Ingrese su tarjeta que termina en {req_last4} en el teclado de su teléfono.",
+                    )
+                else:
+                    pci_line = ""
             else:
-                pci_line = spoken_line("payment_method_preamble", lang)
+                if req_last4:
+                    pci_line = localized_text(
+                        lang,
+                        f"For your security, please do not read your full card number or security code out loud. Key in your card ending in {req_last4} using your phone keypad.",
+                        f"Pour votre sécurité, veuillez ne pas lire votre numéro de carte complet ni votre code de sécurité à haute voix. Composez votre carte se terminant par {req_last4} à l'aide du clavier de votre téléphone.",
+                        f"Por su seguridad, no lea en voz alta el número completo de su tarjeta ni el código de seguridad. Ingrese su tarjeta que termina en {req_last4} en el teclado de su teléfono.",
+                    )
+                else:
+                    pci_line = spoken_line("payment_method_preamble", lang)
                 state["preamble_spoken"] = True
 
             if req_last4:
@@ -1967,9 +1983,9 @@ def setup_autopay_impl(
                 )
             msg = pci_line or localized_text(
                 lang,
-                "Payment card digits required. Key in 15 or 16 digits using your phone keypad.",
-                "Numéro de carte requis. Composez les 15 ou 16 chiffres à l'aide du clavier de votre téléphone.",
-                "Se requieren dígitos de la tarjeta. Ingrese los 15 o 16 dígitos en el teclado de su teléfono.",
+                f"Payment card digits required. Key in your card ending in {req_last4} using your phone keypad." if req_last4 else "Payment card digits required. Key in 15 or 16 digits using your phone keypad.",
+                f"Numéro de carte requis. Composez votre carte se terminant par {req_last4} à l'aide du clavier de votre téléphone." if req_last4 else "Numéro de carte requis. Composez les 15 ou 16 chiffres à l'aide du clavier de votre téléphone.",
+                f"Se requieren dígitos de la tarjeta. Ingrese su tarjeta que termina en {req_last4} en el teclado de su teléfono." if req_last4 else "Se requieren dígitos de la tarjeta. Ingrese los 15 o 16 dígitos en el teclado de su teléfono.",
             )
             rep = error_reply(
                 "CARD_CAPTURE_REQUIRED",
