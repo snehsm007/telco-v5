@@ -3665,21 +3665,43 @@ def manage_mfa_settings_impl(
     if is_lost:
         state["lost_authenticator"] = True
         if not state.get("mfa_email_verified"):
+            already_sent = bool(state.get("mfa_email_code_sent"))
             state["mfa_email_code_sent"] = True
             email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
-            return ok_reply(
-                {
-                    "requires_email_step_up": True,
-                    "requires_step_up": True,
-                    "step_up_channel": "email",
-                    "mfa_updated": False,
-                    "masked_backup_email": masked,
-                    "spoken_message": spoken,
-                    "agent_action": action_text,
-                },
+            if already_sent:
+                spoken = localized_text(
+                    lang,
+                    f"I have resent the 6-digit verification code to the email address on file starting with '{first_char}' — please check your inbox and read it back to me.",
+                    f"J'ai renvoyé le code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez vérifier votre boîte de réception et me le lire.",
+                    f"He reenviado el código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor revise su bandeja de entrada y léamelo.",
+                )
+                action_text = localized_text(
+                    lang,
+                    f"Confirm that the 6-digit verification code was resent to the email address on file starting with '{first_char}' and ask the caller to read it back.",
+                    f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier commençant par « {first_char} » et demandez au client de vous le lire.",
+                    f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado que comienza con '{first_char}' y pídale a quien llama que se lo lea.",
+                )
+            rep_data = {
+                "requires_email_step_up": True,
+                "requires_step_up": True,
+                "step_up_channel": "email",
+                "mfa_updated": False,
+                "masked_backup_email": masked,
+                "spoken_message": spoken,
+                "agent_action": action_text,
+            }
+            if already_sent:
+                rep_data["code_resent"] = True
+            reply = ok_reply(
+                rep_data,
                 reference,
                 language=lang,
             )
+            reply["spoken_message"] = spoken
+            reply["agent_action"] = action_text
+            if already_sent:
+                reply["code_resent"] = True
+            return reply
         state["mfa_enabled"] = False
         return ok_reply(
             {
