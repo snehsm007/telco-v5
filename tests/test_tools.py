@@ -94,7 +94,7 @@ def test_handover_language_detection_and_payment_lockout() -> None:
     assert r_es["data"]["language"] == "es-US"
     assert "transfiero" in r_es["data"].get("handoff_message", "") or "representante" in r_es["data"].get("handoff_message", "")
     explicit = handover_to_person(reason="billing", language="en-US", state={"language": "es-US"})
-    assert explicit["data"]["language"] == "en-US"
+    assert explicit["data"]["language"] == "es-US"
 
     pay_state: dict[str, Any] = {}
     assert record_payment_attempt(pay_state, False)["error"] == "PAYMENT_DECLINED"

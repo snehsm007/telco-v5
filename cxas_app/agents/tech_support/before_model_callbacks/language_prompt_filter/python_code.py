@@ -309,6 +309,213 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:  # pra
     lines.append("</active_language_sheet>")
     return "\n".join(lines)
 
+_DP_EXPLICIT_SWITCH_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (  # pragma: no cover
+    (
+        "fr-CA",
+        (
+            "en français",
+            "en francais",
+            "parler en français",
+            "parler en francais",
+            "switch to french",
+            "french please",
+            "in french",
+            "speak french",
+            "passer au français",
+            "passer au francais",
+        ),
+    ),
+    (
+        "en-US",
+        (
+            "in english",
+            "switch to english",
+            "speak english",
+            "english please",
+            "en anglais",
+            "parler en anglais",
+            "passer à l'anglais",
+            "passer a l'anglais",
+            "en inglés",
+            "en ingles",
+            "hablar inglés",
+            "hablar ingles",
+            "habla inglés",
+            "habla ingles",
+        ),
+    ),
+    (
+        "es-US",
+        (
+            "en español",
+            "en espanol",
+            "hablar en español",
+            "hablar en espanol",
+            "hablar español",
+            "hablar espanol",
+            "habla español",
+            "habla espanol",
+            "switch to spanish",
+            "spanish please",
+            "in spanish",
+            "speak spanish",
+            "en espagnol",
+            "parler en espagnol",
+        ),
+    ),
+    (
+        "pt-BR",
+        (
+            "em português",
+            "em portugues",
+            "fala português",
+            "fala portugues",
+            "in portuguese",
+            "do you speak portuguese",
+            "speak portuguese",
+            "switch to portuguese",
+            "portuguese please",
+        ),
+    ),
+    (
+        "de-DE",
+        (
+            "auf deutsch",
+            "sprechen sie deutsch",
+            "in german",
+            "do you speak german",
+            "speak german",
+            "switch to german",
+            "german please",
+        ),
+    ),
+    (
+        "it-IT",
+        (
+            "in italiano",
+            "parla italiano",
+            "in italian",
+            "do you speak italian",
+            "speak italian",
+            "switch to italian",
+            "italian please",
+        ),
+    ),
+    (
+        "zh-CN",
+        (
+            "in mandarin",
+            "in chinese",
+            "do you speak mandarin",
+            "do you speak chinese",
+            "speak mandarin",
+            "speak chinese",
+            "mandarin please",
+            "switch to mandarin",
+        ),
+    ),
+    (
+        "hi-IN",
+        (
+            "in hindi",
+            "do you speak hindi",
+            "speak hindi",
+            "hindi please",
+            "switch to hindi",
+        ),
+    ),
+    (
+        "ar-XA",
+        (
+            "in arabic",
+            "do you speak arabic",
+            "speak arabic",
+            "arabic please",
+            "switch to arabic",
+        ),
+    ),
+    (
+        "ja-JP",
+        (
+            "in japanese",
+            "do you speak japanese",
+            "speak japanese",
+            "japanese please",
+            "switch to japanese",
+        ),
+    ),
+    (
+        "ko-KR",
+        (
+            "in korean",
+            "do you speak korean",
+            "speak korean",
+            "korean please",
+            "switch to korean",
+        ),
+    ),
+)
+
+_DP_NEGATED_SWITCH_PREFIX_RE = re.compile(  # pragma: no cover
+    r"(?:"
+    r"\b(?:don't|do\s+not|dont|cannot|can't|cant|not)\s+"
+    r"(?:want\s+to\s+|know\s+how\s+to\s+)?(?:speak\s+|talk\s+|switch\s+to\s+)?"
+    r"|\b(?:pas|jamais)\s+(?:parler\s+|continuer\s+)?"
+    r"|\bno\s+(?:hablo|habla|hablas|hablamos|puedo|podemos|quiero)\s+(?:hablar\s+)?"
+    r")$",
+    re.IGNORECASE,
+)
+
+def _dp_match_explicit_switch(low: str) -> str:  # pragma: no cover
+    """Return target locale for the last non-negated explicit switch term in `low`."""
+    best_end = -1
+    best_locale = ""
+    for target_locale, terms in _DP_EXPLICIT_SWITCH_TERMS:
+        for term in terms:
+            for m in re.finditer(rf"(?<!\w){re.escape(term)}(?!\w)", low):
+                if _DP_NEGATED_SWITCH_PREFIX_RE.search(low[: m.start()]):
+                    continue
+                if m.end() > best_end:
+                    best_end = m.end()
+                    best_locale = target_locale
+    return best_locale
+
+_RE_RELAY_ACTIVE_LANG = re.compile(  # pragma: no cover
+    r"['\"]active_language['\"]\s*:\s*['\"]([a-zA-Z]{2}(?:-[a-zA-Z]{2})?)['\"]"
+)
+
+def _extract_relayed_active_language(llm_request: Any) -> str:  # pragma: no cover
+    """Extract the most recent active_language from relayed tool results in contents."""
+    contents = getattr(llm_request, "contents", None)
+    if not contents or not isinstance(contents, (list, tuple)):
+        return ""
+    last_lang = ""
+    for item in contents:
+        parts = getattr(item, "parts", None)
+        if parts and isinstance(parts, (list, tuple)):
+            for part in parts:
+                txt = getattr(part, "text", None)
+                if txt and isinstance(txt, str):
+                    matches = _RE_RELAY_ACTIVE_LANG.findall(txt)
+                    if matches:
+                        last_lang = matches[-1]
+                fn_resp = getattr(part, "function_response", None)
+                if fn_resp:
+                    resp = getattr(fn_resp, "response", None)
+                    if isinstance(resp, dict):
+                        al = resp.get("active_language")
+                        if not al and isinstance(resp.get("result"), dict):
+                            al = resp["result"].get("active_language")
+                        if al and isinstance(al, str):
+                            last_lang = al
+        elif isinstance(getattr(item, "text", None), str):
+            matches = _RE_RELAY_ACTIVE_LANG.findall(item.text)
+            if matches:
+                last_lang = matches[-1]
+    if last_lang:
+        return resolve_locale(last_lang)
+    return ""
+
 _DP_CANADIAN_POSTAL_RE = re.compile(  # pragma: no cover
     r"\b[a-z]\d[a-z]\s*-?\s*\d[a-z]\d\b",
     re.IGNORECASE,
@@ -617,177 +824,6 @@ _SPANISH_MARKERS = frozenset(  # pragma: no cover
     }
 )
 
-_DP_EXPLICIT_SWITCH_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (  # pragma: no cover
-    (
-        "fr-CA",
-        (
-            "en français",
-            "en francais",
-            "parler en français",
-            "parler en francais",
-            "switch to french",
-            "french please",
-            "in french",
-            "speak french",
-            "passer au français",
-            "passer au francais",
-        ),
-    ),
-    (
-        "en-US",
-        (
-            "in english",
-            "switch to english",
-            "speak english",
-            "english please",
-            "en anglais",
-            "parler en anglais",
-            "passer à l'anglais",
-            "passer a l'anglais",
-            "en inglés",
-            "en ingles",
-            "hablar inglés",
-            "hablar ingles",
-            "habla inglés",
-            "habla ingles",
-        ),
-    ),
-    (
-        "es-US",
-        (
-            "en español",
-            "en espanol",
-            "hablar en español",
-            "hablar en espanol",
-            "hablar español",
-            "hablar espanol",
-            "habla español",
-            "habla espanol",
-            "switch to spanish",
-            "spanish please",
-            "in spanish",
-            "speak spanish",
-            "en espagnol",
-            "parler en espagnol",
-        ),
-    ),
-    (
-        "pt-BR",
-        (
-            "em português",
-            "em portugues",
-            "fala português",
-            "fala portugues",
-            "in portuguese",
-            "do you speak portuguese",
-            "speak portuguese",
-            "switch to portuguese",
-            "portuguese please",
-        ),
-    ),
-    (
-        "de-DE",
-        (
-            "auf deutsch",
-            "sprechen sie deutsch",
-            "in german",
-            "do you speak german",
-            "speak german",
-            "switch to german",
-            "german please",
-        ),
-    ),
-    (
-        "it-IT",
-        (
-            "in italiano",
-            "parla italiano",
-            "in italian",
-            "do you speak italian",
-            "speak italian",
-            "switch to italian",
-            "italian please",
-        ),
-    ),
-    (
-        "zh-CN",
-        (
-            "in mandarin",
-            "in chinese",
-            "do you speak mandarin",
-            "do you speak chinese",
-            "speak mandarin",
-            "speak chinese",
-            "mandarin please",
-            "switch to mandarin",
-        ),
-    ),
-    (
-        "hi-IN",
-        (
-            "in hindi",
-            "do you speak hindi",
-            "speak hindi",
-            "hindi please",
-            "switch to hindi",
-        ),
-    ),
-    (
-        "ar-XA",
-        (
-            "in arabic",
-            "do you speak arabic",
-            "speak arabic",
-            "arabic please",
-            "switch to arabic",
-        ),
-    ),
-    (
-        "ja-JP",
-        (
-            "in japanese",
-            "do you speak japanese",
-            "speak japanese",
-            "japanese please",
-            "switch to japanese",
-        ),
-    ),
-    (
-        "ko-KR",
-        (
-            "in korean",
-            "do you speak korean",
-            "speak korean",
-            "korean please",
-            "switch to korean",
-        ),
-    ),
-)
-
-_DP_NEGATED_SWITCH_PREFIX_RE = re.compile(  # pragma: no cover
-    r"(?:"
-    r"\b(?:don't|do\s+not|dont|cannot|can't|cant|not)\s+"
-    r"(?:want\s+to\s+|know\s+how\s+to\s+)?(?:speak\s+|talk\s+|switch\s+to\s+)?"
-    r"|\b(?:pas|jamais)\s+(?:parler\s+|continuer\s+)?"
-    r"|\bno\s+(?:hablo|habla|hablas|hablamos|puedo|podemos|quiero)\s+(?:hablar\s+)?"
-    r")$",
-    re.IGNORECASE,
-)
-
-def _dp_match_explicit_switch(low: str) -> str:  # pragma: no cover
-    """Return target locale for the last non-negated explicit switch term in `low`."""
-    best_end = -1
-    best_locale = ""
-    for target_locale, terms in _DP_EXPLICIT_SWITCH_TERMS:
-        for term in terms:
-            for m in re.finditer(rf"(?<!\w){re.escape(term)}(?!\w)", low):
-                if _DP_NEGATED_SWITCH_PREFIX_RE.search(low[: m.start()]):
-                    continue
-                if m.end() > best_end:
-                    best_end = m.end()
-                    best_locale = target_locale
-    return best_locale
-
 def detect_utterance_language(utterance: str, current_language: str = "en-US") -> str:  # pragma: no cover
     """Detect language from an utterance with contextual inertia on silence and numbers."""
     cleaned = re.sub(r"\[(?:pause|silence)\]", " ", str(utterance or ""), flags=re.IGNORECASE)
@@ -877,8 +913,31 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
 
     return resolve_locale(current_language)
 
+_RE_QUOTED_AGENT_BLOCK = re.compile(  # pragma: no cover
+    r"<<<BEGIN_QUOTED_AGENT_CONTENT>>>[\s\S]*?<<<END_QUOTED_AGENT_CONTENT>>>"
+)
+
+_RE_RELAY_PREFIX = re.compile(  # pragma: no cover
+    r"^(?:For context|\s*\[[^\]]+\]\s*(?:said:|thought:|called tool |`[^`]*` tool returned result:))",
+    re.IGNORECASE,
+)
+
+def _is_relay_or_quoted_part(txt: str) -> bool:  # pragma: no cover
+    """Return True if txt is an ADK relay part, agent event, or quoted content block."""
+    s = txt.strip()
+    if not s:
+        return True
+    if _RE_RELAY_PREFIX.match(s):
+        return True
+    cleaned = _RE_QUOTED_AGENT_BLOCK.sub("", s).strip()
+    if not cleaned:
+        return True
+    if _RE_RELAY_PREFIX.match(cleaned):
+        return True
+    return False
+
 def extract_user_utterances(llm_request: Any) -> list[str]:  # pragma: no cover
-    """Safely extract user utterance strings from LLM request contents."""
+    """Safely extract genuine user utterance strings from LLM request contents, skipping relay parts."""
     utterances: list[str] = []
     contents = getattr(llm_request, "contents", None)
     if not contents or not isinstance(contents, (list, tuple)):
@@ -890,10 +949,11 @@ def extract_user_utterances(llm_request: Any) -> list[str]:  # pragma: no cover
                 for part in parts:
                     txt = getattr(part, "text", None)
                     if txt and isinstance(txt, str) and txt.strip():
-                        utterances.append(txt.strip())
+                        if not _is_relay_or_quoted_part(txt):
+                            utterances.append(txt.strip())
             elif isinstance(getattr(item, "text", None), str):
                 t = item.text.strip()
-                if t:
+                if t and not _is_relay_or_quoted_part(t):
                     utterances.append(t)
     return utterances
 
@@ -905,10 +965,29 @@ def detect_active_call_language(state_dict: Any, llm_request: Any) -> str:  # pr
         if callable(getattr(state_dict, "get", None))
         else ""
     )
+    if locked:
+        locked = resolve_locale(locked)
+    else:
+        relayed = _extract_relayed_active_language(llm_request)
+        if relayed:
+            locked = relayed
+
+    if locked and locked != "en-US":
+        current = locked
+        for utt in user_utterances:
+            switch = _dp_match_explicit_switch(utt.lower())
+            if switch:
+                current = switch
+        return current
 
     current = resolve_locale(locked) if locked else "en-US"
     for utt in user_utterances:
-        current = detect_utterance_language(utt, current_language=current)
+        if current != "en-US":
+            switch = _dp_match_explicit_switch(utt.lower())
+            if switch:
+                current = switch
+        else:
+            current = detect_utterance_language(utt, current_language=current)
 
     return current
 

@@ -61,3 +61,14 @@ def test_handover_to_person_localization(monkeypatch) -> None:
     reply_es = tool.handover_to_person(reason="ayuda", language="es-US")
     assert reply_es["status"] == "ok"
     assert "representante" in session_es.state["handoff_message"].lower()
+
+
+def test_handover_to_person_preserves_french_session_when_model_passes_en_us(monkeypatch) -> None:
+    session = SimpleNamespace(state={"account_id": "A1001", "language": "fr-CA"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.handover_to_person(language="en-US", reason="transfer_to_representative")
+    assert reply["status"] == "ok"
+    assert reply["active_language"] == "fr-CA"
+    assert reply["data"]["language"] == "fr-CA"
+    assert session.state["language"] == "fr-CA"
+    assert "représentant" in session.state["handoff_message"].lower()

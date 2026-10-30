@@ -431,3 +431,195 @@ def test_turn1_pt_it_de_markers_and_spanish_negative_twins() -> None:
     )
     assert detect_utterance_language("Ich möchte meinen Vertrag kündigen.", "en-US") == "de-DE"
 
+
+def test_extract_user_utterances_skips_relayed_agent_context_and_fences() -> None:
+    req = SimpleNamespace(
+        contents=[
+            SimpleNamespace(
+                role="user",
+                parts=[SimpleNamespace(text="Bonjour j'aimerais de l'aide")],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text=(
+                            "For context: below is a transcript of what another agent did, quoted "
+                            "between <<<BEGIN_QUOTED_AGENT_CONTENT>>> and <<<END_QUOTED_AGENT_CONTENT>>>."
+                        )
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text=(
+                            "[router] said:\n<<<BEGIN_QUOTED_AGENT_CONTENT>>>\n"
+                            "Cet appel peut être enregistré.\n"
+                            "<<<END_QUOTED_AGENT_CONTENT>>>"
+                        )
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text="D'accord. Mon numéro de téléphone est le 514-555-0123."
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text=(
+                            "[router] called tool `lookup_account` with parameters:\n"
+                            "<<<BEGIN_QUOTED_AGENT_CONTENT>>>\n"
+                            "{'identifier': '514-555-0123', 'language': 'fr-CA'}\n"
+                            "<<<END_QUOTED_AGENT_CONTENT>>>"
+                        )
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text=(
+                            "[router] `lookup_account` tool returned result:\n"
+                            "<<<BEGIN_QUOTED_AGENT_CONTENT>>>\n"
+                            "{'status': 'ok', 'active_language': 'fr-CA', 'data': {'account_id': 'ACC-0123'}}\n"
+                            "<<<END_QUOTED_AGENT_CONTENT>>>"
+                        )
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text=(
+                            "[router] called tool `transfer_to_agent` with parameters:\n"
+                            "<<<BEGIN_QUOTED_AGENT_CONTENT>>>\n"
+                            "{'agent_name': 'account'}\n"
+                            "<<<END_QUOTED_AGENT_CONTENT>>>"
+                        )
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text=(
+                            "[router] `transfer_to_agent` tool returned result:\n"
+                            "<<<BEGIN_QUOTED_AGENT_CONTENT>>>\n"
+                            "{'result': None}\n"
+                            "<<<END_QUOTED_AGENT_CONTENT>>>"
+                        )
+                    )
+                ],
+            ),
+        ]
+    )
+
+    extracted = extract_user_utterances(req)
+    assert extracted == [
+        "Bonjour j'aimerais de l'aide",
+        "D'accord. Mon numéro de téléphone est le 514-555-0123.",
+    ]
+
+
+def test_detect_active_call_language_ve15_r3_replay() -> None:
+    req = SimpleNamespace(
+        config=SimpleNamespace(system_instruction="Base account instructions."),
+        contents=[
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text=(
+                            "Bonjour. J'aimerais désactiver l'authentification multifacteur "
+                            "sur mon compte, s'il vous plaît."
+                        )
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text="For context: below is a transcript of what another agent did..."
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text="[router] said:\n<<<BEGIN_QUOTED_AGENT_CONTENT>>>\nMerci\n<<<END_QUOTED_AGENT_CONTENT>>>"
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text="D'accord. Mon numéro de téléphone est le 514-555-0123."
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text=(
+                            "[router] `lookup_account` tool returned result:\n"
+                            "<<<BEGIN_QUOTED_AGENT_CONTENT>>>\n"
+                            "{'status': 'ok', 'active_language': 'fr-CA', 'data': {'account_id': 'ACC-0123'}}\n"
+                            "<<<END_QUOTED_AGENT_CONTENT>>>"
+                        )
+                    )
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(
+                        text="[router] called tool `transfer_to_agent` with parameters:\n{'agent_name': 'account'}"
+                    )
+                ],
+            ),
+        ],
+    )
+
+    # 1. With state carrying French lock
+    assert detect_active_call_language({"language": "fr-CA"}, req) == "fr-CA"
+
+    # 2. With state empty (relayed active_language in contents resolves to fr-CA)
+    assert detect_active_call_language({}, req) == "fr-CA"
+
+    # 3. Before-model prompt filter injects fr-CA language sheet for account agent
+    context_fr = SimpleNamespace(state={"language": "fr-CA"})
+    apply_language_prompt_filter(context_fr, req, agent_name="account")
+    assert 'locale="fr-CA"' in req.config.system_instruction
+
+
+def test_detect_active_call_language_explicit_switch_from_french() -> None:
+    req = SimpleNamespace(
+        contents=[
+            SimpleNamespace(
+                role="user",
+                parts=[SimpleNamespace(text="Bonjour j'ai besoin d'aide")],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[SimpleNamespace(text="Can we continue in English please?")],
+            ),
+        ]
+    )
+    # Locked French switches to English on explicit switch request
+    assert detect_active_call_language({"language": "fr-CA"}, req) == "en-US"
+
