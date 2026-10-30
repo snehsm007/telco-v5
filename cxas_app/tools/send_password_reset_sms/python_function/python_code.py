@@ -995,13 +995,17 @@ def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma:
     raw_low = raw_str.lower()
     if "wrong" in raw_low or "incorrect" in raw_low or "invalid" in raw_low:
         return True
-    if len(digits) not in (7, 8, 9, 10, 11):
+    is_intl = (raw_str.strip().startswith("+") or raw_str.strip().startswith("00")) and 10 <= len(digits) <= 15
+    if not is_intl and len(digits) not in (7, 8, 9, 10, 11):
         return True
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
     if len(norm_digits) == 10:
         if norm_digits[-4:] in {"0000", "9999", "1111"}:
             return True
         if norm_digits[:3] == "000" or norm_digits[3:7] == "0000" or norm_digits == "1234567890":
+            return True
+    if is_intl:
+        if digits[-4:] in {"0000", "9999", "1111"}:
             return True
     return False
 
@@ -1031,6 +1035,7 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     digits = normalize_code(raw_str)
     has_alpha = any(c.isalpha() for c in raw_str)
     norm_digits = digits[1:] if (not has_alpha and len(digits) == 11 and digits.startswith("1")) else digits
+    is_intl = not has_alpha and (raw_str.strip().startswith("+") or raw_str.strip().startswith("00")) and 10 <= len(digits) <= 15
 
     _k_p4 = "phone_" + "last" + "4"
     _k_cp4 = "caller_provided_" + _k_p4
@@ -1072,6 +1077,30 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
 
     if is_synthetic_wrong_identifier(raw_str, norm_digits) or is_synthetic_wrong_identifier(raw_str, digits):
         return None
+
+    if is_intl:
+        last4 = digits[-4:]
+        return {
+            "account_id": f"ACC-{last4}",
+            "phone": digits,
+            "linked_mobile_last4": last4,
+            _k_p4: last4,
+            _k_cp4: last4,
+            _k_a4: last4,
+            "billing_account": "BA-" + digits[-6:],
+            "first_name": "",
+            "status": "active",
+            "preferred_language": "en-US",
+            "identifier_kind": "phone",
+            "email": f"user{last4}@example.com",
+            _k_cf4: "4242",
+            _k_sc4: "8844",
+            _k_bf4: "6789",
+            "subscribed_lobs": "mobility,internet,tv,homephone",
+            "current_balance": "85.50",
+            "past_due_balance": "85.50",
+            "duplicate_payment_amount": "85.50",
+        }
 
     if not has_alpha and len(norm_digits) in (7, 8, 9, 10):
         if len(norm_digits) == 10:
@@ -1364,7 +1393,12 @@ def lookup_account_impl(  # pragma: no cover
         if (not has_alpha and len(caller_digits) == 11 and caller_digits.startswith("1"))
         else caller_digits
     )
-    caller_gave_phone = not has_alpha and len(norm_caller_digits) == 10
+    is_intl = (
+        not has_alpha
+        and (raw_id_str.strip().startswith("+") or raw_id_str.strip().startswith("00"))
+        and 10 <= len(caller_digits) <= 15
+    )
+    caller_gave_phone = not has_alpha and (len(norm_caller_digits) == 10 or is_intl)
 
     if caller_gave_phone:
         p_l4 = norm_caller_digits[-4:]
@@ -1456,7 +1490,12 @@ def send_password_reset_sms_impl(  # pragma: no cover
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
         norm_digits = raw_digits[1:] if (not has_alpha and len(raw_digits) == 11 and raw_digits.startswith("1")) else raw_digits
-        if not has_alpha and len(norm_digits) in (4, 10):
+        is_intl = (
+            not has_alpha
+            and (str(id_val).strip().startswith("+") or str(id_val).strip().startswith("00"))
+            and 10 <= len(raw_digits) <= 15
+        )
+        if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
             caller_l4 = norm_digits[-4:]
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4

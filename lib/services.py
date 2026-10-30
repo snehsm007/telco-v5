@@ -668,7 +668,12 @@ def lookup_account_impl(
         if (not has_alpha and len(caller_digits) == 11 and caller_digits.startswith("1"))
         else caller_digits
     )
-    caller_gave_phone = not has_alpha and len(norm_caller_digits) == 10
+    is_intl = (
+        not has_alpha
+        and (raw_id_str.strip().startswith("+") or raw_id_str.strip().startswith("00"))
+        and 10 <= len(caller_digits) <= 15
+    )
+    caller_gave_phone = not has_alpha and (len(norm_caller_digits) == 10 or is_intl)
 
     if caller_gave_phone:
         p_l4 = norm_caller_digits[-4:]
@@ -769,7 +774,12 @@ def send_login_code_impl(
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
         norm_digits = raw_digits[1:] if (not has_alpha and len(raw_digits) == 11 and raw_digits.startswith("1")) else raw_digits
-        if not has_alpha and len(norm_digits) in (4, 10):
+        is_intl = (
+            not has_alpha
+            and (str(id_val).strip().startswith("+") or str(id_val).strip().startswith("00"))
+            and 10 <= len(raw_digits) <= 15
+        )
+        if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
             caller_l4 = norm_digits[-4:]
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
@@ -909,7 +919,12 @@ def verify_login_impl(
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
         norm_digits = raw_digits[1:] if (not has_alpha and len(raw_digits) == 11 and raw_digits.startswith("1")) else raw_digits
-        if not has_alpha and len(norm_digits) in (4, 10):
+        is_intl = (
+            not has_alpha
+            and (str(id_val).strip().startswith("+") or str(id_val).strip().startswith("00"))
+            and 10 <= len(raw_digits) <= 15
+        )
+        if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
             caller_l4 = norm_digits[-4:]
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
@@ -3115,7 +3130,12 @@ def send_password_reset_sms_impl(
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
         norm_digits = raw_digits[1:] if (not has_alpha and len(raw_digits) == 11 and raw_digits.startswith("1")) else raw_digits
-        if not has_alpha and len(norm_digits) in (4, 10):
+        is_intl = (
+            not has_alpha
+            and (str(id_val).strip().startswith("+") or str(id_val).strip().startswith("00"))
+            and 10 <= len(raw_digits) <= 15
+        )
+        if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
             caller_l4 = norm_digits[-4:]
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
