@@ -1001,6 +1001,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté.",
         "es-US": "Le comunicaré ahora con un especialista de facturación; tendrá toda la información que ya conversamos.",
     },
+    "refund_threshold_specialist_reason": {
+        "en-US": "Because this refund exceeds our self-service limit, your request requires billing specialist approval.",
+        "fr-CA": "Comme ce remboursement dépasse notre limite libre-service, votre demande nécessite l'approbation d'un spécialiste de la facturation.",
+        "es-US": "Debido a que este reembolso excede nuestro límite de autoservicio, su solicitud requiere la aprobación de un especialista de facturación.",
+    },
     "service_alert_banner": {
         "en-US": "Please note: there is an active regional service advisory in parts of Montreal today.",
         "fr-CA": "Veuillez noter qu'un avis de service régional est actuellement en vigueur dans certains secteurs de Montréal.",
@@ -1102,7 +1107,10 @@ def handover_to_person_impl(  # pragma: no cover
         any(w in r_low for w in ("refund_threshold", "billing_specialist", "remboursement"))
         or tq_low == "billing_specialist"
     ):
-        msg = spoken_line("transfer_to_specialist", resolved_lang)
+        if any(w in r_low for w in ("refund_threshold", "remboursement")) or "refund" in r_low:
+            msg = f"{spoken_line('refund_threshold_specialist_reason', resolved_lang)} {spoken_line('transfer_to_specialist', resolved_lang)}"
+        else:
+            msg = spoken_line("transfer_to_specialist", resolved_lang)
         queue = "billing_specialist"
         queue_hours = "after_hours_callback_available" if state.get("after_hours") else "open"
     elif "secondary_language" in r_low or tq_low == "multilingual_support":

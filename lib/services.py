@@ -1291,7 +1291,10 @@ def handover_to_person_impl(
         any(w in r_low for w in ("refund_threshold", "billing_specialist", "remboursement"))
         or tq_low == "billing_specialist"
     ):
-        msg = spoken_line("transfer_to_specialist", resolved_lang)
+        if any(w in r_low for w in ("refund_threshold", "remboursement")) or "refund" in r_low:
+            msg = f"{spoken_line('refund_threshold_specialist_reason', resolved_lang)} {spoken_line('transfer_to_specialist', resolved_lang)}"
+        else:
+            msg = spoken_line("transfer_to_specialist", resolved_lang)
         queue = "billing_specialist"
         queue_hours = "after_hours_callback_available" if state.get("after_hours") else "open"
     elif "secondary_language" in r_low or tq_low == "multilingual_support":
@@ -2379,7 +2382,15 @@ def process_refund_or_dispute_impl(
     state["dispute_ticket_id"] = tkt
     state["handoff_reason"] = "refund_threshold_exceeded"
     specialist_msg = spoken_line("transfer_to_specialist", lang)
-    state["handoff_message"] = specialist_msg
+    reason_prefix = spoken_line("refund_threshold_specialist_reason", lang)
+    full_spoken_message = f"{reason_prefix} {specialist_msg}".strip()
+    agent_action = localized_text(
+        lang,
+        "Emit refund_threshold_specialist_reason followed by transfer_to_specialist.",
+        "Émettez refund_threshold_specialist_reason suivi de transfer_to_specialist.",
+        "Emita refund_threshold_specialist_reason seguido de transfer_to_specialist.",
+    )
+    state["handoff_message"] = full_spoken_message
     return ok_reply(
         {
             "approved": False,
@@ -2389,8 +2400,9 @@ def process_refund_or_dispute_impl(
             "must_escalate_immediately": True,
             "escalation_reason": "refund_threshold_exceeded",
             "target_queue": "billing_specialist",
-            "handoff_message": specialist_msg,
-            "spoken_message": specialist_msg,
+            "handoff_message": full_spoken_message,
+            "spoken_message": full_spoken_message,
+            "agent_action": agent_action,
             "verbatim_key": "transfer_to_specialist",
         },
         tkt,

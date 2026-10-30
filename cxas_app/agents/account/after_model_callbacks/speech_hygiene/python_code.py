@@ -538,6 +538,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté.",
         "es-US": "Le comunicaré ahora con un especialista de facturación; tendrá toda la información que ya conversamos.",
     },
+    "refund_threshold_specialist_reason": {
+        "en-US": "Because this refund exceeds our self-service limit, your request requires billing specialist approval.",
+        "fr-CA": "Comme ce remboursement dépasse notre limite libre-service, votre demande nécessite l'approbation d'un spécialiste de la facturation.",
+        "es-US": "Debido a que este reembolso excede nuestro límite de autoservicio, su solicitud requiere la aprobación de un especialista de facturación.",
+    },
     "service_alert_banner": {
         "en-US": "Please note: there is an active regional service advisory in parts of Montreal today.",
         "fr-CA": "Veuillez noter qu'un avis de service régional est actuellement en vigueur dans certains secteurs de Montréal.",
@@ -631,6 +636,9 @@ def enforce_handover_utterance(  # pragma: no cover
     is_specialist = target_queue == "billing_specialist" or any(
         term in reason for term in _SP_SPECIALIST_TERMS
     )
+    is_refund_threshold = is_specialist and any(
+        w in reason for w in ("refund", "threshold", "remboursement", "reembolso")
+    )
 
     if is_biz:
         required_lines = [spoken_line("business_handoff", loc)]
@@ -638,6 +646,11 @@ def enforce_handover_utterance(  # pragma: no cover
         required_lines = [
             spoken_line("empathy_protocol", loc),
             spoken_line("live_agent_handoff", loc),
+        ]
+    elif is_refund_threshold:
+        required_lines = [
+            spoken_line("refund_threshold_specialist_reason", loc),
+            spoken_line("transfer_to_specialist", loc),
         ]
     elif is_specialist:
         required_lines = [spoken_line("transfer_to_specialist", loc)]
@@ -682,5 +695,26 @@ def enforce_handover_utterance(  # pragma: no cover
         if other_missing:
             merged = f"{merged} {' '.join(other_missing)}"
         return merged
+
+    reason_line = (
+        spoken_line("refund_threshold_specialist_reason", loc)
+        if is_refund_threshold
+        else ""
+    )
+    if (
+        is_refund_threshold
+        and reason_line in missing
+        and (
+            _norm_ws(spoken_line("transfer_to_specialist", loc)) in norm_existing
+            or _norm_ws(generic_line) in norm_existing
+            or any(hold_tail in norm_existing for hold_tail in _SP_HOLD_TAILS)
+        )
+    ):
+        other_missing = [line for line in missing if line != reason_line]
+        merged = f"{reason_line} {existing}"
+        if other_missing:
+            merged = f"{merged} {' '.join(other_missing)}"
+        return merged
+
     return f"{existing} {' '.join(missing)}"
 # --- END GENERATED SHARED BUNDLE ---

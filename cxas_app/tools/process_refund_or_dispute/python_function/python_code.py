@@ -845,6 +845,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Je vous mets maintenant en communication avec un spécialiste de la facturation — il aura déjà tout ce dont nous avons discuté.",
         "es-US": "Le comunicaré ahora con un especialista de facturación; tendrá toda la información que ya conversamos.",
     },
+    "refund_threshold_specialist_reason": {
+        "en-US": "Because this refund exceeds our self-service limit, your request requires billing specialist approval.",
+        "fr-CA": "Comme ce remboursement dépasse notre limite libre-service, votre demande nécessite l'approbation d'un spécialiste de la facturation.",
+        "es-US": "Debido a que este reembolso excede nuestro límite de autoservicio, su solicitud requiere la aprobación de un especialista de facturación.",
+    },
     "service_alert_banner": {
         "en-US": "Please note: there is an active regional service advisory in parts of Montreal today.",
         "fr-CA": "Veuillez noter qu'un avis de service régional est actuellement en vigueur dans certains secteurs de Montréal.",
@@ -2113,7 +2118,15 @@ def process_refund_or_dispute_impl(  # pragma: no cover
     state["dispute_ticket_id"] = tkt
     state["handoff_reason"] = "refund_threshold_exceeded"
     specialist_msg = spoken_line("transfer_to_specialist", lang)
-    state["handoff_message"] = specialist_msg
+    reason_prefix = spoken_line("refund_threshold_specialist_reason", lang)
+    full_spoken_message = f"{reason_prefix} {specialist_msg}".strip()
+    agent_action = localized_text(
+        lang,
+        "Emit refund_threshold_specialist_reason followed by transfer_to_specialist.",
+        "Émettez refund_threshold_specialist_reason suivi de transfer_to_specialist.",
+        "Emita refund_threshold_specialist_reason seguido de transfer_to_specialist.",
+    )
+    state["handoff_message"] = full_spoken_message
     return ok_reply(
         {
             "approved": False,
@@ -2123,8 +2136,9 @@ def process_refund_or_dispute_impl(  # pragma: no cover
             "must_escalate_immediately": True,
             "escalation_reason": "refund_threshold_exceeded",
             "target_queue": "billing_specialist",
-            "handoff_message": specialist_msg,
-            "spoken_message": specialist_msg,
+            "handoff_message": full_spoken_message,
+            "spoken_message": full_spoken_message,
+            "agent_action": agent_action,
             "verbatim_key": "transfer_to_specialist",
         },
         tkt,
