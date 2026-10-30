@@ -100,3 +100,68 @@ def test_handover_language_detection_and_payment_lockout() -> None:
     assert record_payment_attempt(pay_state, False)["error"] == "PAYMENT_DECLINED"
     assert record_payment_attempt(pay_state, False)["error"] == "PAYMENT_DECLINED"
     assert record_payment_attempt(pay_state, False)["error"] == "TOO_MANY_ATTEMPTS"
+
+
+def _find_multilingual_keys(obj: Any, path: str = "") -> list[str]:
+    bad: list[str] = []
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            current_path = f"{path}.{k}" if path else str(k)
+            if str(k).endswith(("_en", "_fr", "_es")):
+                bad.append(current_path)
+            bad.extend(_find_multilingual_keys(v, current_path))
+    elif isinstance(obj, list):
+        for i, item in enumerate(obj):
+            bad.extend(_find_multilingual_keys(item, f"{path}[{i}]"))
+    return bad
+
+
+@pytest.mark.parametrize("lang", ["en-US", "fr-CA", "es-US"])
+def test_all_22_tools_no_multilingual_keys_leak(lang: str) -> None:
+    from lib import services
+
+    sample_args: dict[str, dict[str, Any]] = {
+        "lookup_account": {"identifier": "555-123-4567"},
+        "send_login_code": {"destination": "555-123-4567"},
+        "verify_login": {"code": "1234"},
+        "handover_to_person": {"department": "billing", "reason": "complex billing issue"},
+        "get_billing_summary": {},
+        "process_bill_payment": {"amount": "50.00", "payment_method_id": "CARD-1"},
+        "setup_payment_arrangement": {"arrangement_date": "2026-11-15", "installments": 2},
+        "setup_autopay": {"action": "enroll", "payment_method_id": "CARD-1"},
+        "process_refund_or_dispute": {"charge_id": "CHG-101", "reason": "unrecognized_charge"},
+        "check_regional_outage": {"postal_code": "H3Z 2Y7"},
+        "run_troubleshooting_and_sms": {"service_type": "internet", "symptom": "slow_speed"},
+        "get_appointment_and_ticket_status": {},
+        "manage_appointment": {"action": "reschedule", "selected_slot": "SLOT-1"},
+        "browse_plans_and_coverage": {"category": "internet"},
+        "commit_plan_or_order": {"plan_id": "NET-PLUS", "confirmed": True},
+        "initiate_number_transfer": {
+            "phone_to_transfer": "555-123-4567",
+            "current_carrier": "OtherCarrier",
+            "carrier_account_number": "ACC-123",
+            "port_pin": "1234",
+        },
+        "manage_warranty_claim": {"issue_description": "broken screen", "claim_type": "repair"},
+        "send_password_reset_sms": {"phone_number": "555-123-4567"},
+        "manage_mfa_settings": {"action": "status"},
+        "execute_suspend_restore": {"action": "suspend"},
+        "update_contact_profile": {"email": "test@example.com"},
+        "cancel_or_port_out_service": {"action": "cancel", "confirmed": True},
+    }
+
+    assert len(services.ALL_TOOLS) == 22
+    for tool_name in services.ALL_TOOLS:
+        fn = getattr(services, f"{tool_name}_impl")
+        args = sample_args.get(tool_name, {})
+        state = {
+            "auth_status": "pass",
+            "account_id": "A1001",
+            "phone_last4": "0143",
+            "language": lang,
+            "active_appointment_id": "APT-4021",
+        }
+        res = fn(**args, state=state, language=lang)
+        bad_keys = _find_multilingual_keys(res)
+        assert not bad_keys, f"Tool {tool_name} leaked multilingual keys in locale {lang}: {bad_keys}"
+

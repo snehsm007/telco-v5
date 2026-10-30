@@ -1292,6 +1292,9 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
     max_b = _parse_positive_money(max_budget)
     tax_rate = Decimal(str(SALES_TAX_RATE))
 
+    feat_lang = "fr" if lang == "fr-CA" else ("es" if lang == "es-US" else "en")
+    desc_lang = "fr" if lang == "fr-CA" else ("es" if lang == "es-US" else "en")
+
     shortlist = []
     for p in catalog:
         try:
@@ -1302,7 +1305,8 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
         p_total = p_price + p_tax
         if max_b is not None and p_price > max_b:
             continue
-        p_copy = dict(p)
+        p_copy = {k: v for k, v in p.items() if not k.endswith(("_en", "_fr", "_es"))}
+        p_copy["features"] = p.get(f"features_{feat_lang}", p.get("features_en", ""))
         p_copy["estimated_tax"] = str(p_tax)
         p_copy["estimated_total_monthly"] = str(p_total)
         p_copy["monthly_total_with_tax"] = str(p_total)
@@ -1312,10 +1316,11 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
             break
     if not shortlist:
         for p in catalog[:2]:
-            p_copy = dict(p)
+            p_copy = {k: v for k, v in p.items() if not k.endswith(("_en", "_fr", "_es"))}
             p_price = Decimal(str(p.get("monthly_price", 0)))
             p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             p_total = p_price + p_tax
+            p_copy["features"] = p.get(f"features_{feat_lang}", p.get("features_en", ""))
             p_copy["estimated_tax"] = str(p_tax)
             p_copy["estimated_total_monthly"] = str(p_total)
             p_copy["monthly_total_with_tax"] = str(p_total)
@@ -1327,7 +1332,8 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
         cat_addons = list(FAKE_ADDON_CATALOG)
     addons_enriched = []
     for a in cat_addons:
-        a_copy = dict(a)
+        a_copy = {k: v for k, v in a.items() if not k.endswith(("_en", "_fr", "_es"))}
+        a_copy["description"] = a.get(f"description_{desc_lang}", a.get("description_en", ""))
         a_copy["contract_required"] = False
         a_price = Decimal(str(a.get("monthly_price", 0)))
         a_tax = (a_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

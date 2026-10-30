@@ -1981,6 +1981,7 @@ def manage_appointment_impl(  # pragma: no cover
             "appointment_id": state.get("active_appointment_id", "APT-4021"),
             "scheduled_date": slot_match["date"],
             "arrival_window": win,
+            "window_display": win,
             "slot_id": slot_match["slot_id"],
             "confirmation_number": ref,
             "sms_confirmation_sent": True,
