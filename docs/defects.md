@@ -160,3 +160,32 @@ Group failing evaluations by shared root cause (not one entry per evaluation). F
 - **Fix & `file:line`**: No agent fix (would be persona tuning / overfitting to simulator habits, prohibited by owner rule).
 - **Alternatives considered**: Persona tuning prohibited by owner rule.
 - **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as simulator persona vs fixture conflict.
+
+### DEF-13: Shared ledger fixture: callers on addendum phone share account with `is_suspended=false`
+- **Found by**: `VE-31` (`sim__restore_service_standard`)
+- **Evidence**: `VE-31` r2 `full-0f3b8a0` (`projects/google.com:nextgen-sandbox/locations/us/apps/25e84665-a03d-45b9-8212-23e314db5c14/evaluationRuns/a8b70e9d-8b02-4957-ad25-1ef557c1577a`, slot 2)
+- **Label**: `fixture-limitation`
+- **Status**: `open`
+- **Root cause layer**: `fixtures / fakes`
+- **Diagnosis (all 3 judge metrics)**:
+  - *Expectations*: Callers on the addendum phone share one account whose `is_suspended=false`, so a restore scenario cannot present a suspended line unless the session paid/reported a payment (#14); evidence VE-31 r2 `full-0f3b8a0`.
+  - *User Goal*: Skipped via config (score -1)
+  - *Hallucination*: Skipped via config (score -1)
+- **Fix & `file:line`**: No fix — deriving suspension from a caller's claim would be persona mirroring.
+- **Alternatives considered**: None on agent side.
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as fixture limitation.
+
+### DEF-14: Simulator deviates from its own guide (skips required wrong-PIN retry)
+- **Found by**: `VE-09` (`sim__dispute_charge_auth_retry`)
+- **Evidence**: `VE-09` r3 `full-0f3b8a0` (`projects/google.com:nextgen-sandbox/locations/us/apps/25e84665-a03d-45b9-8212-23e314db5c14/evaluationRuns/c9b9740b-c03e-4616-bf11-3b95a63d8c8e`, slot 3)
+- **Label**: `eval-design`
+- **Status**: `open`
+- **Root cause layer**: `platform / scenario`
+- **Diagnosis (all 3 judge metrics)**:
+  - *Expectations*: Simulator deviates from its own guide (skips the required wrong-PIN retry); evidence VE-09 r3 `full-0f3b8a0`.
+  - *User Goal*: Skipped via config (score -1)
+  - *Hallucination*: Skipped via config (score -1)
+- **Fix & `file:line`**: No fix — simulator persona skipping its own guide steps cannot be cured on agent side.
+- **Alternatives considered**: None on agent side.
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as simulator non-determinism / deviation.
+
