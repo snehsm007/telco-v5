@@ -101,6 +101,15 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "features_en": "Unlimited downloads, Wi-Fi 6 gateway included, no annual contract",
             "features_fr": "Téléchargements illimités, borne Wi-Fi 6 incluse, sans contrat annuel",
             "features_es": "Descargas ilimitadas, módem Wi-Fi 6 incluido, sin contrato anual",
+            "latency_en": "sub-15ms typical latency with <2ms jitter",
+            "latency_fr": "latence typique inférieure à 15 ms avec gigue inférieure à 2 ms",
+            "latency_es": "latencia típica inferior a 15 ms con fluctuación inferior a 2 ms",
+            "technical_specifications_en": "Symmetrical fiber speeds, sub-15ms low latency, <2ms jitter, 99.9% network availability with no business SLA required",
+            "technical_specifications_fr": "Vitesses symétriques par fibre, faible latence inférieure à 15 ms, gigue inférieure à 2 ms, disponibilité réseau de 99,9 % sans entente de niveau de service commerciale requise",
+            "technical_specifications_es": "Velocidades simétricas por fibra, baja latencia inferior a 15 ms, fluctuación inferior a 2 ms, disponibilidad de red del 99.9 % sin necesidad de acuerdo comercial",
+            "sla_or_guarantee_en": "99.9% network availability during peak hours",
+            "sla_or_guarantee_fr": "Disponibilité du réseau de 99,9 % pendant les heures de pointe",
+            "sla_or_guarantee_es": "Disponibilidad de red del 99.9 % durante horas pico",
             "contract_required": False,
             "activation_fee": 0.0,
         },
@@ -117,6 +126,15 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "features_en": "Ultra-fast streaming and gaming, Wi-Fi 6 gateway, zero activation fee",
             "features_fr": "Diffusion et jeux ultra-rapides, borne Wi-Fi 6, aucuns frais d'activation",
             "features_es": "Transmisión y juegos ultra rápidos, módem Wi-Fi 6, cero costo de activación",
+            "latency_en": "sub-15ms typical latency with <2ms jitter",
+            "latency_fr": "latence typique inférieure à 15 ms avec gigue inférieure à 2 ms",
+            "latency_es": "latencia típica inferior a 15 ms con fluctuación inferior a 2 ms",
+            "technical_specifications_en": "Symmetrical fiber speeds, sub-15ms low latency, <2ms jitter, 99.9% network availability with no business SLA required",
+            "technical_specifications_fr": "Vitesses symétriques par fibre, faible latence inférieure à 15 ms, gigue inférieure à 2 ms, disponibilité réseau de 99,9 % sans entente de niveau de service commerciale requise",
+            "technical_specifications_es": "Velocidades simétricas por fibra, baja latencia inferior a 15 ms, fluctuación inferior a 2 ms, disponibilidad de red del 99.9 % sin necesidad de acuerdo comercial",
+            "sla_or_guarantee_en": "99.9% network availability during peak hours",
+            "sla_or_guarantee_fr": "Disponibilité du réseau de 99,9 % pendant les heures de pointe",
+            "sla_or_guarantee_es": "Disponibilidad de red del 99.9 % durante horas pico",
             "contract_required": False,
             "activation_fee": 0.0,
         },
@@ -133,6 +151,15 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
             "features_en": "Gigabit symmetrical speed, whole-home mesh pod, 24/7 priority support",
             "features_fr": "Vitesse symétrique gigabit, relais maillé pour toute la maison, soutien prioritaire",
             "features_es": "Velocidad simétrica de un gigabit, extensor de malla, soporte prioritario",
+            "latency_en": "sub-15ms typical latency with <2ms jitter",
+            "latency_fr": "latence typique inférieure à 15 ms avec gigue inférieure à 2 ms",
+            "latency_es": "latencia típica inferior a 15 ms con fluctuación inferior a 2 ms",
+            "technical_specifications_en": "Symmetrical fiber speeds, sub-15ms low latency, <2ms jitter, 99.9% network availability with no business SLA required",
+            "technical_specifications_fr": "Vitesses symétriques par fibre, faible latence inférieure à 15 ms, gigue inférieure à 2 ms, disponibilité réseau de 99,9 % sans entente de niveau de service commerciale requise",
+            "technical_specifications_es": "Velocidades simétricas por fibra, baja latencia inferior a 15 ms, fluctuación inferior a 2 ms, disponibilidad de red del 99.9 % sin necesidad de acuerdo comercial",
+            "sla_or_guarantee_en": "99.9% network availability during peak hours",
+            "sla_or_guarantee_fr": "Disponibilité du réseau de 99,9 % pendant les heures de pointe",
+            "sla_or_guarantee_es": "Disponibilidad de red del 99.9 % durante horas pico",
             "contract_required": False,
             "activation_fee": 0.0,
         },
@@ -1393,6 +1420,12 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
             continue
         p_copy = {k: v for k, v in p.items() if not k.endswith(("_en", "_fr", "_es"))}
         p_copy["features"] = p.get(f"features_{feat_lang}", p.get("features_en", ""))
+        if f"latency_{feat_lang}" in p or "latency_en" in p:
+            p_copy["latency"] = p.get(f"latency_{feat_lang}", p.get("latency_en", ""))
+        if f"technical_specifications_{feat_lang}" in p or "technical_specifications_en" in p:
+            p_copy["technical_specifications"] = p.get(f"technical_specifications_{feat_lang}", p.get("technical_specifications_en", ""))
+        if f"sla_or_guarantee_{feat_lang}" in p or "sla_or_guarantee_en" in p:
+            p_copy["sla_or_guarantee"] = p.get(f"sla_or_guarantee_{feat_lang}", p.get("sla_or_guarantee_en", ""))
         if "included_modem" in p_copy:
             p_copy["included_modem"] = localize_catalog_copy(p_copy["included_modem"], lang)
         if "modem_compatibility" in p_copy:
@@ -1411,6 +1444,12 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
             p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             p_total = p_price + p_tax
             p_copy["features"] = p.get(f"features_{feat_lang}", p.get("features_en", ""))
+            if f"latency_{feat_lang}" in p or "latency_en" in p:
+                p_copy["latency"] = p.get(f"latency_{feat_lang}", p.get("latency_en", ""))
+            if f"technical_specifications_{feat_lang}" in p or "technical_specifications_en" in p:
+                p_copy["technical_specifications"] = p.get(f"technical_specifications_{feat_lang}", p.get("technical_specifications_en", ""))
+            if f"sla_or_guarantee_{feat_lang}" in p or "sla_or_guarantee_en" in p:
+                p_copy["sla_or_guarantee"] = p.get(f"sla_or_guarantee_{feat_lang}", p.get("sla_or_guarantee_en", ""))
             if "included_modem" in p_copy:
                 p_copy["included_modem"] = localize_catalog_copy(p_copy["included_modem"], lang)
             if "modem_compatibility" in p_copy:
@@ -1468,6 +1507,31 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
         browse_payload["combined_monthly_with_tv_starter"] = "43.00"
         browse_payload["combined_monthly_with_tv_starter_before_tax"] = "43.00"
         browse_payload["combined_monthly_with_tv_starter_with_tax"] = "49.45"
+    elif cat == "internet":
+        browse_payload["latency"] = localized_text(
+            lang,
+            "sub-15ms typical latency with <2ms jitter",
+            "latence typique inférieure à 15 ms avec gigue inférieure à 2 ms",
+            "latencia típica inferior a 15 ms con fluctuación inferior a 2 ms",
+        )
+        browse_payload["technical_specifications"] = localized_text(
+            lang,
+            "Pure fiber symmetrical bandwidth with sub-15ms low latency, minimal jitter under 2ms, and 99.9% uptime reliability across all residential tiers",
+            "Bande passante symétrique pure fibre avec faible latence inférieure à 15 ms, gigue minimale inférieure à 2 ms et fiabilité de disponibilité de 99,9 % pour tous les forfaits résidentiels",
+            "Banda ancha simétrica por fibra pura con baja latencia inferior a 15 ms, fluctuación mínima inferior a 2 ms y fiabilidad de 99.9 % en todos los planes residenciales",
+        )
+        browse_payload["sla_or_guarantee"] = localized_text(
+            lang,
+            "99.9% network availability during peak hours with no business contract required",
+            "Disponibilité du réseau de 99,9 % pendant les heures de pointe sans contrat commercial requis",
+            "Disponibilidad de red del 99.9 % durante horas pico sin necesidad de contrato comercial",
+        )
+        browse_payload["work_from_home_recommended_tier"] = localized_text(
+            lang,
+            "Fiber Internet 500 or Gigabit Fiber",
+            "Fibre Internet 500 ou Fibre Gigabit",
+            "Fibra Internet 500 o Fibra Gigabit",
+        )
 
     return ok_reply(
         browse_payload,
