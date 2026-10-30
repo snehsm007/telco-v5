@@ -97,7 +97,7 @@ def test_manage_mfa_settings_case3_lost_authenticator_email_stepup(monkeypatch) 
     assert reply["status"] == "ok"
     assert reply["data"]["requires_email_step_up"] is True
     assert reply["data"]["mfa_updated"] is False
-    assert "a***@example.com" == reply["data"]["masked_backup_email"]
+    assert "a***@***" == reply["data"]["masked_backup_email"]
     assert session.state.get("mfa_email_code_sent") is True
 
 
@@ -180,3 +180,31 @@ def test_manage_mfa_settings_pin_login_after_email_send_still_requires_email_ste
     assert step2["status"] == "ok"
     assert step2["data"]["mfa_updated"] is True
     assert step2["data"]["mfa_enabled"] is False
+
+
+def test_manage_mfa_settings_contact_mirrors_caller_backup_email(monkeypatch) -> None:
+    session_marcus = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "mfa_enabled": True,
+            "first_name": "Marcus",
+            "contact_email": "marcus@example.com",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_marcus, raising=False)
+    reply_marcus = tool.manage_mfa_settings(lost_authenticator=True)
+    assert reply_marcus["status"] == "ok"
+    assert reply_marcus["data"]["masked_backup_email"] == "m***@***"
+
+    session_riley = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "mfa_enabled": True,
+            "first_name": "Riley",
+            "contact_email": "riley.t.design@example.com",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_riley, raising=False)
+    reply_riley = tool.manage_mfa_settings(lost_authenticator=True)
+    assert reply_riley["status"] == "ok"
+    assert reply_riley["data"]["masked_backup_email"] == "r***@***"

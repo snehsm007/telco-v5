@@ -76,6 +76,7 @@ ERROR_CODES: tuple[str, ...] = (
     "CODE_NOT_RECEIVED",
     "CARD_CAPTURE_REQUIRED",
     "INVALID_CARD_DIGITS",
+    "NO_MOBILE_ON_FILE",
 )
 
 ERROR_CODE_DEFAULTS: dict[str, tuple[str, str]] = dict(LOCALIZED_ERROR_DEFAULTS["en-US"])

@@ -165,3 +165,28 @@ def test_read_count_duck_typed_adk_state_and_edge_cases() -> None:
     assert read_count(adk_state, "inf") == 0  # type: ignore[arg-type]
     assert read_count(adk_state, "missing") == 0  # type: ignore[arg-type]
     assert read_count(object(), "attempts") == 0  # type: ignore[arg-type]
+
+
+def test_find_account_synthesized_email_mirrors_caller_or_last4() -> None:
+    rec_default = find_account("555-012-8844")
+    assert rec_default is not None
+    assert rec_default["email"] == "user8844@example.com"
+    assert rec_default["first_name"] == ""
+
+    rec_david = find_account("555-012-8844", first_name="David")
+    assert rec_david is not None
+    assert rec_david["email"] == "david@example.com"
+    assert rec_david["first_name"] == "David"
+
+    rec_ban = find_account("928374651")
+    assert rec_ban is not None
+    assert rec_ban["email"] == "user4651@example.com"
+
+    rec_ban_sam = find_account("928374651", first_name="Sam")
+    assert rec_ban_sam is not None
+    assert rec_ban_sam["email"] == "sam@example.com"
+
+    rec_alpha = find_account("TEL-1234567", first_name="Riley")
+    assert rec_alpha is not None
+    assert rec_alpha["email"] == "riley@example.com"
+    assert rec_alpha["first_name"] == "Riley"

@@ -102,3 +102,56 @@ def test_send_login_code_accepts_caller_given_phone_and_records_last4(monkeypatc
     assert reply["data"]["destination_last4"] == "0199"
     assert session.state["caller_provided_phone_last4"] == "0199"
     assert session.state["phone_last4"] == "0199"
+
+
+def test_send_login_code_sms_no_mobile_on_file_returns_no_mobile_on_file(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "phone_last4": "",
+            "caller_provided_phone_last4": "",
+            "auth_failure_count": 0,
+            "login_attempts": 0,
+            "auth_status": "none",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.send_login_code(channel="sms")
+    assert reply["status"] == "error"
+    assert reply["error"] == "NO_MOBILE_ON_FILE"
+    assert "agent_action" in reply
+    assert "10-digit mobile number" in reply["agent_action"].lower()
+    assert "lookup_account" in reply["agent_action"].lower()
+    # No strike recorded and auth_status untouched
+    assert session.state["auth_failure_count"] == 0
+    assert session.state["login_attempts"] == 0
+    assert session.state["auth_status"] == "none"
+    assert not session.state.get("login_code_sent")
+
+
+def test_send_login_code_email_masked_format_mirrors_persona(monkeypatch) -> None:
+    session_marcus = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "first_name": "Marcus",
+            "contact_email": "marcus@example.com",
+            "auth_status": "none",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_marcus, raising=False)
+    reply_marcus = tool.send_login_code(channel="email")
+    assert reply_marcus["status"] == "ok"
+    assert reply_marcus["data"]["masked_email"] == "m***@***"
+
+    session_riley = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "first_name": "Riley",
+            "contact_email": "riley.t.design@example.com",
+            "auth_status": "none",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_riley, raising=False)
+    reply_riley = tool.send_login_code(channel="email")
+    assert reply_riley["status"] == "ok"
+    assert reply_riley["data"]["masked_email"] == "r***@***"

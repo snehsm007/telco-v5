@@ -115,6 +115,7 @@ def test_lookup_account_by_full_name_unknown_synthesis(monkeypatch) -> None:
     assert reply["data"]["account_id"] == "A1001"
     assert reply["data"]["first_name"] == "Marcus"
     assert session.state["account_id"] == "A1001"
+    assert session.state["contact_email"] == "marcus@example.com"
     assert session.state["phone_last4"] == ""
     assert session.state["caller_provided_phone_last4"] == ""
     assert reply["data"]["phone_last4"] == ""
