@@ -155,4 +155,32 @@ def test_browse_plans_and_coverage_tv_sports_addon_channels_and_combined_monthly
     assert "TSN 1-5" in sports_addon["description"]
 
 
+def test_browse_plans_and_coverage_internet_wfh_technical_specifications(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.browse_plans_and_coverage(category="internet", postal_code="H3Z 2Y7")
+    assert res["status"] == "ok"
+    data = res["data"]
+    assert data["category"] == "internet"
+    assert "latency" in data
+    assert "sub-15ms" in data["latency"]
+    assert "<2ms jitter" in data["latency"]
+    assert "technical_specifications" in data
+    assert "Pure fiber symmetrical bandwidth" in data["technical_specifications"]
+    assert "99.9% uptime" in data["technical_specifications"]
+    assert "sla_or_guarantee" in data
+    assert "work_from_home_recommended_tier" in data
+    assert "Fiber Internet 500 or Gigabit Fiber" in data["work_from_home_recommended_tier"]
+
+    plans = data["shortlisted_plans"]
+    assert len(plans) >= 2
+    for p in plans:
+        assert "latency" in p
+        assert "sub-15ms" in p["latency"]
+        assert "technical_specifications" in p
+        assert "sla_or_guarantee" in p
+        assert "99.9%" in p["sla_or_guarantee"]
+
+
+
 

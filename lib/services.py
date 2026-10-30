@@ -2883,6 +2883,12 @@ def browse_plans_and_coverage_impl(
             continue
         p_copy = {k: v for k, v in p.items() if not k.endswith(("_en", "_fr", "_es"))}
         p_copy["features"] = p.get(f"features_{feat_lang}", p.get("features_en", ""))
+        if f"latency_{feat_lang}" in p or "latency_en" in p:
+            p_copy["latency"] = p.get(f"latency_{feat_lang}", p.get("latency_en", ""))
+        if f"technical_specifications_{feat_lang}" in p or "technical_specifications_en" in p:
+            p_copy["technical_specifications"] = p.get(f"technical_specifications_{feat_lang}", p.get("technical_specifications_en", ""))
+        if f"sla_or_guarantee_{feat_lang}" in p or "sla_or_guarantee_en" in p:
+            p_copy["sla_or_guarantee"] = p.get(f"sla_or_guarantee_{feat_lang}", p.get("sla_or_guarantee_en", ""))
         if "included_modem" in p_copy:
             p_copy["included_modem"] = localize_catalog_copy(p_copy["included_modem"], lang)
         if "modem_compatibility" in p_copy:
@@ -2901,6 +2907,12 @@ def browse_plans_and_coverage_impl(
             p_tax = (p_price * tax_rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             p_total = p_price + p_tax
             p_copy["features"] = p.get(f"features_{feat_lang}", p.get("features_en", ""))
+            if f"latency_{feat_lang}" in p or "latency_en" in p:
+                p_copy["latency"] = p.get(f"latency_{feat_lang}", p.get("latency_en", ""))
+            if f"technical_specifications_{feat_lang}" in p or "technical_specifications_en" in p:
+                p_copy["technical_specifications"] = p.get(f"technical_specifications_{feat_lang}", p.get("technical_specifications_en", ""))
+            if f"sla_or_guarantee_{feat_lang}" in p or "sla_or_guarantee_en" in p:
+                p_copy["sla_or_guarantee"] = p.get(f"sla_or_guarantee_{feat_lang}", p.get("sla_or_guarantee_en", ""))
             if "included_modem" in p_copy:
                 p_copy["included_modem"] = localize_catalog_copy(p_copy["included_modem"], lang)
             if "modem_compatibility" in p_copy:
@@ -2958,6 +2970,31 @@ def browse_plans_and_coverage_impl(
         browse_payload["combined_monthly_with_tv_starter"] = "43.00"
         browse_payload["combined_monthly_with_tv_starter_before_tax"] = "43.00"
         browse_payload["combined_monthly_with_tv_starter_with_tax"] = "49.45"
+    elif cat == "internet":
+        browse_payload["latency"] = localized_text(
+            lang,
+            "sub-15ms typical latency with <2ms jitter",
+            "latence typique inférieure à 15 ms avec gigue inférieure à 2 ms",
+            "latencia típica inferior a 15 ms con fluctuación inferior a 2 ms",
+        )
+        browse_payload["technical_specifications"] = localized_text(
+            lang,
+            "Pure fiber symmetrical bandwidth with sub-15ms low latency, minimal jitter under 2ms, and 99.9% uptime reliability across all residential tiers",
+            "Bande passante symétrique pure fibre avec faible latence inférieure à 15 ms, gigue minimale inférieure à 2 ms et fiabilité de disponibilité de 99,9 % pour tous les forfaits résidentiels",
+            "Banda ancha simétrica por fibra pura con baja latencia inferior a 15 ms, fluctuación mínima inferior a 2 ms y fiabilidad de 99.9 % en todos los planes residenciales",
+        )
+        browse_payload["sla_or_guarantee"] = localized_text(
+            lang,
+            "99.9% network availability during peak hours with no business contract required",
+            "Disponibilité du réseau de 99,9 % pendant les heures de pointe sans contrat commercial requis",
+            "Disponibilidad de red del 99.9 % durante horas pico sin necesidad de contrato comercial",
+        )
+        browse_payload["work_from_home_recommended_tier"] = localized_text(
+            lang,
+            "Fiber Internet 500 or Gigabit Fiber",
+            "Fibre Internet 500 ou Fibre Gigabit",
+            "Fibra Internet 500 o Fibra Gigabit",
+        )
 
     return ok_reply(
         browse_payload,
