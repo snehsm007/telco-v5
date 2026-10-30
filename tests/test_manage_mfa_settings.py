@@ -180,3 +180,77 @@ def test_manage_mfa_settings_pin_login_after_email_send_still_requires_email_ste
     assert step2["status"] == "ok"
     assert step2["data"]["mfa_updated"] is True
     assert step2["data"]["mfa_enabled"] is False
+
+
+def test_manage_mfa_settings_contact_mirrors_caller_backup_email(monkeypatch) -> None:
+    session_marcus = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "mfa_enabled": True,
+            "first_name": "Marcus",
+            "contact_email": "marcus@example.com",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_marcus, raising=False)
+    reply_marcus = tool.manage_mfa_settings(lost_authenticator=True)
+    assert reply_marcus["status"] == "ok"
+    assert reply_marcus["data"]["masked_backup_email"] == "m***@example.com"
+    assert "starting with 'm'" in reply_marcus["data"]["spoken_message"]
+    assert "starting with m" in reply_marcus["data"]["agent_action"]
+
+    session_riley = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "mfa_enabled": True,
+            "first_name": "Riley",
+            "contact_email": "riley.t.design@example.com",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_riley, raising=False)
+    reply_riley = tool.manage_mfa_settings(lost_authenticator=True)
+    assert reply_riley["status"] == "ok"
+    assert reply_riley["data"]["masked_backup_email"] == "r***@example.com"
+
+
+def test_manage_mfa_settings_spoken_phrases_locales(monkeypatch) -> None:
+    # en-US
+    session_en = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "mfa_enabled": True,
+            "contact_email": "user0198@example.com",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_en, raising=False)
+    res_en = tool.manage_mfa_settings(lost_authenticator=True, language="en-US")
+    assert res_en["data"]["masked_backup_email"] == "u***@example.com"
+    assert "starting with 'u'" in res_en["data"]["spoken_message"]
+    assert "starting with u" in res_en["data"]["agent_action"]
+
+    # fr-CA
+    session_fr = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "mfa_enabled": True,
+            "contact_email": "user0198@example.com",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_fr, raising=False)
+    res_fr = tool.manage_mfa_settings(lost_authenticator=True, language="fr-CA")
+    assert res_fr["data"]["masked_backup_email"] == "u***@example.com"
+    assert "commençant par « u »" in res_fr["data"]["spoken_message"]
+    assert "commençant par u" in res_fr["data"]["agent_action"]
+
+    # es-US
+    session_es = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "mfa_enabled": True,
+            "contact_email": "user0198@example.com",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_es, raising=False)
+    res_es = tool.manage_mfa_settings(lost_authenticator=True, language="es-US")
+    assert res_es["data"]["masked_backup_email"] == "u***@example.com"
+    assert "comienza con 'u'" in res_es["data"]["spoken_message"]
+    assert "comenzando con u" in res_es["data"]["agent_action"]

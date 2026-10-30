@@ -625,8 +625,68 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
     return resolve_locale(current_language)
 
 
+_RE_RELAY_PREFIX = re.compile(
+    r"^(?:For context|\s*\[[^\]]+\]\s*(?:said:|thought:|called tool |`[^`]*` tool returned result:))",
+    re.IGNORECASE,
+)
+_RE_QUOTED_AGENT_BLOCK = re.compile(
+    r"<<<BEGIN_QUOTED_AGENT_CONTENT>>>[\s\S]*?<<<END_QUOTED_AGENT_CONTENT>>>"
+)
+_RE_RELAY_ACTIVE_LANG = re.compile(
+    r"['\"]active_language['\"]\s*:\s*['\"]([a-zA-Z]{2}(?:-[a-zA-Z]{2})?)['\"]"
+)
+
+
+def _is_relay_or_quoted_part(txt: str) -> bool:
+    """Return True if txt is an ADK relay part, agent event, or quoted content block."""
+    s = txt.strip()
+    if not s:
+        return True
+    if _RE_RELAY_PREFIX.match(s):
+        return True
+    cleaned = _RE_QUOTED_AGENT_BLOCK.sub("", s).strip()
+    if not cleaned:
+        return True
+    if _RE_RELAY_PREFIX.match(cleaned):
+        return True
+    return False
+
+
+def _extract_relayed_active_language(llm_request: Any) -> str:
+    """Extract the most recent active_language from relayed tool results in contents."""
+    contents = getattr(llm_request, "contents", None)
+    if not contents or not isinstance(contents, (list, tuple)):
+        return ""
+    last_lang = ""
+    for item in contents:
+        parts = getattr(item, "parts", None)
+        if parts and isinstance(parts, (list, tuple)):
+            for part in parts:
+                txt = getattr(part, "text", None)
+                if txt and isinstance(txt, str):
+                    matches = _RE_RELAY_ACTIVE_LANG.findall(txt)
+                    if matches:
+                        last_lang = matches[-1]
+                fn_resp = getattr(part, "function_response", None)
+                if fn_resp:
+                    resp = getattr(fn_resp, "response", None)
+                    if isinstance(resp, dict):
+                        al = resp.get("active_language")
+                        if not al and isinstance(resp.get("result"), dict):
+                            al = resp["result"].get("active_language")
+                        if al and isinstance(al, str):
+                            last_lang = al
+        elif isinstance(getattr(item, "text", None), str):
+            matches = _RE_RELAY_ACTIVE_LANG.findall(item.text)
+            if matches:
+                last_lang = matches[-1]
+    if last_lang:
+        return resolve_locale(last_lang)
+    return ""
+
+
 def extract_user_utterances(llm_request: Any) -> list[str]:
-    """Safely extract user utterance strings from LLM request contents."""
+    """Safely extract genuine user utterance strings from LLM request contents, skipping relay parts."""
     utterances: list[str] = []
     contents = getattr(llm_request, "contents", None)
     if not contents or not isinstance(contents, (list, tuple)):
@@ -638,10 +698,11 @@ def extract_user_utterances(llm_request: Any) -> list[str]:
                 for part in parts:
                     txt = getattr(part, "text", None)
                     if txt and isinstance(txt, str) and txt.strip():
-                        utterances.append(txt.strip())
+                        if not _is_relay_or_quoted_part(txt):
+                            utterances.append(txt.strip())
             elif isinstance(getattr(item, "text", None), str):
                 t = item.text.strip()
-                if t:
+                if t and not _is_relay_or_quoted_part(t):
                     utterances.append(t)
     return utterances
 
@@ -654,10 +715,29 @@ def detect_active_call_language(state_dict: Any, llm_request: Any) -> str:
         if callable(getattr(state_dict, "get", None))
         else ""
     )
+    if locked:
+        locked = resolve_locale(locked)
+    else:
+        relayed = _extract_relayed_active_language(llm_request)
+        if relayed:
+            locked = relayed
+
+    if locked and locked != "en-US":
+        current = locked
+        for utt in user_utterances:
+            switch = _dp_match_explicit_switch(utt.lower())
+            if switch:
+                current = switch
+        return current
 
     current = resolve_locale(locked) if locked else "en-US"
     for utt in user_utterances:
-        current = detect_utterance_language(utt, current_language=current)
+        if current != "en-US":
+            switch = _dp_match_explicit_switch(utt.lower())
+            if switch:
+                current = switch
+        else:
+            current = detect_utterance_language(utt, current_language=current)
 
     return current
 

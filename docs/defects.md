@@ -104,15 +104,15 @@ Group failing evaluations by shared root cause (not one entry per evaluation). F
 - **Found by**: `VE-15` (`sim__manage_mfa_french_disable`) (`full-c8d6339`, `1/3`)
 - **Evidence**: `bench/runs/full-c8d6339.json` VE-15 r3
 - **Label**: `platform`
-- **Status**: `open`
+- **Status**: `fixed @e3aa022`
 - **Root cause layer**: `agent_transfer`
 - **Diagnosis (all 3 judge metrics)**:
   - *Expectations*: Slot 3 FAIL: Same-turn router `lookup_account(fr-CA)` → account `send_login_code(language=en-US)` returned en-US copy; the asymmetric lock is not yet visible across the agent transfer inside one turn.
   - *User Goal*: Skipped via config (score -1)
   - *Hallucination*: Skipped via config (score -1)
-- **Fix & `file:line`**: Asymmetric session language lock not yet visible across agent transfer inside one turn.
+- **Fix & `file:line`**: Asymmetric session language lock not yet visible across agent transfer inside one turn. Fixed in `lib/dynamic_prompt.py` (skipping relayed agent context and honouring non-English lock) and `lib/services.py:handover_to_person_impl` (`_session_language`).
 - **Alternatives considered**: Recorded as noise / follow-up investigation.
-- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as same-turn agent-transfer language propagation noise (1/3 on full-c8d6339).
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Fixed in `cand/language-sheet-ignores-relay` (`c76bff6` / `e3aa022`): 14/16 strict (87.5%), 16/16 majority (100%), 46/48 individual (95.8%) on `smoke-c76bff6` (VE-02, VE-15, VE-41 all cured to 3/3 PPP).
 
 ### DEF-09: VE-12/VE-13: account agent toggles manage_mfa_settings disable→enable→disable in consecutive turns
 - **Found by**: `VE-12` (`sim__manage_mfa_auth_failure`) & `VE-13` (`sim__manage_mfa_disable`) (`full-c8d6339`)
@@ -145,3 +145,18 @@ Group failing evaluations by shared root cause (not one entry per evaluation). F
 - **Fix & `file:line`**: None on agent side. The collision is an eval-design limitation since both evaluations share the same phone/account profile and simulator-invented postal code `H3Z 2Y7` cannot be distinguished from intentional VE-03 active outage queries. The exact-match change in `cand/outage-region-exact` (`lib/fakes.py:53`, `lib/services.py:613,1151`) restricts active outage reporting to exact `H3Z2Y7`, removing prefix false positives for any other invented `H3Z xxx` codes (e.g., `H3Z 1A1`).
 - **Alternatives considered**: None on agent side; altering fake database to report no outage for `H3Z 2Y7` breaks VE-03.
 - **Verification (`strict 3/3 | majority >=2/3 | individual`)**: 2/3 on `smoke-f0863fa` (`e2bddd89…`, slots 1 and 3 passed 3/3; slot 2 hit postal code collision).
+- **Update**: exact match reverted on main: holdout VE-03 regressed 3/3→0/3 in `holdout-d661067`.
+
+### DEF-12: Persona rejects on-file fixture data (e-mail starting with another initial, card not recognised)
+- **Found by**: `VE-13` (`sim__manage_mfa_disable`) & `VE-17` (`sim__pay_mobility_bill_card_file`)
+- **Evidence**: `VE-13` r2 smoke `f3ff955f-eb9b-4b88-9d87-fef3c08c6702`, `VE-17` r3 smoke `4723f21b-6231-4da4-adb6-c8b23c9ca4d5`, `VE-17` r2/r3 smoke `9b026cc9-7b05-45be-b8b8-e2176020c70e`
+- **Label**: `eval-design`
+- **Status**: `open`
+- **Root cause layer**: `platform / scenario`
+- **Diagnosis (all 3 judge metrics)**:
+  - *Expectations*: Simulator persona vs fixture: caller rejects legitimate on-file fixture records (e-mail starting with another initial, card not recognised) when agent recites on-file records.
+  - *User Goal*: Skipped via config (score -1)
+  - *Hallucination*: Skipped via config (score -1)
+- **Fix & `file:line`**: No agent fix (would be persona tuning / overfitting to simulator habits, prohibited by owner rule).
+- **Alternatives considered**: Persona tuning prohibited by owner rule.
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as simulator persona vs fixture conflict.

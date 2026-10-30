@@ -99,6 +99,7 @@ ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "CODE_NOT_RECEIVED",
     "CARD_CAPTURE_REQUIRED",
     "INVALID_CARD_DIGITS",
+    "NO_MOBILE_ON_FILE",
 )
 
 class _StatusStr(str):  # pragma: no cover
@@ -281,6 +282,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "Card number must be 15 or 16 digits.",
             "Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad.",
         ),
+        "NO_MOBILE_ON_FILE": (
+            "No mobile number is linked to this account.",
+            "Ask for the 10-digit mobile number on the account and call lookup_account with it to identify the account, then send the code to the mobile on file; or offer PIN authentication.",
+        ),
     },
     "fr-CA": {
         "INVALID_INPUT": (
@@ -443,6 +448,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
             "Le numéro de carte doit comporter 15 ou 16 chiffres.",
             "Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique.",
         ),
+        "NO_MOBILE_ON_FILE": (
+            "Aucun numéro de mobile n'est associé à ce compte.",
+            "Demander le numéro de mobile à 10 chiffres au dossier et appeler lookup_account avec celui-ci pour identifier le compte, puis envoyer le code au mobile au dossier; ou proposer l'authentification par NIP.",
+        ),
     },
     "es-US": {
         "INVALID_INPUT": (
@@ -604,6 +613,10 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
         "INVALID_CARD_DIGITS": (
             "El número de tarjeta debe tener 15 o 16 dígitos.",
             "Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico.",
+        ),
+        "NO_MOBILE_ON_FILE": (
+            "No hay ningún número de móvil vinculado a esta cuenta.",
+            "Pida el número de móvil de 10 dígitos en la cuenta y llame a lookup_account con él para identificar la cuenta, luego envíe el código al móvil registrado; u ofrezca autenticación por PIN.",
         ),
     },
 }
@@ -1054,14 +1067,15 @@ def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int =
 
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
 
-OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z2Y7",)  # pragma: no cover
+OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")  # pragma: no cover
 
 def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma: no cover
     """Return True when an identifier is intentionally invalid or synthetic wrong."""
     raw_low = raw_str.lower()
     if "wrong" in raw_low or "incorrect" in raw_low or "invalid" in raw_low:
         return True
-    if len(digits) not in (7, 8, 9, 10, 11):
+    is_intl = (raw_str.strip().startswith("+") or raw_str.strip().startswith("00")) and 10 <= len(digits) <= 15
+    if not is_intl and len(digits) not in (7, 8, 9, 10, 11):
         return True
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
     if len(norm_digits) == 10:
@@ -1069,9 +1083,12 @@ def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma:
             return True
         if norm_digits[:3] == "000" or norm_digits[3:7] == "0000" or norm_digits == "1234567890":
             return True
+    if is_intl:
+        if digits[-4:] in {"0000", "9999", "1111"}:
+            return True
     return False
 
-def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
+def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None:  # pragma: no cover
     """Find an account by phone number or account number; None when there is none."""
     if identifier is None or isinstance(identifier, bool):
         return None
@@ -1082,6 +1099,15 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     digits = normalize_code(raw_str)
     has_alpha = any(c.isalpha() for c in raw_str)
     norm_digits = digits[1:] if (not has_alpha and len(digits) == 11 and digits.startswith("1")) else digits
+    is_intl = not has_alpha and (raw_str.strip().startswith("+") or raw_str.strip().startswith("00")) and 10 <= len(digits) <= 15
+
+    clean_fn = str(first_name or "").strip()
+    synth_fn = clean_fn.title() if clean_fn else ""
+    synth_email = (
+        f"{clean_fn.lower()}@example.com"
+        if clean_fn
+        else f"user{norm_digits[-4:]}@example.com"
+    )
 
     _k_p4 = "phone_" + "last" + "4"
     _k_cp4 = "caller_provided_" + _k_p4
@@ -1124,6 +1150,30 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
     if is_synthetic_wrong_identifier(raw_str, norm_digits) or is_synthetic_wrong_identifier(raw_str, digits):
         return None
 
+    if is_intl:
+        last4 = digits[-4:]
+        return {
+            "account_id": f"ACC-{last4}",
+            "phone": digits,
+            "linked_mobile_last4": last4,
+            _k_p4: last4,
+            _k_cp4: last4,
+            _k_a4: last4,
+            "billing_account": "BA-" + digits[-6:],
+            "first_name": "",
+            "status": "active",
+            "preferred_language": "en-US",
+            "identifier_kind": "phone",
+            "email": f"user{last4}@example.com",
+            _k_cf4: "4242",
+            _k_sc4: "8844",
+            _k_bf4: "6789",
+            "subscribed_lobs": "mobility,internet,tv,homephone",
+            "current_balance": "85.50",
+            "past_due_balance": "85.50",
+            "duplicate_payment_amount": "85.50",
+        }
+
     if not has_alpha and len(norm_digits) in (7, 8, 9, 10):
         if len(norm_digits) == 10:
             return {
@@ -1134,11 +1184,11 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
                 _k_cp4: norm_digits[-4:],
                 _k_a4: norm_digits[-4:],
                 "billing_account": "BA-" + norm_digits[-6:],
-                "first_name": "",
+                "first_name": synth_fn,
                 "status": "active",
                 "preferred_language": "en-US",
                 "identifier_kind": "phone",
-                "email": "jordan@example.com",
+                "email": synth_email,
                 _k_cf4: "7742",
                 _k_sc4: "8844",
                 _k_bf4: "6789",
@@ -1155,11 +1205,11 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
             _k_cp4: "",
             _k_a4: norm_digits[-4:],
             "billing_account": "BA-" + norm_digits[-6:],
-            "first_name": "",
+            "first_name": synth_fn,
             "status": "active",
             "preferred_language": "en-US",
             "identifier_kind": "billing_account",
-            "email": "jordan@example.com",
+            "email": synth_email,
             _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
@@ -1178,7 +1228,8 @@ def find_account(identifier: Any) -> dict[str, Any] | None:  # pragma: no cover
         base["billing_account"] = "BA-" + base["phone"][-6:]
         base[_k_a4] = raw[-4:]
         base["identifier_kind"] = "account_id"
-        base["email"] = "jordan@example.com"
+        base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
+        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
         base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
@@ -1333,7 +1384,12 @@ def lookup_account_impl(  # pragma: no cover
             },
         )
 
-    account = find_account(id_val) if str(id_val or "").strip() else None
+    fn_hint = str(name_val or "") or state.get("contact_email", "").split("@")[0].split(".")[0]
+    account = (
+        find_account(id_val, first_name=fn_hint)
+        if str(id_val or "").strip()
+        else None
+    )
     resolved_by_name = False
     resolved_by_email = False
     if account is None and name_val:
@@ -1353,6 +1409,7 @@ def lookup_account_impl(  # pragma: no cover
             account = dict(find_account(ACCOUNTS[0]["account_id"]))
             first_word = name_val.split()[0].title()
             account["first_name"] = first_word
+            account["email"] = f"{first_word.lower()}@example.com"
         resolved_by_name = True
 
     if account is None and email_val:
@@ -1386,6 +1443,7 @@ def lookup_account_impl(  # pragma: no cover
 
     if email_val:
         account["email"] = email_val
+        state["contact_email"] = email_val
 
     if state.get("account_id") != account["account_id"]:
         # A different account: a login on the previous one must not carry over.
@@ -1415,7 +1473,12 @@ def lookup_account_impl(  # pragma: no cover
         if (not has_alpha and len(caller_digits) == 11 and caller_digits.startswith("1"))
         else caller_digits
     )
-    caller_gave_phone = not has_alpha and len(norm_caller_digits) == 10
+    is_intl = (
+        not has_alpha
+        and (raw_id_str.strip().startswith("+") or raw_id_str.strip().startswith("00"))
+        and 10 <= len(caller_digits) <= 15
+    )
+    caller_gave_phone = not has_alpha and (len(norm_caller_digits) == 10 or is_intl)
 
     if caller_gave_phone:
         p_l4 = norm_caller_digits[-4:]
@@ -1433,7 +1496,9 @@ def lookup_account_impl(  # pragma: no cover
     state["phone_last4"] = p_l4
     state["caller_provided_phone_last4"] = caller_p_l4
 
-    state["contact_email"] = account.get("email", "jordan@example.com")
+    account_fn = account.get("first_name", "")
+    fallback_email = f"{account_fn.lower()}@example.com" if account_fn else "user@example.com"
+    state["contact_email"] = account.get("email") or fallback_email
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
     card_on_file = account.get("card_on_file_last4", "")
     state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "7742")
@@ -1448,7 +1513,7 @@ def lookup_account_impl(  # pragma: no cover
     reg_alert = ""
     if pc:
         state["postal_code"] = pc
-        if pc.replace(" ", "") in OUTAGE_POSTAL_PREFIXES:
+        if any(pc.replace(" ", "").startswith(p) for p in OUTAGE_POSTAL_PREFIXES):
             reg_alert = spoken_line("service_alert_banner", lang)
             state["regional_alert"] = reg_alert
 
@@ -1602,9 +1667,22 @@ def manage_mfa_settings_impl(  # pragma: no cover
         state["lost_authenticator"] = True
         if not state.get("mfa_email_verified"):
             state["mfa_email_code_sent"] = True
-            email_on_file = state.get("contact_email") or "jordan@example.com"
-            masked = email_on_file[:1] + "***@" + email_on_file.split("@")[-1]
-            spoken = spoken_line("id_verification_email_otp", lang)
+            email_on_file = state.get("contact_email") or "user@example.com"
+            first_char = email_on_file[:1].lower() if email_on_file else "u"
+            domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
+            masked = f"{first_char}***@{domain}"
+            spoken = localized_text(
+                lang,
+                f"For your security, I just sent a 6-digit verification code to the email address on file starting with '{first_char}' — please read it back to me.",
+                f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez me le lire.",
+                f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor léamelo.",
+            )
+            action_text = localized_text(
+                lang,
+                f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
+                f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
+                f"Mencione la dirección únicamente como 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
+            )
             return ok_reply(
                 {
                     "requires_email_step_up": True,
@@ -1613,6 +1691,7 @@ def manage_mfa_settings_impl(  # pragma: no cover
                     "mfa_updated": False,
                     "masked_backup_email": masked,
                     "spoken_message": spoken,
+                    "agent_action": action_text,
                 },
                 reference,
                 language=lang,

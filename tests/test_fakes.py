@@ -94,6 +94,32 @@ def test_synthetic_wrong_identifiers() -> None:
     assert find_account("2020000123") is None
     assert find_account("2025559999") is None
     assert find_account("2025551111") is None
+    assert find_account("+33 6 00 00 00 00") is None
+    assert find_account("+33 6 12 34 wrong") is None
+
+
+def test_international_phone_numbers_resolve() -> None:
+    acc_fr = find_account("+33 6 12 34 56 78")
+    assert acc_fr is not None
+    assert acc_fr["account_id"] == "ACC-5678"
+    assert acc_fr["phone"] == "33612345678"
+    assert acc_fr["linked_mobile_last4"] == "5678"
+    assert acc_fr["phone_last4"] == "5678"
+    assert acc_fr["caller_provided_phone_last4"] == "5678"
+    assert acc_fr["identifier_kind"] == "phone"
+
+    acc_00 = find_account("0033612345678")
+    assert acc_00 is not None
+    assert acc_00["account_id"] == "ACC-5678"
+    assert acc_00["linked_mobile_last4"] == "5678"
+
+    acc_uk = find_account("+44 7700 900123")
+    assert acc_uk is not None
+    assert acc_uk["account_id"] == "ACC-0123"
+    assert acc_uk["linked_mobile_last4"] == "0123"
+
+    acc_nanp = find_account("202-555-0143")
+    assert acc_nanp is not None and acc_nanp["account_id"] == "A1001"
     assert is_synthetic_wrong_identifier("wrong", "1234567") is True
     assert is_synthetic_wrong_identifier("1234", "1234") is True  # short digits
 
@@ -138,7 +164,7 @@ def test_login_ladder_for_codes_and_secret_pins() -> None:
 def test_fake_catalogs_and_data_stores() -> None:
     assert len(ACCOUNTS) >= 2
     assert len(BLOCKED_CALLER_NUMBERS) >= 2
-    assert "H3Z2Y7" in OUTAGE_POSTAL_PREFIXES
+    assert "H3Z" in OUTAGE_POSTAL_PREFIXES
     assert "0000" in DECLINED_CARD_LAST4
     assert len(FAKE_PLAN_CATALOG["internet"]) >= 2
     assert len(FAKE_PLAN_CATALOG["mobility"]) >= 2
@@ -184,3 +210,27 @@ def test_fake_on_file_primary_card_is_non_canonical_7742() -> None:
     assert FAKE_BILLING_LEDGER["secondary_card_last4"] == "8844"
     assert FAKE_BILLING_LEDGER["bank_account_last4"] == "6789"
 
+
+def test_find_account_synthesized_email_mirrors_caller_or_last4() -> None:
+    rec_default = find_account("555-012-8844")
+    assert rec_default is not None
+    assert rec_default["email"] == "user8844@example.com"
+    assert rec_default["first_name"] == ""
+
+    rec_david = find_account("555-012-8844", first_name="David")
+    assert rec_david is not None
+    assert rec_david["email"] == "david@example.com"
+    assert rec_david["first_name"] == "David"
+
+    rec_ban = find_account("928374651")
+    assert rec_ban is not None
+    assert rec_ban["email"] == "user4651@example.com"
+
+    rec_ban_sam = find_account("928374651", first_name="Sam")
+    assert rec_ban_sam is not None
+    assert rec_ban_sam["email"] == "sam@example.com"
+
+    rec_alpha = find_account("TEL-1234567", first_name="Riley")
+    assert rec_alpha is not None
+    assert rec_alpha["email"] == "riley@example.com"
+    assert rec_alpha["first_name"] == "Riley"

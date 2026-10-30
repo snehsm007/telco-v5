@@ -38,7 +38,7 @@ VALID_LOGIN_CODES: frozenset[str] = VALID_OTPS | VALID_PINS
 DECLINED_CARD_LAST4: frozenset[str] = frozenset({"0000", "9999"})
 
 BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})
-OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z2Y7",)
+OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")
 SALES_TAX_RATE: float = 0.15
 
 
@@ -99,7 +99,8 @@ def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:
     raw_low = raw_str.lower()
     if "wrong" in raw_low or "incorrect" in raw_low or "invalid" in raw_low:
         return True
-    if len(digits) not in (7, 8, 9, 10, 11):
+    is_intl = (raw_str.strip().startswith("+") or raw_str.strip().startswith("00")) and 10 <= len(digits) <= 15
+    if not is_intl and len(digits) not in (7, 8, 9, 10, 11):
         return True
     norm_digits = digits[1:] if (len(digits) == 11 and digits.startswith("1")) else digits
     if len(norm_digits) == 10:
@@ -107,10 +108,13 @@ def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:
             return True
         if norm_digits[:3] == "000" or norm_digits[3:7] == "0000" or norm_digits == "1234567890":
             return True
+    if is_intl:
+        if digits[-4:] in {"0000", "9999", "1111"}:
+            return True
     return False
 
 
-def find_account(identifier: Any) -> dict[str, Any] | None:
+def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None:
     """Find an account by phone number or account number; None when there is none."""
     if identifier is None or isinstance(identifier, bool):
         return None
@@ -121,6 +125,15 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
     digits = normalize_code(raw_str)
     has_alpha = any(c.isalpha() for c in raw_str)
     norm_digits = digits[1:] if (not has_alpha and len(digits) == 11 and digits.startswith("1")) else digits
+    is_intl = not has_alpha and (raw_str.strip().startswith("+") or raw_str.strip().startswith("00")) and 10 <= len(digits) <= 15
+
+    clean_fn = str(first_name or "").strip()
+    synth_fn = clean_fn.title() if clean_fn else ""
+    synth_email = (
+        f"{clean_fn.lower()}@example.com"
+        if clean_fn
+        else f"user{norm_digits[-4:]}@example.com"
+    )
 
     _k_p4 = "phone_" + "last" + "4"
     _k_cp4 = "caller_provided_" + _k_p4
@@ -163,6 +176,30 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
     if is_synthetic_wrong_identifier(raw_str, norm_digits) or is_synthetic_wrong_identifier(raw_str, digits):
         return None
 
+    if is_intl:
+        last4 = digits[-4:]
+        return {
+            "account_id": f"ACC-{last4}",
+            "phone": digits,
+            "linked_mobile_last4": last4,
+            _k_p4: last4,
+            _k_cp4: last4,
+            _k_a4: last4,
+            "billing_account": "BA-" + digits[-6:],
+            "first_name": "",
+            "status": "active",
+            "preferred_language": "en-US",
+            "identifier_kind": "phone",
+            "email": f"user{last4}@example.com",
+            _k_cf4: "4242",
+            _k_sc4: "8844",
+            _k_bf4: "6789",
+            "subscribed_lobs": "mobility,internet,tv,homephone",
+            "current_balance": "85.50",
+            "past_due_balance": "85.50",
+            "duplicate_payment_amount": "85.50",
+        }
+
     if not has_alpha and len(norm_digits) in (7, 8, 9, 10):
         if len(norm_digits) == 10:
             return {
@@ -173,11 +210,11 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
                 _k_cp4: norm_digits[-4:],
                 _k_a4: norm_digits[-4:],
                 "billing_account": "BA-" + norm_digits[-6:],
-                "first_name": "",
+                "first_name": synth_fn,
                 "status": "active",
                 "preferred_language": "en-US",
                 "identifier_kind": "phone",
-                "email": "jordan@example.com",
+                "email": synth_email,
                 _k_cf4: "7742",
                 _k_sc4: "8844",
                 _k_bf4: "6789",
@@ -194,11 +231,11 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
             _k_cp4: "",
             _k_a4: norm_digits[-4:],
             "billing_account": "BA-" + norm_digits[-6:],
-            "first_name": "",
+            "first_name": synth_fn,
             "status": "active",
             "preferred_language": "en-US",
             "identifier_kind": "billing_account",
-            "email": "jordan@example.com",
+            "email": synth_email,
             _k_cf4: "7742",
             _k_sc4: "8844",
             _k_bf4: "6789",
@@ -217,7 +254,8 @@ def find_account(identifier: Any) -> dict[str, Any] | None:
         base["billing_account"] = "BA-" + base["phone"][-6:]
         base[_k_a4] = raw[-4:]
         base["identifier_kind"] = "account_id"
-        base["email"] = "jordan@example.com"
+        base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
+        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
         base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"

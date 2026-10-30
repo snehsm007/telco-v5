@@ -115,6 +115,7 @@ def test_lookup_account_by_full_name_unknown_synthesis(monkeypatch) -> None:
     assert reply["data"]["account_id"] == "A1001"
     assert reply["data"]["first_name"] == "Marcus"
     assert session.state["account_id"] == "A1001"
+    assert session.state["contact_email"] == "marcus@example.com"
     assert session.state["phone_last4"] == ""
     assert session.state["caller_provided_phone_last4"] == ""
     assert reply["data"]["phone_last4"] == ""
@@ -193,5 +194,24 @@ def test_lookup_account_impl_direct_name() -> None:
     reply2 = lookup_account_impl(full_name="Marcus Thorne", state=state2)
     assert reply2["status"] == "ok"
     assert state2["account_id"] == "A1001"
+
+
+def test_lookup_account_international_phone(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.lookup_account("+33 6 12 34 56 78")
+    assert reply["status"] == "ok"
+    assert reply["data"]["account_id"] == "ACC-5678"
+    assert reply["data"]["phone_last4"] == "5678"
+    assert reply["data"]["linked_mobile_last4"] == "5678"
+    assert session.state["phone_last4"] == "5678"
+    assert session.state["caller_provided_phone_last4"] == "5678"
+
+    session_uk = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_uk, raising=False)
+    reply_uk = tool.lookup_account("+44 7700 900123")
+    assert reply_uk["status"] == "ok"
+    assert reply_uk["data"]["account_id"] == "ACC-0123"
+
 
 

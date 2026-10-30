@@ -34,7 +34,7 @@ def test_check_regional_outage_missing_postal_code(monkeypatch) -> None:
 def test_check_regional_outage_localization_french(monkeypatch) -> None:
     session = SimpleNamespace(state={})
     monkeypatch.setattr(tool, "context", session, raising=False)
-    res = tool.check_regional_outage(postal_code="H3Z 2Y7", subscribe_sms="oui", language="fr-CA")
+    res = tool.check_regional_outage(postal_code="H3Z 1A1", subscribe_sms="oui", language="fr-CA")
     assert res["status"] == "ok"
     assert res["data"]["outage_active"] is True
     assert res["data"]["sms_subscribed"] is True
@@ -73,14 +73,17 @@ def test_check_regional_outage_no_outage_offers_sms_guide_fr(monkeypatch) -> Non
     assert "run_troubleshooting_and_sms" in res["data"]["agent_action"]
 
 
-def test_check_regional_outage_exact_postal_codes(monkeypatch) -> None:
+def test_check_regional_outage_postal_prefixes(monkeypatch) -> None:
     session = SimpleNamespace(state={"language": "en-US"})
     monkeypatch.setattr(tool, "context", session, raising=False)
     res_active = tool.check_regional_outage(postal_code="H3Z 2Y7")
     assert res_active["data"]["outage_active"] is True
 
     res_h3z1a1 = tool.check_regional_outage(postal_code="H3Z 1A1")
-    assert res_h3z1a1["data"]["outage_active"] is False
+    assert res_h3z1a1["data"]["outage_active"] is True
+
+    res_g1r = tool.check_regional_outage(postal_code="G1R 2J3")
+    assert res_g1r["data"]["outage_active"] is True
 
     res_h2x1y4 = tool.check_regional_outage(postal_code="H2X 1Y4")
     assert res_h2x1y4["data"]["outage_active"] is False
