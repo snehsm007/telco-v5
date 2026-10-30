@@ -146,3 +146,17 @@ Group failing evaluations by shared root cause (not one entry per evaluation). F
 - **Alternatives considered**: None on agent side; altering fake database to report no outage for `H3Z 2Y7` breaks VE-03.
 - **Verification (`strict 3/3 | majority >=2/3 | individual`)**: 2/3 on `smoke-f0863fa` (`e2bddd89…`, slots 1 and 3 passed 3/3; slot 2 hit postal code collision).
 - **Update**: exact match reverted on main: holdout VE-03 regressed 3/3→0/3 in `holdout-d661067`.
+
+### DEF-12: Persona rejects on-file fixture data (e-mail starting with another initial, card not recognised)
+- **Found by**: `VE-13` (`sim__manage_mfa_disable`) & `VE-17` (`sim__pay_mobility_bill_card_file`)
+- **Evidence**: `VE-13` r2 smoke `f3ff955f-eb9b-4b88-9d87-fef3c08c6702`, `VE-17` r3 smoke `4723f21b-6231-4da4-adb6-c8b23c9ca4d5`, `VE-17` r2/r3 smoke `9b026cc9-7b05-45be-b8b8-e2176020c70e`
+- **Label**: `eval-design`
+- **Status**: `open`
+- **Root cause layer**: `platform / scenario`
+- **Diagnosis (all 3 judge metrics)**:
+  - *Expectations*: Simulator persona vs fixture: caller rejects legitimate on-file fixture records (e-mail starting with another initial, card not recognised) when agent recites on-file records.
+  - *User Goal*: Skipped via config (score -1)
+  - *Hallucination*: Skipped via config (score -1)
+- **Fix & `file:line`**: No agent fix (would be persona tuning / overfitting to simulator habits, prohibited by owner rule).
+- **Alternatives considered**: Persona tuning prohibited by owner rule.
+- **Verification (`strict 3/3 | majority >=2/3 | individual`)**: Classified as simulator persona vs fixture conflict.
