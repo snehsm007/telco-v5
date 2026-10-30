@@ -153,3 +153,66 @@ def test_port_out_step1_unconfirmed_returns_facts_and_disclosures(monkeypatch) -
     assert "agent_action" in data
 
 
+def test_accept_retention_offer_keeps_service_active(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "account_id": "A1001",
+            "cancellation_fee_disclosed": True,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.cancel_or_port_out_service(
+        service_line="mobile",
+        action_type="cancel",
+        accept_retention_offer=True,
+    )
+    assert reply["status"] == "ok"
+    data = reply["data"]
+    assert data["service_cancelled"] is False
+    assert data["retention_offer_accepted"] is True
+    assert data["loyalty_credit_applied"] == "$15/mo"
+    assert "$15" in data["spoken_message"]
+    assert session.state.get("service_cancelled") is False
+    assert session.state.get("last_tracking_id") == data["retention_confirmation_id"]
+    assert data["retention_confirmation_id"].startswith("R")
+    assert len(data["retention_confirmation_id"]) == 7
+
+
+def test_accept_retention_offer_via_action_type(monkeypatch) -> None:
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "A1001"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.cancel_or_port_out_service(
+        service_line="internet",
+        action_type="retain",
+    )
+    assert reply["status"] == "ok"
+    assert reply["data"]["service_cancelled"] is False
+    assert reply["data"]["retention_offer_accepted"] is True
+
+
+def test_accept_retention_offer_localized_french_and_spanish(monkeypatch) -> None:
+    session_fr = SimpleNamespace(state={"auth_status": "pass", "account_id": "ACC-1002"})
+    monkeypatch.setattr(tool, "context", session_fr, raising=False)
+    reply_fr = tool.cancel_or_port_out_service(
+        service_line="mobile",
+        accept_retention_offer=True,
+        language="fr-CA",
+    )
+    assert reply_fr["status"] == "ok"
+    assert "crédit de fidélité de 15 $/mois" in reply_fr["data"]["spoken_message"]
+    assert reply_fr["data"]["service_cancelled"] is False
+
+    session_es = SimpleNamespace(state={"auth_status": "pass", "account_id": "ACC-1002"})
+    monkeypatch.setattr(tool, "context", session_es, raising=False)
+    reply_es = tool.cancel_or_port_out_service(
+        service_line="mobile",
+        accept_retention_offer=True,
+        language="es-US",
+    )
+    assert reply_es["status"] == "ok"
+    assert "crédito de lealtad de $15/mes" in reply_es["data"]["spoken_message"]
+    assert reply_es["data"]["service_cancelled"] is False
+
+
+

@@ -10,6 +10,7 @@ def cancel_or_port_out_service(
     reason: str = "",
     confirmed: str | int | float | bool = False,
     decline_retention_offer: str | int | float | bool = False,
+    accept_retention_offer: str | int | float | bool = False,
     effective_date: str = "end_of_cycle",
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
@@ -23,13 +24,14 @@ def cancel_or_port_out_service(
         reason: Cancellation reason.
         confirmed: Customer confirmation flag.
         decline_retention_offer: Customer declined retention offer flag.
+        accept_retention_offer: Customer accepted retention offer flag.
         effective_date: Effective date ('immediate' or 'end_of_cycle').
         identifier: Account identifier or phone number.
         verification_code: Verification code if needed.
         language: Preferred language code.
 
     Returns:
-        dict[str, Any]: Fee disclosure on step 1, or cancellation/port-out PIN on step 2.
+        dict[str, Any]: Fee disclosure on step 1, or cancellation/port-out PIN on step 2, or retention confirmation.
     """
     ctx = globals().get("context")
     state = getattr(ctx, "state", None) if ctx is not None else None
@@ -41,6 +43,7 @@ def cancel_or_port_out_service(
         reason=reason,
         confirmed=confirmed,
         decline_retention_offer=decline_retention_offer,
+        accept_retention_offer=accept_retention_offer,
         effective_date=effective_date,
         identifier=identifier,
         verification_code=verification_code,
@@ -1889,6 +1892,7 @@ def cancel_or_port_out_service_impl(  # pragma: no cover
     reason: str = "",
     confirmed: str | int | float | bool = False,
     decline_retention_offer: str | int | float | bool = False,
+    accept_retention_offer: str | int | float | bool = False,
     effective_date: str = "end_of_cycle",
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
@@ -1947,6 +1951,53 @@ def cancel_or_port_out_service_impl(  # pragma: no cover
 
     action = str(action_type or kwargs.get("action", "cancel")).strip().lower()
     is_port_out = action in {"port_out", "portout", "port"}
+
+    is_decline_retention = (
+        bool(decline_retention_offer)
+        and str(decline_retention_offer).lower() in {"true", "1", "yes", "oui"}
+    )
+
+    reason_str = " ".join([
+        str(reason or ""),
+        str(kwargs.get("notes") or ""),
+        str(kwargs.get("details") or ""),
+        str(kwargs.get("comments") or ""),
+    ]).strip().lower()
+
+    has_retention_reason = any(kw in reason_str for kw in ("retention", "loyalty", "credit", "keep service", "keep the", "stay", "retain"))
+
+    is_accept_retention = (
+        not is_decline_retention
+        and (
+            (bool(accept_retention_offer) and str(accept_retention_offer).lower() in {"true", "1", "yes", "oui", "si", "accept"})
+            or action in {"retain", "keep", "accept_retention", "loyalty_credit", "retention"}
+            or bool(kwargs.get("accept_retention_offer"))
+            or has_retention_reason
+        )
+    )
+
+    if is_accept_retention:
+        state["service_cancelled"] = False
+        ret_id = tracking_id("RET", account_id)
+        state["last_tracking_id"] = ret_id
+        spoken = localized_text(
+            lang,
+            "Your service remains active with the $15/month loyalty credit applied to your account.",
+            "Votre service reste actif avec le crédit de fidélité de 15 $/mois appliqué à votre compte.",
+            "Su servicio permanece activo con el crédito de lealtad de $15/mes aplicado a su cuenta.",
+        )
+        res_retention: dict[str, Any] = {
+            "service_cancelled": False,
+            "retention_offer_accepted": True,
+            "loyalty_credit_applied": "$15/mo",
+            "monthly_credit": "$15/mo",
+            "retention_confirmation_id": ret_id,
+            "confirmation_id": ret_id,
+            "reference_number": ret_id,
+            "remaining_service_rates": rem_rates,
+            "spoken_message": spoken,
+        }
+        return ok_reply(res_retention, ret_id, language=lang)
 
     port_account = account_id if account_id else (ACCOUNTS[0]["account_id"] if ACCOUNTS else "ACC-0001")
     transfer_pin = "849201"
