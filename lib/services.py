@@ -291,9 +291,11 @@ def _detect_handover_language(
     session_context: str | None = None,
 ) -> str:
     """Pick the handover language (docs/DESIGN_RULES.md rule 25)."""
+    active = state.get("language")
+    if active and resolve_locale(str(active)) != "en-US":
+        return resolve_locale(str(active))
     if language and str(language).strip():
         return resolve_locale(language)
-    active = state.get("language")
     if active and str(active).strip():
         return resolve_locale(str(active))
     combined = re.sub(
@@ -1214,14 +1216,19 @@ def handover_to_person_impl(
     _ensure_default_profile(state)
     clean_reason = " ".join(str(reason or summary or "caller_requested").split()) or "caller_requested"
     session_context = str(kwargs.get("session_context", ""))
-    resolved_lang = _detect_handover_language(
-        state,
-        language=str(language or ""),
-        reason=clean_reason,
-        summary=summary,
-        target_queue=target_queue,
-        session_context=session_context,
-    )
+    active_state_lang = state.get("language")
+    if active_state_lang and resolve_locale(str(active_state_lang)) != "en-US":
+        resolved_lang = _session_language(state, language)
+    else:
+        resolved_lang = _detect_handover_language(
+            state,
+            language=str(language or ""),
+            reason=clean_reason,
+            summary=summary,
+            target_queue=target_queue,
+            session_context=session_context,
+        )
+        resolved_lang = _session_language(state, resolved_lang)
 
     reference = tracking_id("handover_to_person", state.get("account_id", ""), clean_reason, resolved_lang)
     if state.get("mock_error") == "SYSTEM_DOWN":

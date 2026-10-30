@@ -91,9 +91,11 @@ def _detect_handover_language(  # pragma: no cover
     session_context: str | None = None,
 ) -> str:
     """Pick the handover language (docs/DESIGN_RULES.md rule 25)."""
+    active = state.get("language")
+    if active and resolve_locale(str(active)) != "en-US":
+        return resolve_locale(str(active))
     if language and str(language).strip():
         return resolve_locale(language)
-    active = state.get("language")
     if active and str(active).strip():
         return resolve_locale(str(active))
     combined = re.sub(
@@ -182,6 +184,72 @@ def _get_state(  # pragma: no cover
 def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
+
+def resolve_copy_locale(language: str | None) -> str:  # pragma: no cover
+    """Pick one of the three primary supported copy locales."""
+    loc = resolve_locale(language)
+    if loc == "fr-CA":
+        return "fr-CA"
+    if loc == "es-US":
+        return "es-US"
+    return "en-US"
+
+def _session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
+    """Resolve session language with asymmetric lock: non-English locks over English.
+
+    When state has no language or is default 'en-US', a model-supplied
+    non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
+    Once state holds a non-English locale, a model-supplied 'en-US' or empty
+    value is ignored (PRD BR-TV-004 lock).
+    """
+    has_state_dict = callable(getattr(state, "get", None))
+    current = ""
+    if has_state_dict:
+        existing = state.get("language")
+        if existing and str(existing).strip():
+            current = resolve_copy_locale(str(existing))
+
+    arg_lang = ""
+    if language and str(language).strip():
+        arg_lang = resolve_copy_locale(str(language))
+
+    # 1. Once state holds a non-English locale, model-supplied en-US/empty is ignored.
+    if current and current != "en-US":
+        state["language"] = current
+        if not state.get("preferred_language"):
+            state["preferred_language"] = current
+        return current
+
+    # 2. When state has no language or is default 'en-US':
+    # A model-supplied non-English locale (fr-CA/es-US/...) is accepted and becomes the lock.
+    if arg_lang and arg_lang != "en-US":
+        if callable(getattr(state, "__setitem__", None)):
+            state["language"] = arg_lang
+            state["preferred_language"] = arg_lang
+        return arg_lang
+
+    # 3. If state already had 'en-US', keep it.
+    if current == "en-US":
+        return "en-US"
+
+    # 4. State had no language and model passed non-empty 'en-US'.
+    if arg_lang == "en-US":
+        if callable(getattr(state, "__setitem__", None)):
+            state["language"] = "en-US"
+        return "en-US"
+
+    # 5. Check preferred_language in state if any.
+    if has_state_dict:
+        pref = state.get("preferred_language")
+        if pref and str(pref).strip():
+            pref_loc = resolve_copy_locale(str(pref))
+            if pref_loc != "en-US":
+                if callable(getattr(state, "__setitem__", None)):
+                    state["language"] = pref_loc
+                return pref_loc
+            return "en-US"
+
+    return resolve_copy_locale(None)
 
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INVALID_INPUT",
@@ -746,15 +814,6 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
     },
 }
 
-def resolve_copy_locale(language: str | None) -> str:  # pragma: no cover
-    """Pick one of the three primary supported copy locales."""
-    loc = resolve_locale(language)
-    if loc == "fr-CA":
-        return "fr-CA"
-    if loc == "es-US":
-        return "es-US"
-    return "en-US"
-
 def tracking_id(prefix: str, *parts: object) -> str:  # pragma: no cover
     """Return a deterministic short reference number (R followed by 6 digits)."""
     raw = "|".join([prefix, *(str(value).strip().lower() for value in parts)])
@@ -1000,14 +1059,19 @@ def handover_to_person_impl(  # pragma: no cover
     _ensure_default_profile(state)
     clean_reason = " ".join(str(reason or summary or "caller_requested").split()) or "caller_requested"
     session_context = str(kwargs.get("session_context", ""))
-    resolved_lang = _detect_handover_language(
-        state,
-        language=str(language or ""),
-        reason=clean_reason,
-        summary=summary,
-        target_queue=target_queue,
-        session_context=session_context,
-    )
+    active_state_lang = state.get("language")
+    if active_state_lang and resolve_locale(str(active_state_lang)) != "en-US":
+        resolved_lang = _session_language(state, language)
+    else:
+        resolved_lang = _detect_handover_language(
+            state,
+            language=str(language or ""),
+            reason=clean_reason,
+            summary=summary,
+            target_queue=target_queue,
+            session_context=session_context,
+        )
+        resolved_lang = _session_language(state, resolved_lang)
 
     reference = tracking_id("handover_to_person", state.get("account_id", ""), clean_reason, resolved_lang)
     if state.get("mock_error") == "SYSTEM_DOWN":
