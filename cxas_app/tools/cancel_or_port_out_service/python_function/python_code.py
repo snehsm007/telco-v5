@@ -97,6 +97,13 @@ FAKE_BILLING_LEDGER: dict[str, Any] = {  # pragma: no cover
         {"name": "Unreturned Modem Equipment Fee", "category": "equipment", "amount": 150.00},
     ],
     "recent_payments": [
+        {
+            "date": "2026-10-28",
+            "amount": 85.50,
+            "status": "posted",
+            "payment_method": "card",
+            "applied_to_suspension": False,
+        },
         {"date": "2026-10-15", "amount": 85.50, "status": "posted", "payment_method": "card"},
         {"date": "2026-10-15", "amount": 85.50, "status": "duplicate", "payment_method": "card"},
     ],
