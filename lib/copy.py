@@ -747,6 +747,7 @@ AGENT_VERBATIM_KEYS: dict[str, tuple[str, ...]] = {
         "id_verification_otp",
         "id_verification_pin",
         "payment_method_preamble",
+        "contract_cancellation_fee_disclosure",
         "live_agent_handoff",
         "business_handoff",
         "empathy_protocol",

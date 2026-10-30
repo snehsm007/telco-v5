@@ -3279,6 +3279,12 @@ def initiate_number_transfer_impl(
                 "4. Confirme el código postal de facturación registrado.",
             ),
         ]
+        action_text = localized_text(
+            lang,
+            "Emit verbatim contract_cancellation_fee_disclosure from active language sheet, state early cancellation fee and prorated final bill estimate, and explain the required port checklist.",
+            "Émettez la divulgation textuelle contract_cancellation_fee_disclosure de la feuille de langue active, indiquez les frais d'annulation anticipée et l'estimation de facture finale au prorata, et expliquez la liste de contrôle de transfert requise.",
+            "Emita la divulgación textual contract_cancellation_fee_disclosure de la hoja de idioma activo, indique el cargo por cancelación anticipada y el estimado de factura final prorrateada, y explique la lista de verificación de transferencia requerida.",
+        )
         return ok_reply(
             {
                 "status": "ok",
@@ -3296,6 +3302,7 @@ def initiate_number_transfer_impl(
                 "port_out_pin": port_out_pin,
                 "transfer_pin": port_out_pin,
                 "porting_account_number": port_acct,
+                "agent_action": action_text,
             },
             reference,
             language=lang,
@@ -3316,6 +3323,13 @@ def initiate_number_transfer_impl(
     else:
         status_val = "ok"
         mode_val = "transfer_submitted"
+
+    auth_action_text = localized_text(
+        lang,
+        "Emit verbatim contract_cancellation_fee_disclosure from active language sheet, provide porting account number and confirm transfer PIN dispatched by SMS, and share final bill estimate.",
+        "Émettez la divulgation textuelle contract_cancellation_fee_disclosure de la feuille de langue active, fournissez le numéro de compte de transfert et confirmez l'envoi du NIP par SMS, et partagez l'estimation de facture finale.",
+        "Emita la divulgación textual contract_cancellation_fee_disclosure de la hoja de idioma activo, proporcione el número de cuenta de transferencia y confirme el PIN enviado por SMS, y comparta el estimado de factura final.",
+    )
 
     data: dict[str, Any] = {
         "status": status_val,
@@ -3340,6 +3354,7 @@ def initiate_number_transfer_impl(
         "port_out_pin": port_out_pin,
         "transfer_pin": port_out_pin,
         "porting_account_number": port_acct,
+        "agent_action": auth_action_text,
     }
     if can_provided:
         data["carrier_account_number"] = can_raw
@@ -3348,12 +3363,6 @@ def initiate_number_transfer_impl(
 
     if is_port_out:
         data["mode"] = "port_out_details"
-        data["agent_action"] = localized_text(
-            lang,
-            "Read the contract cancellation disclosure to the caller and provide their porting account number and transfer PIN.",
-            "Lisez la divulgation de résiliation de contrat à l'appelant et fournissez son numéro de compte et NIP de transfert.",
-            "Lea la divulgación de cancelación de contrato al cliente y proporcione su número de cuenta y PIN de transferencia.",
-        )
 
     return ok_reply(data, port_id, language=lang)
 
