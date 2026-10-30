@@ -1008,6 +1008,12 @@ def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma:
     raw_low = raw_str.lower()
     if "wrong" in raw_low or "incorrect" in raw_low or "invalid" in raw_low:
         return True
+    clean_raw = raw_str.strip().upper()
+    is_alphanumeric_id = bool(re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", clean_raw))
+    if is_alphanumeric_id:
+        if digits[-4:] in {"0000", "9999", "1111"}:
+            return True
+        return False
     is_intl = (raw_str.strip().startswith("+") or raw_str.strip().startswith("00")) and 10 <= len(digits) <= 15
     if not is_intl and len(digits) not in (7, 8, 9, 10, 11):
         return True
