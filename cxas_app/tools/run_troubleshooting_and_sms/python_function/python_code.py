@@ -1156,11 +1156,16 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             rec["billing_account"] = "BA-" + rec["phone"][-6:]
             rec[_k_a4] = record["account_id"][-4:]
             rec["identifier_kind"] = "phone" if not has_alpha else "account_id"
-            rec["email"] = (
-                "jordan@example.com"
-                if record.get("first_name") == "Jordan"
-                else "taylor@example.com"
-            )
+            if clean_fn:
+                first_word = clean_fn.split()[0].title()
+                rec["first_name"] = first_word
+                rec["email"] = f"{first_word.lower()}@example.com"
+            else:
+                rec["email"] = (
+                    "jordan@example.com"
+                    if record.get("first_name") == "Jordan"
+                    else "taylor@example.com"
+                )
             rec[_k_cf4] = "7742"
             rec[_k_sc4] = "8844"
             rec[_k_bf4] = "6789"
@@ -1328,7 +1333,7 @@ def lookup_account_impl(  # pragma: no cover
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else (phone_or_account if str(phone_or_account or "").strip() else kwargs.get("phone_or_account", ""))
-    name_val = str(full_name or kwargs.get("full_name") or "").strip()
+    name_val = str(full_name or kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("name") or "").strip()
     email_val = str(email or kwargs.get("email") or "").strip()
 
     if not name_val and str(id_val).strip() and any(c.isalpha() for c in str(id_val)):
@@ -1407,7 +1412,9 @@ def lookup_account_impl(  # pragma: no cover
             },
         )
 
-    fn_hint = str(name_val or "") or state.get("contact_email", "").split("@")[0].split(".")[0]
+    existing_email = str(state.get("contact_email") or "").strip()
+    email_user = existing_email.split("@")[0].split(".")[0] if (existing_email and existing_email != "user@example.com") else ""
+    fn_hint = str(name_val or "").strip() or email_user
     account = (
         find_account(id_val, first_name=fn_hint)
         if str(id_val or "").strip()
@@ -1415,6 +1422,12 @@ def lookup_account_impl(  # pragma: no cover
     )
     resolved_by_name = False
     resolved_by_email = False
+    if account and name_val:
+        first_word = name_val.split()[0].title()
+        account["first_name"] = first_word
+        if not email_val:
+            account["email"] = f"{first_word.lower()}@example.com"
+
     if account is None and name_val:
         matched = None
         for record in ACCOUNTS:

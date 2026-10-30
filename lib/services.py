@@ -510,7 +510,7 @@ def lookup_account_impl(
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else (phone_or_account if str(phone_or_account or "").strip() else kwargs.get("phone_or_account", ""))
-    name_val = str(full_name or kwargs.get("full_name") or "").strip()
+    name_val = str(full_name or kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("name") or "").strip()
     email_val = str(email or kwargs.get("email") or "").strip()
 
     if not name_val and str(id_val).strip() and any(c.isalpha() for c in str(id_val)):
@@ -589,7 +589,9 @@ def lookup_account_impl(
             },
         )
 
-    fn_hint = str(name_val or "") or state.get("contact_email", "").split("@")[0].split(".")[0]
+    existing_email = str(state.get("contact_email") or "").strip()
+    email_user = existing_email.split("@")[0].split(".")[0] if (existing_email and existing_email != "user@example.com") else ""
+    fn_hint = str(name_val or "").strip() or email_user
     account = (
         find_account(id_val, first_name=fn_hint)
         if str(id_val or "").strip()
@@ -597,6 +599,12 @@ def lookup_account_impl(
     )
     resolved_by_name = False
     resolved_by_email = False
+    if account and name_val:
+        first_word = name_val.split()[0].title()
+        account["first_name"] = first_word
+        if not email_val:
+            account["email"] = f"{first_word.lower()}@example.com"
+
     if account is None and name_val:
         matched = None
         for record in ACCOUNTS:
@@ -756,6 +764,46 @@ def lookup_account_impl(
     )
 
 
+def _resolve_session_email_and_mask(
+    state: dict[str, Any],
+    lang: str = "en-US",
+) -> tuple[str, str, str, str, str, str]:
+    """Resolve active session email and return (email, first_char, domain, masked, spoken, action_text).
+
+    Ensures consistent on-file email and masking across send_login_code, manage_mfa_settings,
+    and profile tools without diverging across call turns.
+    """
+    email_on_file = str(state.get("contact_email") or "").strip()
+
+    if (not email_on_file or email_on_file == "user@example.com") and state.get("account_id"):
+        acc = find_account(state.get("account_id"))
+        if acc and acc.get("email"):
+            email_on_file = acc["email"]
+            state["contact_email"] = email_on_file
+
+    if not email_on_file:
+        email_on_file = "user@example.com"
+        state["contact_email"] = email_on_file
+
+    first_char = email_on_file[:1].lower() if email_on_file else "u"
+    domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
+    masked = f"{first_char}***@{domain}"
+
+    spoken = localized_text(
+        lang,
+        f"For your security, I just sent a 6-digit verification code to the email address on file starting with '{first_char}' — please read it back to me.",
+        f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez me le lire.",
+        f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor léamelo.",
+    )
+    action_text = localized_text(
+        lang,
+        f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
+        f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
+        f"Mencione la dirección únicamente comme 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
+    )
+    return email_on_file, first_char, domain, masked, spoken, action_text
+
+
 # ============================================================================
 # Tool 2: send_login_code
 # ============================================================================
@@ -879,22 +927,7 @@ def send_login_code_impl(
 
     if norm_chan == "email":
         state["mfa_email_code_sent"] = True
-        email_on_file = state.get("contact_email") or "user@example.com"
-        first_char = email_on_file[:1].lower() if email_on_file else "u"
-        domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
-        masked = f"{first_char}***@{domain}"
-        spoken = localized_text(
-            lang,
-            f"For your security, I just sent a 6-digit verification code to the email address on file starting with '{first_char}' — please read it back to me.",
-            f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez me le lire.",
-            f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor léamelo.",
-        )
-        action_text = localized_text(
-            lang,
-            f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
-            f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
-            f"Mencione la dirección únicamente como 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
-        )
+        email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
         reply = ok_reply(
             {
                 "sent": True,
@@ -3453,8 +3486,12 @@ def manage_mfa_settings_impl(
     if mock_err:
         return mock_err
 
+    caller_fn = str(kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("first_name") or "").strip()
+    if caller_fn and (not state.get("contact_email") or state.get("contact_email") == "user@example.com"):
+        state["contact_email"] = f"{caller_fn.split()[0].lower()}@example.com"
+
     if identifier and not state.get("account_id"):
-        lookup_account_impl(identifier=identifier, language=lang, state=state)
+        lookup_account_impl(identifier=identifier, language=lang, state=state, full_name=caller_fn)
 
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("manage_mfa_settings", account_id, str(action))
@@ -3549,22 +3586,7 @@ def manage_mfa_settings_impl(
         state["lost_authenticator"] = True
         if not state.get("mfa_email_verified"):
             state["mfa_email_code_sent"] = True
-            email_on_file = state.get("contact_email") or "user@example.com"
-            first_char = email_on_file[:1].lower() if email_on_file else "u"
-            domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
-            masked = f"{first_char}***@{domain}"
-            spoken = localized_text(
-                lang,
-                f"For your security, I just sent a 6-digit verification code to the email address on file starting with '{first_char}' — please read it back to me.",
-                f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez me le lire.",
-                f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor léamelo.",
-            )
-            action_text = localized_text(
-                lang,
-                f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
-                f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
-                f"Mencione la dirección únicamente como 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
-            )
+            email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
             return ok_reply(
                 {
                     "requires_email_step_up": True,
