@@ -126,3 +126,43 @@ def test_send_password_reset_sms_empty_phone_says_on_file(monkeypatch) -> None:
     assert reply["status"] == "ok"
     assert reply["data"]["destination_phone_last4"] == ""
     assert "on file" in reply["data"]["spoken_summary"]
+
+
+def test_send_password_reset_sms_destination_phone_or_last4(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "ACC-4105",
+            "phone_last4": "",
+            "caller_provided_phone_last4": "",
+            "auth_status": "pass",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.send_password_reset_sms(destination_phone="0987")
+    assert reply["status"] == "ok"
+    assert reply["data"]["destination_phone_last4"] == "0987"
+    assert "0987" in reply["data"]["spoken_summary"]
+    assert session.state["phone_last4"] == "0987"
+    assert session.state["caller_provided_phone_last4"] == "0987"
+
+    # Also test 4-digit identifier when account already in state
+    session.state["phone_last4"] = ""
+    session.state["caller_provided_phone_last4"] = ""
+    reply2 = tool.send_password_reset_sms(identifier="0987")
+    assert reply2["status"] == "ok"
+    assert reply2["data"]["destination_phone_last4"] == "0987"
+    assert "0987" in reply2["data"]["spoken_summary"]
+
+    # Test full 10-digit destination_phone
+    reply3 = tool.send_password_reset_sms(destination_phone="514-555-0987")
+    assert reply3["status"] == "ok"
+    assert reply3["data"]["destination_phone_last4"] == "0987"
+    assert "0987" in reply3["data"]["spoken_summary"]
+
+    # Test account lookup with separate destination_phone
+    session.state.clear()
+    reply4 = tool.send_password_reset_sms(identifier="928374105", destination_phone="0987")
+    assert reply4["status"] == "ok"
+    assert reply4["data"]["destination_phone_last4"] == "0987"
+    assert "0987" in reply4["data"]["spoken_summary"]
+    assert session.state["account_id"] == "ACC-4105"
