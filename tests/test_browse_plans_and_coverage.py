@@ -182,5 +182,83 @@ def test_browse_plans_and_coverage_internet_wfh_technical_specifications(monkeyp
         assert "99.9%" in p["sla_or_guarantee"]
 
 
+def test_browse_plans_and_coverage_current_plan_internet_en_fr_es(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    # English
+    res_en = tool.browse_plans_and_coverage(category="internet", language="en-US")
+    assert res_en["status"] == "ok"
+    assert "current_plan" in res_en["data"]
+    cp_en = res_en["data"]["current_plan"]
+    assert cp_en["plan_name"] == "Fiber Internet 100"
+    assert cp_en["monthly_price"] == "$45.00/month"
+    assert cp_en["monthly_rate"] == "45.00"
+    assert "100 Mbps" in cp_en["speed"]
+    assert "Fiber Internet 100" in cp_en["spoken_summary"]
+    assert res_en["data"]["current_plan_name"] == "Fiber Internet 100"
+    assert res_en["data"]["current_plan_price"] == "$45.00/month"
+
+    # French
+    session_fr = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_fr, raising=False)
+    res_fr = tool.browse_plans_and_coverage(category="internet", language="fr-CA")
+    assert res_fr["status"] == "ok"
+    cp_fr = res_fr["data"]["current_plan"]
+    assert cp_fr["plan_name"] == "Internet Fibre 100"
+    assert cp_fr["monthly_price"] == "45.00 $/mois"
+    assert "100 Mbps" in cp_fr["speed"]
+    assert "Internet Fibre 100" in cp_fr["spoken_summary"]
+    assert res_fr["data"]["current_plan_name"] == "Internet Fibre 100"
+    assert res_fr["data"]["current_plan_price"] == "45.00 $/mois"
+
+    # Spanish
+    session_es = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_es, raising=False)
+    res_es = tool.browse_plans_and_coverage(category="internet", language="es-US")
+    assert res_es["status"] == "ok"
+    cp_es = res_es["data"]["current_plan"]
+    assert cp_es["plan_name"] == "Internet Fibra 100"
+    assert cp_es["monthly_price"] == "$45.00/mes"
+    assert "100 Mbps" in cp_es["speed"]
+    assert "Internet Fibra 100" in cp_es["spoken_summary"]
+
+
+def test_browse_plans_and_coverage_current_plan_mobility_and_tv(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    # Mobility
+    res_mob = tool.browse_plans_and_coverage(category="mobility", language="en-US")
+    assert res_mob["status"] == "ok"
+    cp_mob = res_mob["data"]["current_plan"]
+    assert cp_mob["plan_name"] == "Mobility Essential Plan"
+    assert cp_mob["monthly_price"] == "$55.00/month"
+    assert "20 GB" in cp_mob["speed"]
+    assert "20 GB" in cp_mob["data"]
+    assert res_mob["data"]["current_plan_name"] == "Mobility Essential Plan"
+    assert res_mob["data"]["current_plan_price"] == "$55.00/month"
+
+    # Mobility French
+    session_fr = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_fr, raising=False)
+    res_mob_fr = tool.browse_plans_and_coverage(category="mobility", language="fr-CA")
+    assert res_mob_fr["status"] == "ok"
+    cp_mob_fr = res_mob_fr["data"]["current_plan"]
+    assert cp_mob_fr["plan_name"] == "Forfait Mobilité Essentiel"
+    assert cp_mob_fr["monthly_price"] == "55.00 $/mois"
+    assert "20 Go" in cp_mob_fr["speed"]
+
+    # TV
+    session_tv = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_tv, raising=False)
+    res_tv = tool.browse_plans_and_coverage(category="tv", language="en-US")
+    assert res_tv["status"] == "ok"
+    cp_tv = res_tv["data"]["current_plan"]
+    assert cp_tv["plan_name"] == "TV Starter"
+    assert cp_tv["monthly_price"] == "$25.00/month"
+
+
+
 
 
