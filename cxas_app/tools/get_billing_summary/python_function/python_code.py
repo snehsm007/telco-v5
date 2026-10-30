@@ -1956,7 +1956,14 @@ def get_billing_summary_impl(  # pragma: no cover
         service_status = "active"
         restoration_hint = ""
 
-    return ok_reply(
+    billing_action = localized_text(
+        lang,
+        "A caller-named payment method is confirmed and used; offer payment methods on file only if the caller has not named one.",
+        "Un mode de paiement nommé par le client est confirmé et utilisé ; ne proposez les modes de paiement au dossier que si le client n'en a pas nommé.",
+        "El método de pago indicado por el cliente se confirma y utiliza; ofrezca los métodos registrados solo si el cliente no indicó ninguno.",
+    )
+
+    rep = ok_reply(
         {
             "current_balance": display_amount(bal),
             "past_due_balance": display_amount(past_due),
@@ -1985,8 +1992,11 @@ def get_billing_summary_impl(  # pragma: no cover
             "payment_methods_on_file": payment_methods_on_file,
             "spoken_summary": spoken_summary,
             "spoken_message": spoken_summary,
+            "agent_action": billing_action,
         },
         reference,
         language=lang,
     )
+    rep["agent_action"] = billing_action
+    return rep
 # --- END GENERATED SHARED BUNDLE ---

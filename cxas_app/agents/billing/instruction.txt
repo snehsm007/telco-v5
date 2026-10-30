@@ -91,7 +91,7 @@ Clear, helpful, and reassuring. Walk callers through statements and payments usi
         <step name="Disclose Payment Preamble Before Bill Payment">
             <trigger>The authenticated caller asks to pay a bill and needs payment method confirmation</trigger>
             <action>
-                Emit verbatim payment_method_preamble from <active_language_sheet> and confirm the payment amount and whether to use the card or bank ending in card_last4 or bank_last4 (or another last 4 digits).
+                Emit verbatim payment_method_preamble from <active_language_sheet> and confirm the payment amount. Confirm and use a caller-named payment method; offer payment methods on file only if none was named.
             </action>
         </step>
         <step name="Execute Bill Payment">

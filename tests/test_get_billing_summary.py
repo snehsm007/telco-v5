@@ -190,3 +190,23 @@ def test_get_billing_summary_reconciliation_for_all_accounts(monkeypatch) -> Non
         assert stmt - pmts - creds == due == bal
 
 
+def test_get_billing_summary_agent_action_guides_payment_methods(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "current_balance": "85.50",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply_en = tool.get_billing_summary(language="en-US")
+    assert reply_en["status"] == "ok"
+    assert "offer payment methods on file only if the caller has not named one" in reply_en["data"]["agent_action"]
+    assert reply_en["agent_action"] == reply_en["data"]["agent_action"]
+
+    reply_fr = tool.get_billing_summary(language="fr-CA")
+    assert reply_fr["status"] == "ok"
+    assert "ne proposez les modes de paiement au dossier" in reply_fr["data"]["agent_action"]
+
+
+
