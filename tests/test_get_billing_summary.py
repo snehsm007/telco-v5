@@ -74,7 +74,7 @@ def test_get_billing_summary_localization(monkeypatch) -> None:
 
 def test_get_billing_summary_restoration_facts_when_payment_covers_past_due(monkeypatch) -> None:
     session = SimpleNamespace(
-        state={"account_id": "A1001", "auth_status": "pass", "past_due_balance": "85.50"}
+        state={"account_id": "A1001", "auth_status": "pass", "past_due_balance": "0.00"}
     )
     monkeypatch.setattr(tool, "context", session, raising=False)
     reply = tool.get_billing_summary()
@@ -87,6 +87,23 @@ def test_get_billing_summary_restoration_facts_when_payment_covers_past_due(monk
     assert data["last_payment"]["amount"] == "85.50"
     assert data["last_payment"]["posted_date"] == "2026-10-15"
     assert data["last_payment"]["method_last4"] == "4242"
+
+    # When past-due balance is present and unverified, service is suspended and requires payment
+    session_past_due = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "past_due_balance": "85.50",
+            "is_suspended": True,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_past_due, raising=False)
+    reply_past_due = tool.get_billing_summary()
+    assert reply_past_due["status"] == "ok"
+    data_pd = reply_past_due["data"]
+    assert data_pd["service_status"] == "suspended"
+    assert data_pd["last_payment"]["covers_past_due"] is False
+    assert "Payment of past due balance is required" in data_pd["restoration_hint"]
 
 
 def test_get_billing_summary_reconciles_and_surfaces_payment_methods(monkeypatch) -> None:
