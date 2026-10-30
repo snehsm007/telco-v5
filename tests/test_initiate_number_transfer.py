@@ -97,3 +97,20 @@ def test_initiate_number_transfer_port_out_facts(monkeypatch) -> None:
     assert "agent_action" in data
 
 
+def test_initiate_number_transfer_checklist_agent_action(monkeypatch) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.initiate_number_transfer(phone_to_transfer="514-555-0199")
+    assert res["status"] == "ok"
+    assert "agent_action" in res["data"]
+    assert "contract_cancellation_fee_disclosure" in res["data"]["agent_action"]
+
+
+def test_sales_equipment_language_sheet_includes_contract_disclosure() -> None:
+    import cxas_app.agents.sales_equipment.before_model_callbacks.language_prompt_filter.python_code as lpf
+    sheet = lpf.build_language_sheet({"language": "en-US"}, agent_name="sales_equipment")
+    assert "contract_cancellation_fee_disclosure" in sheet
+    assert "Please note that cancelling or transferring your line" in sheet
+
+
+
