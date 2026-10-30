@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import pytest
 
 import cxas_app.tools.browse_plans_and_coverage.python_function.python_code as tool
 
@@ -91,4 +92,41 @@ def test_browse_plans_and_coverage_catalog_coherence_tax_speed_addons(monkeypatc
         assert a["contract_required"] is False
         assert "estimated_tax" in a
         assert "monthly_total_with_tax" in a
+
+
+@pytest.mark.parametrize(
+    "lang,expected_feature_prefix,expected_desc_prefix",
+    [
+        ("en-US", "Unlimited downloads", "Full access"),
+        ("fr-CA", "Téléchargements illimités", "Accès complet"),
+        ("es-US", "Descargas ilimitadas", "Acceso completo"),
+    ],
+)
+def test_browse_plans_and_coverage_single_language_replies(
+    monkeypatch, lang: str, expected_feature_prefix: str, expected_desc_prefix: str
+) -> None:
+    session = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.browse_plans_and_coverage(category="internet", language=lang)
+    assert res["status"] == "ok"
+    plans = res["data"]["shortlisted_plans"]
+    assert len(plans) >= 2
+    for p in plans:
+        assert "features" in p
+        assert "features_en" not in p
+        assert "features_fr" not in p
+        assert "features_es" not in p
+    assert plans[0]["features"].startswith(expected_feature_prefix)
+
+    addons = res["data"].get("available_add_ons") or res["data"].get("add_ons")
+    assert addons is not None and len(addons) > 0
+    for a in addons:
+        assert "description" in a
+        assert "description_en" not in a
+        assert "description_fr" not in a
+        assert "description_es" not in a
+    sports_addon = next((a for a in addons if a["id"] == "ADDON-SPORTS"), None)
+    if sports_addon:
+        assert sports_addon["description"].startswith(expected_desc_prefix)
+
 
