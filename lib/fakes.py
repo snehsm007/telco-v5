@@ -159,11 +159,16 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             rec["billing_account"] = "BA-" + rec["phone"][-6:]
             rec[_k_a4] = record["account_id"][-4:]
             rec["identifier_kind"] = "phone" if not has_alpha else "account_id"
-            rec["email"] = (
-                "jordan@example.com"
-                if record.get("first_name") == "Jordan"
-                else "taylor@example.com"
-            )
+            if clean_fn:
+                first_word = clean_fn.split()[0].title()
+                rec["first_name"] = first_word
+                rec["email"] = f"{first_word.lower()}@example.com"
+            else:
+                rec["email"] = (
+                    "jordan@example.com"
+                    if record.get("first_name") == "Jordan"
+                    else "taylor@example.com"
+                )
             rec[_k_cf4] = "7742"
             rec[_k_sc4] = "8844"
             rec[_k_bf4] = "6789"
