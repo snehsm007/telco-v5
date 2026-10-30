@@ -1902,6 +1902,7 @@ def setup_autopay_impl(
         rep["payment_methods_on_file"] = methods_on_file
         return rep
 
+    is_confirm = act in ("confirm", "complete", "finish") or bool(kwargs.get("confirmed")) or bool(kwargs.get("confirm"))
     pm = str(payment_method or "").strip().lower()
     is_new_card = (
         any(w in pm for w in ("new", "nouvelle", "nouveau", "nueva", "capture", "keypad", "clavier"))
@@ -1911,6 +1912,8 @@ def setup_autopay_impl(
     if is_new_card:
         raw_digits = normalize_code(card_digits or dtmf_digits or kwargs.get("card_number", ""))
         already_prompted = bool(state.get("card_capture_prompted"))
+        if is_confirm:
+            already_prompted = True
 
         if len(raw_digits) in (15, 16):
             digits = raw_digits[-4:]
@@ -1938,30 +1941,38 @@ def setup_autopay_impl(
             )
             if stated_last4:
                 state["pending_card_last4"] = stated_last4
+                state["card_last4"] = stated_last4
 
             req_last4 = stated_last4 or str(state.get("pending_card_last4") or "")
+            if req_last4:
+                state["card_last4"] = req_last4
 
             if raw_digits and len(raw_digits) not in (4, 15, 16):
+                rep_data = {
+                    "requested_card_last4": req_last4,
+                    "agent_action": localized_text(
+                        lang,
+                        f"Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad for the card ending in {req_last4}. Do not mention other cards.",
+                        f"Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique pour la carte se terminant par {req_last4}. Ne mentionnez pas d'autres cartes.",
+                        f"Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico para la tarjeta que termina en {req_last4}. No mencione otras tarjetas.",
+                    ) if req_last4 else localized_text(
+                        lang,
+                        "Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad.",
+                        "Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique.",
+                        "Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico.",
+                    ),
+                }
+                if req_last4:
+                    rep_data["card_last4"] = req_last4
                 rep = error_reply(
                     "INVALID_CARD_DIGITS",
                     reference=reference,
                     language=lang,
-                    data={
-                        "requested_card_last4": req_last4,
-                        "agent_action": localized_text(
-                            lang,
-                            f"Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad for the card ending in {req_last4}. Do not mention other cards.",
-                            f"Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique pour la carte se terminant par {req_last4}. Ne mentionnez pas d'autres cartes.",
-                            f"Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico para la tarjeta que termina en {req_last4}. No mencione otras tarjetas.",
-                        ) if req_last4 else localized_text(
-                            lang,
-                            "Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad.",
-                            "Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique.",
-                            "Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico.",
-                        ),
-                    },
+                    data=rep_data,
                 )
                 rep["requested_card_last4"] = req_last4
+                if req_last4:
+                    rep["card_last4"] = req_last4
                 return rep
 
             state["card_capture_prompted"] = True
@@ -1991,9 +2002,9 @@ def setup_autopay_impl(
             if req_last4:
                 action_text = localized_text(
                     lang,
-                    f"confirm the card ending {req_last4} the caller named; do not mention other cards",
-                    f"confirmez la carte se terminant par {req_last4} nommée par le client; ne mentionnez pas d'autres cartes",
-                    f"confirme la tarjeta que termina en {req_last4} que el cliente nombró; no mencione otras tarjetas",
+                    f"confirm the card ending {req_last4} the caller named; do not mention other cards; call setup_autopay again with card_last4=\"{req_last4}\" to confirm enrollment once the caller responds",
+                    f"confirmez la carte se terminant par {req_last4} nommée par le client; ne mentionnez pas d'autres cartes; rappelez setup_autopay avec card_last4=\"{req_last4}\" pour confirmer l'inscription dès que le client répond",
+                    f"confirme la tarjeta que termina en {req_last4} que el cliente nombró; no mencione otras tarjetas; llame a setup_autopay nuevamente con card_last4=\"{req_last4}\" para confirmar la inscripción una vez que el cliente responda",
                 )
             else:
                 action_text = localized_text(
@@ -2008,20 +2019,25 @@ def setup_autopay_impl(
                 f"Numéro de carte requis. Composez votre carte se terminant par {req_last4} à l'aide du clavier de votre téléphone." if req_last4 else "Numéro de carte requis. Composez les 15 ou 16 chiffres à l'aide du clavier de votre téléphone.",
                 f"Se requieren dígitos de la tarjeta. Ingrese su tarjeta que termina en {req_last4} en el teclado de su teléfono." if req_last4 else "Se requieren dígitos de la tarjeta. Ingrese los 15 o 16 dígitos en el teclado de su teléfono.",
             )
+            rep_data = {
+                "spoken_line": pci_line,
+                "agent_action": action_text,
+                "requested_card_last4": req_last4,
+            }
+            if req_last4:
+                rep_data["card_last4"] = req_last4
             rep = error_reply(
                 "CARD_CAPTURE_REQUIRED",
                 message=msg,
                 agent_action=action_text,
                 reference=reference,
                 language=lang,
-                data={
-                    "spoken_line": pci_line,
-                    "agent_action": action_text,
-                    "requested_card_last4": req_last4,
-                },
+                data=rep_data,
             )
             rep["spoken_line"] = pci_line
             rep["requested_card_last4"] = req_last4
+            if req_last4:
+                rep["card_last4"] = req_last4
             return rep
 
         method_name = "card"
@@ -2095,6 +2111,7 @@ def setup_autopay_impl(
         rep = ok_reply(
             {
                 "autopay_enrolled": True,
+                "autopay_enabled": True,
                 "payment_method": method_name,
                 "masked_last4": digits,
                 "card_last4": digits,
@@ -2103,6 +2120,7 @@ def setup_autopay_impl(
                 "autopay_discount_monthly": "5.00",
                 "next_draft_date": next_date,
                 "confirmation_id": ref,
+                "confirmation_number": ref,
                 "spoken_summary": spoken_summary,
                 "spoken_message": spoken_summary,
                 "agent_action": new_card_action,
@@ -2110,6 +2128,9 @@ def setup_autopay_impl(
             reference=ref,
             language=lang,
         )
+        rep["autopay_enabled"] = True
+        rep["autopay_enrolled"] = True
+        rep["confirmation_number"] = ref
         rep["spoken_summary"] = spoken_summary
         rep["requested_card_last4"] = digits
         rep["card_last4"] = digits
@@ -2125,6 +2146,7 @@ def setup_autopay_impl(
     rep = ok_reply(
         {
             "autopay_enrolled": True,
+            "autopay_enabled": True,
             "payment_method": method_name,
             "masked_last4": digits,
             "card_last4": digits if method_name == "card" else state.get("card_last4", "7742"),
@@ -2132,6 +2154,7 @@ def setup_autopay_impl(
             "autopay_discount_monthly": "5.00",
             "next_draft_date": next_date,
             "confirmation_id": ref,
+            "confirmation_number": ref,
             "payment_methods_on_file": methods_on_file,
             "spoken_summary": spoken_summary,
             "spoken_message": spoken_summary,
@@ -2140,6 +2163,9 @@ def setup_autopay_impl(
         reference=ref,
         language=lang,
     )
+    rep["autopay_enabled"] = True
+    rep["autopay_enrolled"] = True
+    rep["confirmation_number"] = ref
     rep["spoken_summary"] = spoken_summary
     rep["payment_methods_on_file"] = methods_on_file
     return rep
