@@ -145,3 +145,4 @@ Group failing evaluations by shared root cause (not one entry per evaluation). F
 - **Fix & `file:line`**: None on agent side. The collision is an eval-design limitation since both evaluations share the same phone/account profile and simulator-invented postal code `H3Z 2Y7` cannot be distinguished from intentional VE-03 active outage queries. The exact-match change in `cand/outage-region-exact` (`lib/fakes.py:53`, `lib/services.py:613,1151`) restricts active outage reporting to exact `H3Z2Y7`, removing prefix false positives for any other invented `H3Z xxx` codes (e.g., `H3Z 1A1`).
 - **Alternatives considered**: None on agent side; altering fake database to report no outage for `H3Z 2Y7` breaks VE-03.
 - **Verification (`strict 3/3 | majority >=2/3 | individual`)**: 2/3 on `smoke-f0863fa` (`e2bddd89…`, slots 1 and 3 passed 3/3; slot 2 hit postal code collision).
+- **Update**: exact match reverted on main: holdout VE-03 regressed 3/3→0/3 in `holdout-d661067`.
