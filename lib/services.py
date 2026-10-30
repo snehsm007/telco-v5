@@ -1506,14 +1506,20 @@ def process_bill_payment_impl(
             )
         )
     )
+    def_c4_b = str(state.get("card_last4") or "7742")[-4:]
+    def_b4_b = str(state.get("bank_last4") or "6789")[-4:]
     provided_method = bank_last4 if is_bank else (card_last4 or bank_last4)
     l4_parsed = _extract_last4(provided_method)
     if l4_parsed is None:
         return error_reply("INVALID_INPUT", reference=reference, language=lang)
     if is_bank:
-        l4 = l4_parsed or str(state.get("bank_last4") or "6789")[-4:]
+        l4 = l4_parsed or def_b4_b
     else:
-        l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or "7742")[-4:]
+        l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or def_c4_b)[-4:]
+
+    is_new_card = not is_bank and any(
+        w in pm_low for w in ("new", "nouvelle", "nouveau", "nueva", "capture", "keypad", "clavier")
+    )
 
     if l4 in DECLINED_CARD_LAST4:
         failures = read_count(state, "payment_failure_count") + 1
@@ -1619,11 +1625,26 @@ def process_bill_payment_impl(
         reply_data["card_last4"] = ""
     else:
         reply_data["card_last4"] = l4
-    return ok_reply(
+
+    if is_new_card:
+        new_card_action = localized_text(
+            lang,
+            f"confirm the card ending {l4} the caller named; do not mention other cards",
+            f"confirmez la carte se terminant par {l4} nommée par le client; ne mentionnez pas d'autres cartes",
+            f"confirme la tarjeta que termina en {l4} que el cliente nombró; no mencione otras tarjetas",
+        )
+        reply_data["requested_card_last4"] = l4
+        reply_data["agent_action"] = new_card_action
+
+    rep = ok_reply(
         reply_data,
         conf,
         language=lang,
     )
+    if is_new_card:
+        rep["requested_card_last4"] = l4
+        rep["agent_action"] = new_card_action
+    return rep
 
 
 # ============================================================================
@@ -1838,16 +1859,21 @@ def setup_autopay_impl(
                     reference=reference,
                     language=lang,
                     data={
-                        "payment_methods_on_file": methods_on_file,
+                        "requested_card_last4": req_last4,
                         "agent_action": localized_text(
                             lang,
-                            f"Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad. {on_file_guidance}",
-                            f"Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique. {on_file_guidance}",
-                            f"Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico. {on_file_guidance}",
+                            f"Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad for the card ending in {req_last4}. Do not mention other cards.",
+                            f"Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique pour la carte se terminant par {req_last4}. Ne mentionnez pas d'autres cartes.",
+                            f"Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico para la tarjeta que termina en {req_last4}. No mencione otras tarjetas.",
+                        ) if req_last4 else localized_text(
+                            lang,
+                            "Ask the caller to enter a valid 15 or 16 digit card number using the phone keypad.",
+                            "Demandez au client de saisir un numéro de carte valide de 15 ou 16 chiffres à l'aide du clavier téléphonique.",
+                            "Pida al cliente que ingrese un número de tarjeta válido de 15 o 16 dígitos usando el teclado telefónico.",
                         ),
                     },
                 )
-                rep["payment_methods_on_file"] = methods_on_file
+                rep["requested_card_last4"] = req_last4
                 return rep
 
             state["card_capture_prompted"] = True
@@ -1861,9 +1887,9 @@ def setup_autopay_impl(
             if req_last4:
                 action_text = localized_text(
                     lang,
-                    f"invite keypad entry for the NEW card ending in {req_last4} — it is not a card on file; never name an on-file card here; on the caller's next turn call setup_autopay again with the same card_last4 to complete enrollment",
-                    f"invitez à composer les chiffres sur le clavier pour la NOUVELLE carte se terminant par {req_last4} — ce n'est pas une carte enregistrée ; ne nommez jamais une carte enregistrée ici ; au prochain tour, rappelez setup_autopay avec le même card_last4 pour terminer l'inscription",
-                    f"invite a ingresar en el teclado la NUEVA tarjeta que termina en {req_last4} — no es una tarjeta registrada; nunca mencione una tarjeta registrada aquí; en el siguiente turno llame a setup_autopay nuevamente con el mismo card_last4 para completar la inscripción",
+                    f"confirm the card ending {req_last4} the caller named; do not mention other cards",
+                    f"confirmez la carte se terminant par {req_last4} nommée par le client; ne mentionnez pas d'autres cartes",
+                    f"confirme la tarjeta que termina en {req_last4} que el cliente nombró; no mencione otras tarjetas",
                 )
             else:
                 action_text = localized_text(
@@ -1888,12 +1914,10 @@ def setup_autopay_impl(
                     "spoken_line": pci_line,
                     "agent_action": action_text,
                     "requested_card_last4": req_last4,
-                    "payment_methods_on_file": methods_on_file,
                 },
             )
             rep["spoken_line"] = pci_line
             rep["requested_card_last4"] = req_last4
-            rep["payment_methods_on_file"] = methods_on_file
             return rep
 
         method_name = "card"
@@ -1956,6 +1980,37 @@ def setup_autopay_impl(
             f"Le paiement automatique est confirmé avec votre compte bancaire se terminant par {digits}. Votre paiement mensuel sera prélevé automatiquement le {due_day_str} de chaque mois, à compter du {next_date}. Numéro de confirmation : {ref}.",
             f"El pago automatique está confirmado con su cuenta bancaria que termina en {digits}. Su pago mensual se debitará automáticamente el día {due_day_str} de cada mes, a partir del {next_date}. Número de confirmación: {ref}.",
         )
+
+    if is_new_card:
+        new_card_action = localized_text(
+            lang,
+            f"confirm the card ending {digits} the caller named; do not mention other cards",
+            f"confirmez la carte se terminant par {digits} nommée par le client; ne mentionnez pas d'autres cartes",
+            f"confirme la tarjeta que termina en {digits} que el cliente nombró; no mencione otras tarjetas",
+        )
+        rep = ok_reply(
+            {
+                "autopay_enrolled": True,
+                "payment_method": method_name,
+                "masked_last4": digits,
+                "card_last4": digits,
+                "requested_card_last4": digits,
+                "billing_day": bday,
+                "autopay_discount_monthly": "5.00",
+                "next_draft_date": next_date,
+                "confirmation_id": ref,
+                "spoken_summary": spoken_summary,
+                "spoken_message": spoken_summary,
+                "agent_action": new_card_action,
+            },
+            reference=ref,
+            language=lang,
+        )
+        rep["spoken_summary"] = spoken_summary
+        rep["requested_card_last4"] = digits
+        rep["card_last4"] = digits
+        rep["agent_action"] = new_card_action
+        return rep
 
     enroll_action = localized_text(
         lang,

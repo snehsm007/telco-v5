@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 
+import pytest
 import cxas_app.tools.process_bill_payment.python_function.python_code as tool
+from lib.services import process_bill_payment_impl
 
 
 def test_process_bill_payment_happy_path(monkeypatch) -> None:
@@ -213,4 +215,34 @@ def test_process_bill_payment_bank_spoken_summary(monkeypatch) -> None:
     reply = tool.process_bill_payment(amount="85.50", payment_method="bank", bank_last4="6789", language="en-US")
     assert reply["status"] == "ok"
     assert "bank account ending in 6789" in reply["data"]["spoken_summary"]
+
+
+@pytest.mark.parametrize("locale,expected_phrase", [
+    ("en-US", "confirm the card ending 4321 the caller named; do not mention other cards"),
+    ("fr-CA", "confirmez la carte se terminant par 4321 nommée par le client; ne mentionnez pas d'autres cartes"),
+    ("es-US", "confirme la tarjeta que termina en 4321 que el cliente nombró; no mencione otras tarjetas"),
+])
+def test_process_bill_payment_new_card_3_locales(locale: str, expected_phrase: str) -> None:
+    st = {"account_id": "A1001", "auth_status": "pass", "current_balance": "85.50"}
+    rep = process_bill_payment_impl(
+        amount="50.00", payment_method="new_card", card_last4="4321", language=locale, state=st
+    )
+    assert rep["status"] == "ok"
+    assert rep["requested_card_last4"] == "4321"
+    assert rep["data"]["requested_card_last4"] == "4321"
+    assert "payment_methods_on_file" not in rep
+    assert "payment_methods_on_file" not in rep.get("data", {})
+    assert expected_phrase in rep["agent_action"]
+    assert expected_phrase in rep["data"]["agent_action"]
+
+
+@pytest.mark.parametrize("locale", ["en-US", "fr-CA", "es-US"])
+def test_process_bill_payment_on_file_path_3_locales(locale: str) -> None:
+    st = {"account_id": "A1001", "auth_status": "pass", "current_balance": "85.50"}
+    rep = process_bill_payment_impl(
+        amount="50.00", payment_method="card_on_file", language=locale, state=st
+    )
+    assert rep["status"] == "ok"
+    assert "payment_methods_on_file" not in rep
+    assert "requested_card_last4" not in rep
 

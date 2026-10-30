@@ -1917,14 +1917,20 @@ def process_bill_payment_impl(  # pragma: no cover
             )
         )
     )
+    def_c4_b = str(state.get("card_last4") or "7742")[-4:]
+    def_b4_b = str(state.get("bank_last4") or "6789")[-4:]
     provided_method = bank_last4 if is_bank else (card_last4 or bank_last4)
     l4_parsed = _extract_last4(provided_method)
     if l4_parsed is None:
         return error_reply("INVALID_INPUT", reference=reference, language=lang)
     if is_bank:
-        l4 = l4_parsed or str(state.get("bank_last4") or "6789")[-4:]
+        l4 = l4_parsed or def_b4_b
     else:
-        l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or "7742")[-4:]
+        l4 = l4_parsed or str(state.get("card_last4") or state.get("bank_last4") or def_c4_b)[-4:]
+
+    is_new_card = not is_bank and any(
+        w in pm_low for w in ("new", "nouvelle", "nouveau", "nueva", "capture", "keypad", "clavier")
+    )
 
     if l4 in DECLINED_CARD_LAST4:
         failures = read_count(state, "payment_failure_count") + 1
@@ -2030,9 +2036,24 @@ def process_bill_payment_impl(  # pragma: no cover
         reply_data["card_last4"] = ""
     else:
         reply_data["card_last4"] = l4
-    return ok_reply(
+
+    if is_new_card:
+        new_card_action = localized_text(
+            lang,
+            f"confirm the card ending {l4} the caller named; do not mention other cards",
+            f"confirmez la carte se terminant par {l4} nommée par le client; ne mentionnez pas d'autres cartes",
+            f"confirme la tarjeta que termina en {l4} que el cliente nombró; no mencione otras tarjetas",
+        )
+        reply_data["requested_card_last4"] = l4
+        reply_data["agent_action"] = new_card_action
+
+    rep = ok_reply(
         reply_data,
         conf,
         language=lang,
     )
+    if is_new_card:
+        rep["requested_card_last4"] = l4
+        rep["agent_action"] = new_card_action
+    return rep
 # --- END GENERATED SHARED BUNDLE ---
