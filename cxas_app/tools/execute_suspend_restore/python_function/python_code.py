@@ -2033,11 +2033,17 @@ def execute_suspend_restore_impl(  # pragma: no cover
                 language=lang,
             )
 
+        action_text = localized_text(
+            lang,
+            "Take the payment first (process_bill_payment), then restore.",
+            "Effectuez d'abord le paiement (process_bill_payment), puis rétablissez le service.",
+            "Tome el pago primero (process_bill_payment), luego restaure.",
+        )
         return error_reply(
             "PAST_DUE_BALANCE_REQUIRED",
             reference=reference,
             language=lang,
-            agent_action="Take the payment first (process_bill_payment), then restore.",
+            agent_action=action_text,
             data={
                 "past_due_balance": display_amount(past_due_dec),
                 "payment_required": True,

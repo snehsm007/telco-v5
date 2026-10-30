@@ -95,15 +95,15 @@ def test_browse_plans_and_coverage_catalog_coherence_tax_speed_addons(monkeypatc
 
 
 @pytest.mark.parametrize(
-    "lang,expected_feature_prefix,expected_desc_prefix",
+    "lang,expected_feature_prefix,expected_desc_prefix,expected_modem",
     [
-        ("en-US", "Unlimited downloads", "Full access"),
-        ("fr-CA", "Téléchargements illimités", "Accès complet"),
-        ("es-US", "Descargas ilimitadas", "Acceso completo"),
+        ("en-US", "Unlimited downloads", "Full access", "Wi-Fi 6 Gateway (included at $0/month)"),
+        ("fr-CA", "Téléchargements illimités", "Accès complet", "Borne Wi-Fi 6 (incluse à 0 $/mois)"),
+        ("es-US", "Descargas ilimitadas", "Acceso completo", "Módem Wi-Fi 6 (incluido a $0/mes)"),
     ],
 )
 def test_browse_plans_and_coverage_single_language_replies(
-    monkeypatch, lang: str, expected_feature_prefix: str, expected_desc_prefix: str
+    monkeypatch, lang: str, expected_feature_prefix: str, expected_desc_prefix: str, expected_modem: str
 ) -> None:
     session = SimpleNamespace(state={})
     monkeypatch.setattr(tool, "context", session, raising=False)
@@ -117,6 +117,7 @@ def test_browse_plans_and_coverage_single_language_replies(
         assert "features_fr" not in p
         assert "features_es" not in p
     assert plans[0]["features"].startswith(expected_feature_prefix)
+    assert plans[0]["included_modem"] == expected_modem
 
     addons = res["data"].get("available_add_ons") or res["data"].get("add_ons")
     assert addons is not None and len(addons) > 0

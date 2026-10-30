@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import pytest
 
 import cxas_app.tools.get_billing_summary.python_function.python_code as tool
 
@@ -207,6 +208,34 @@ def test_get_billing_summary_agent_action_guides_payment_methods(monkeypatch) ->
     reply_fr = tool.get_billing_summary(language="fr-CA")
     assert reply_fr["status"] == "ok"
     assert "ne proposez les modes de paiement au dossier" in reply_fr["data"]["agent_action"]
+
+
+@pytest.mark.parametrize(
+    "lang,expected_adj,expected_hint_keyword",
+    [
+        ("en-US", "Account credit", "Payment of past due balance"),
+        ("fr-CA", "Crédit au compte", "Le paiement du solde en souffrance"),
+        ("es-US", "Crédito en cuenta", "Se requiere el pago del saldo vencido"),
+    ],
+)
+def test_get_billing_summary_adjustments_and_restoration_hint_localized(
+    monkeypatch, lang: str, expected_adj: str, expected_hint_keyword: str
+) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "is_suspended": True,
+            "past_due_balance": "85.50",
+            "language": lang,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.get_billing_summary(language=lang)
+    assert res["status"] == "ok"
+    data = res["data"]
+    assert data["adjustments"][0]["description"] == expected_adj
+    assert expected_hint_keyword in data["restoration_hint"]
 
 
 

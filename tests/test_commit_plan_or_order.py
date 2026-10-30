@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+import pytest
 
 import cxas_app.tools.commit_plan_or_order.python_function.python_code as tool
 
@@ -76,4 +77,24 @@ def test_commit_plan_or_order_unknown_plan_id(monkeypatch) -> None:
     assert res["error"] == "UNKNOWN_PLAN_ID"
     assert "valid_plan_ids" in res["data"]
     assert len(res["data"]["valid_plan_ids"]) > 0
+
+
+@pytest.mark.parametrize(
+    "lang,expected_action_keyword",
+    [
+        ("en-US", "read the quote"),
+        ("fr-CA", "lisez le devis"),
+        ("es-US", "lea la cotización"),
+    ],
+)
+def test_commit_plan_or_order_requires_confirmation_agent_action_localized(
+    monkeypatch, lang: str, expected_action_keyword: str
+) -> None:
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "A1001", "language": lang})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.commit_plan_or_order(plan_id="NET-PLUS", confirmed=False, language=lang)
+    assert res["status"] == "error"
+    assert res["error"] == "REQUIRES_CONFIRMATION"
+    assert expected_action_keyword in res["agent_action"].lower()
+
 
