@@ -171,7 +171,7 @@ EXCLUDED_AUDIT_KEY_PATTERNS = {
     "_id", "_code", "_number", "_last4", "_pin", "_date", "_time",
     "_amount", "_balance", "_rate", "_fee", "_price", "_tax", "_total",
     "_speed", "_cost", "_status", "_type", "_channel", "_category", "_reason",
-    "_name",
+    "_name", "_mode",
 }
 EXCLUDED_AUDIT_EXACT_KEYS = {
     "status", "error", "error_code", "id", "tracking_id", "reference",
@@ -197,7 +197,7 @@ EXCLUDED_AUDIT_EXACT_KEYS = {
     "porting_account_number", "current_carrier", "order_type", "payment_method",
     "delivery_channel", "preferred_mfa_channel", "reason", "handoff_reason",
     "category", "action", "claim_type", "symptom", "service_type", "type",
-    "issue", "mode", "technician_name",
+    "issue", "mode", "input_mode", "technician_name",
     # Brand and plan names (proper names)
     "plan_name", "name",
 }

@@ -1062,14 +1062,23 @@ def verify_login_impl(
             state["card_last4"] = "7742"
         if not state.get("bank_last4"):
             state["bank_last4"] = "6789"
+        res_data = {
+            "verified": True,
+            "logged_in": True,
+            "auth_status": "pass",
+            "current_balance": state.get("current_balance", "85.50"),
+            "is_suspended": state.get("is_suspended", False),
+        }
+        method_low = str(method or "").strip().lower()
+        raw_code = normalize_code(code_val)
+        if method_low == "pin" or len(raw_code) == SECRET_PIN_LENGTH or state.get("login_channel") == "pin":
+            res_data["input_mode"] = "dtmf_keypad"
+            res_data["dtmf_input_registered"] = True
+            msg = spoken_line("pin_dtmf_registered", lang)
+            res_data["spoken_message"] = msg
+            res_data["agent_action"] = msg
         return ok_reply(
-            {
-                "verified": True,
-                "logged_in": True,
-                "auth_status": "pass",
-                "current_balance": state.get("current_balance", "85.50"),
-                "is_suspended": state.get("is_suspended", False),
-            },
+            res_data,
             reference,
             language=lang,
         )
@@ -1217,14 +1226,22 @@ def verify_login_impl(
     else:
         state["login_channel"] = "sms"
 
+    res_data = {
+        "verified": True,
+        "logged_in": True,
+        "auth_status": "pass",
+        "current_balance": state.get("current_balance", "85.50"),
+        "is_suspended": state.get("is_suspended", False),
+    }
+    if method_low == "pin" or len(digits) == SECRET_PIN_LENGTH:
+        res_data["input_mode"] = "dtmf_keypad"
+        res_data["dtmf_input_registered"] = True
+        msg = spoken_line("pin_dtmf_registered", lang)
+        res_data["spoken_message"] = msg
+        res_data["agent_action"] = msg
+
     return ok_reply(
-        {
-            "verified": True,
-            "logged_in": True,
-            "auth_status": "pass",
-            "current_balance": state.get("current_balance", "85.50"),
-            "is_suspended": state.get("is_suspended", False),
-        },
+        res_data,
         reference,
         language=lang,
     )

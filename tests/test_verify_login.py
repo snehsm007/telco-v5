@@ -198,3 +198,54 @@ def test_verify_login_unidentified_returns_error(monkeypatch) -> None:
     assert reply["error"] == "NOT_IDENTIFIED"
     assert "agent_action" in reply
     assert "mobile number" in reply["agent_action"].lower() or "10-digit" in reply["agent_action"].lower()
+
+
+def test_verify_login_pin_dtmf_input_registered(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={"account_id": "ACC-4321", "phone_last4": "0199", "auth_status": "code_sent", "auth_failure_count": 0.0}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    # French PIN verification sets dtmf_input_registered, input_mode, and French spoken_message
+    reply_fr = tool.verify_login(code="5921", method="pin", language="fr-CA")
+    assert reply_fr["status"] == "ok"
+    assert reply_fr["input_mode"] == "dtmf_keypad"
+    assert reply_fr["dtmf_input_registered"] is True
+    assert reply_fr["data"]["input_mode"] == "dtmf_keypad"
+    assert reply_fr["data"]["dtmf_input_registered"] is True
+    assert reply_fr["spoken_message"] == "Votre entrée DTMF au clavier a bien été enregistrée et votre identité est vérifiée."
+    assert reply_fr["agent_action"] == "Votre entrée DTMF au clavier a bien été enregistrée et votre identité est vérifiée."
+
+    # English PIN verification
+    session.state["auth_status"] = "code_sent"
+    session.state.pop("language", None)
+    reply_en = tool.verify_login(code="5921", method="pin", language="en-US")
+    assert reply_en["status"] == "ok"
+    assert reply_en["input_mode"] == "dtmf_keypad"
+    assert reply_en["dtmf_input_registered"] is True
+    assert reply_en["spoken_message"] == "Your keypad PIN entry has been registered and your identity is verified."
+
+    # Spanish PIN verification
+    session.state["auth_status"] = "code_sent"
+    session.state.pop("language", None)
+    reply_es = tool.verify_login(code="5921", method="pin", language="es-US")
+    assert reply_es["status"] == "ok"
+    assert reply_es["input_mode"] == "dtmf_keypad"
+    assert reply_es["dtmf_input_registered"] is True
+    assert reply_es["spoken_message"] == "Su entrada de PIN por teclado ha sido registrada y su identidad está verificada."
+
+    # 4-digit code with method="auto" also triggers dtmf keypad registration
+    session.state["auth_status"] = "code_sent"
+    session.state.pop("language", None)
+    reply_auto = tool.verify_login(code="5921", method="auto", language="fr-CA")
+    assert reply_auto["status"] == "ok"
+    assert reply_auto["input_mode"] == "dtmf_keypad"
+    assert reply_auto["dtmf_input_registered"] is True
+
+    # 6-digit OTP code does not trigger dtmf keypad registration
+    session.state["auth_status"] = "code_sent"
+    session.state.pop("language", None)
+    reply_otp = tool.verify_login(code="123456", method="auto", language="fr-CA")
+    assert reply_otp["status"] == "ok"
+    assert "input_mode" not in reply_otp.get("data", {})
+    assert "dtmf_input_registered" not in reply_otp.get("data", {})

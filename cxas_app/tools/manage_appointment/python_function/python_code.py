@@ -762,6 +762,9 @@ def error_reply(  # pragma: no cover
         "user_goal_fulfilled",
         "must_escalate_immediately",
         "requested_card_last4",
+        "agent_action",
+        "input_mode",
+        "dtmf_input_registered",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -807,6 +810,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "en-US": "For your security, I'll need to verify your identity. Please enter the 4-digit PIN you set up.",
         "fr-CA": "Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
         "es-US": "Por su seguridad, necesito verificar su identidad. Por favor ingrese el PIN de 4 dígitos que configuró.",
+    },
+    "pin_dtmf_registered": {
+        "en-US": "Your keypad PIN entry has been registered and your identity is verified.",
+        "fr-CA": "Votre entrée DTMF au clavier a bien été enregistrée et votre identité est vérifiée.",
+        "es-US": "Su entrada de PIN por teclado ha sido registrada y su identidad está verificada.",
     },
     "live_agent_handoff": {
         "en-US": "I'll connect you to a representative who can help. Please hold.",
@@ -1312,6 +1320,9 @@ def ok_reply(  # pragma: no cover
         "user_goal_fulfilled",
         "must_escalate_immediately",
         "requested_card_last4",
+        "agent_action",
+        "input_mode",
+        "dtmf_input_registered",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -1720,14 +1731,23 @@ def verify_login_impl(  # pragma: no cover
             state["card_last4"] = "7742"
         if not state.get("bank_last4"):
             state["bank_last4"] = "6789"
+        res_data = {
+            "verified": True,
+            "logged_in": True,
+            "auth_status": "pass",
+            "current_balance": state.get("current_balance", "85.50"),
+            "is_suspended": state.get("is_suspended", False),
+        }
+        method_low = str(method or "").strip().lower()
+        raw_code = normalize_code(code_val)
+        if method_low == "pin" or len(raw_code) == SECRET_PIN_LENGTH or state.get("login_channel") == "pin":
+            res_data["input_mode"] = "dtmf_keypad"
+            res_data["dtmf_input_registered"] = True
+            msg = spoken_line("pin_dtmf_registered", lang)
+            res_data["spoken_message"] = msg
+            res_data["agent_action"] = msg
         return ok_reply(
-            {
-                "verified": True,
-                "logged_in": True,
-                "auth_status": "pass",
-                "current_balance": state.get("current_balance", "85.50"),
-                "is_suspended": state.get("is_suspended", False),
-            },
+            res_data,
             reference,
             language=lang,
         )
@@ -1875,14 +1895,22 @@ def verify_login_impl(  # pragma: no cover
     else:
         state["login_channel"] = "sms"
 
+    res_data = {
+        "verified": True,
+        "logged_in": True,
+        "auth_status": "pass",
+        "current_balance": state.get("current_balance", "85.50"),
+        "is_suspended": state.get("is_suspended", False),
+    }
+    if method_low == "pin" or len(digits) == SECRET_PIN_LENGTH:
+        res_data["input_mode"] = "dtmf_keypad"
+        res_data["dtmf_input_registered"] = True
+        msg = spoken_line("pin_dtmf_registered", lang)
+        res_data["spoken_message"] = msg
+        res_data["agent_action"] = msg
+
     return ok_reply(
-        {
-            "verified": True,
-            "logged_in": True,
-            "auth_status": "pass",
-            "current_balance": state.get("current_balance", "85.50"),
-            "is_suspended": state.get("is_suspended", False),
-        },
+        res_data,
         reference,
         language=lang,
     )

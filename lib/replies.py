@@ -170,6 +170,9 @@ def ok_reply(
         "user_goal_fulfilled",
         "must_escalate_immediately",
         "requested_card_last4",
+        "agent_action",
+        "input_mode",
+        "dtmf_input_registered",
     ):
         if key in payload:
             reply[key] = payload[key]
@@ -225,6 +228,9 @@ def error_reply(
         "user_goal_fulfilled",
         "must_escalate_immediately",
         "requested_card_last4",
+        "agent_action",
+        "input_mode",
+        "dtmf_input_registered",
     ):
         if key in payload:
             reply[key] = payload[key]
