@@ -1487,13 +1487,6 @@ def lookup_account_impl(  # pragma: no cover
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
 
-    state["account_id"] = account["account_id"]
-    state["identified"] = True
-    state["lookup_by_name"] = bool(resolved_by_name)
-    state["customer_type"] = "residential"
-    state["business_flag"] = False
-    state["is_blocked"] = False
-
     raw_id_str = str(id_val or "")
     has_alpha = any(c.isalpha() for c in raw_id_str)
     caller_digits = normalize_code(id_val)
@@ -1509,11 +1502,21 @@ def lookup_account_impl(  # pragma: no cover
     )
     caller_gave_phone = not has_alpha and (len(norm_caller_digits) in (7, 10) or is_intl)
 
+    state["account_id"] = account["account_id"]
+    state["identified"] = True
+    if caller_gave_phone:
+        state["lookup_by_name"] = False
+    elif resolved_by_name:
+        state["lookup_by_name"] = True
+    state["customer_type"] = "residential"
+    state["business_flag"] = False
+    state["is_blocked"] = False
+
     if caller_gave_phone:
         p_l4 = norm_caller_digits[-4:]
         caller_p_l4 = p_l4
         linked_l4 = p_l4
-    elif resolved_by_name or resolved_by_email or not account.get("linked_mobile_last4"):
+    elif resolved_by_name or resolved_by_email or state.get("lookup_by_name") or not account.get("linked_mobile_last4"):
         p_l4 = ""
         caller_p_l4 = ""
         linked_l4 = ""
@@ -1672,26 +1675,25 @@ def send_login_code_impl(  # pragma: no cover
     norm_chan = "email" if str(channel or "").strip().lower() in {"email", "courriel", "correo"} else "sms"
 
     dest_last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
-    if not dest_last4 and "phone_last4" not in state and state.get("account_id"):
+    if not dest_last4 and "phone_last4" not in state and state.get("account_id") and not state.get("lookup_by_name"):
         acc = find_account(state.get("account_id"))
         if acc and acc.get("linked_mobile_last4"):
             dest_last4 = str(acc["linked_mobile_last4"])
 
     if norm_chan == "sms" and not dest_last4:
-        if not state.get("lookup_by_name"):
-            action_text = localized_text(
-                lang,
-                "Ask for the 10-digit mobile number on the account and call lookup_account with it to identify the account, then send the code to the mobile on file; or offer PIN authentication.",
-                "Demander le numéro de mobile à 10 chiffres au dossier et appeler lookup_account avec celui-ci pour identifier le compte, puis envoyer le code au mobile au dossier; ou proposer l'authentification par NIP.",
-                "Pida el número de móvil de 10 dígitos en la cuenta y llame a lookup_account con él para identificar la cuenta, luego envíe el código al móvil registrado; u ofrezca autenticación por PIN.",
-            )
-            return error_reply(
-                "NO_MOBILE_ON_FILE",
-                agent_action=action_text,
-                reference=reference,
-                language=lang,
-                data={"agent_action": action_text},
-            )
+        action_text = localized_text(
+            lang,
+            "Ask for the 10-digit mobile number on the account and call lookup_account with it to identify the account, then send the code to the mobile on file; or offer PIN authentication.",
+            "Demander le numéro de mobile à 10 chiffres au dossier et appeler lookup_account avec celui-ci pour identifier le compte, puis envoyer le code au mobile au dossier; ou proposer l'authentification par NIP.",
+            "Pida el número de móvil de 10 dígitos en la cuenta y llame a lookup_account con él para identificar la cuenta, luego envíe el código al móvil registrado; u ofrezca autenticación por PIN.",
+        )
+        return error_reply(
+            "NO_MOBILE_ON_FILE",
+            agent_action=action_text,
+            reference=reference,
+            language=lang,
+            data={"agent_action": action_text},
+        )
 
     state["login_channel"] = norm_chan
     state["login_code_sent"] = True

@@ -1433,13 +1433,6 @@ def lookup_account_impl(  # pragma: no cover
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
 
-    state["account_id"] = account["account_id"]
-    state["identified"] = True
-    state["lookup_by_name"] = bool(resolved_by_name)
-    state["customer_type"] = "residential"
-    state["business_flag"] = False
-    state["is_blocked"] = False
-
     raw_id_str = str(id_val or "")
     has_alpha = any(c.isalpha() for c in raw_id_str)
     caller_digits = normalize_code(id_val)
@@ -1455,11 +1448,21 @@ def lookup_account_impl(  # pragma: no cover
     )
     caller_gave_phone = not has_alpha and (len(norm_caller_digits) in (7, 10) or is_intl)
 
+    state["account_id"] = account["account_id"]
+    state["identified"] = True
+    if caller_gave_phone:
+        state["lookup_by_name"] = False
+    elif resolved_by_name:
+        state["lookup_by_name"] = True
+    state["customer_type"] = "residential"
+    state["business_flag"] = False
+    state["is_blocked"] = False
+
     if caller_gave_phone:
         p_l4 = norm_caller_digits[-4:]
         caller_p_l4 = p_l4
         linked_l4 = p_l4
-    elif resolved_by_name or resolved_by_email or not account.get("linked_mobile_last4"):
+    elif resolved_by_name or resolved_by_email or state.get("lookup_by_name") or not account.get("linked_mobile_last4"):
         p_l4 = ""
         caller_p_l4 = ""
         linked_l4 = ""
