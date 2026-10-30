@@ -254,3 +254,52 @@ def test_manage_mfa_settings_spoken_phrases_locales(monkeypatch) -> None:
     assert res_es["data"]["masked_backup_email"] == "u***@example.com"
     assert "comienza con 'u'" in res_es["data"]["spoken_message"]
     assert "comenzando con u" in res_es["data"]["agent_action"]
+
+
+def test_manage_mfa_settings_backup_email_mirrors_account_caller_david() -> None:
+    from lib.services import lookup_account_impl, manage_mfa_settings_impl, verify_login_impl
+
+    # Caller David Miller calls with on-file phone 2025550143
+    state: dict = {}
+    r_lookup1 = lookup_account_impl(
+        identifier="2025550143",
+        full_name="David Miller",
+        state=state,
+    )
+    assert r_lookup1["status"] == "ok"
+
+    # Authenticate with PIN
+    r_verify = verify_login_impl(code="1234", method="pin", state=state)
+    assert r_verify["status"] == "ok"
+
+    # Second lookup (as happened in VE-13 r2) with account_id
+    r_lookup2 = lookup_account_impl(identifier="A1001", state=state)
+    assert r_lookup2["status"] == "ok"
+
+    # Manage MFA settings with lost authenticator
+    r_mfa = manage_mfa_settings_impl(lost_authenticator=True, state=state)
+    assert r_mfa["status"] == "ok"
+    assert r_mfa["data"]["masked_backup_email"] == "d***@example.com"
+    assert "starting with 'd'" in r_mfa["data"]["spoken_message"]
+    assert "starting with d" in r_mfa["data"]["agent_action"]
+
+
+def test_manage_mfa_settings_backup_email_derives_from_active_account() -> None:
+    from lib.services import manage_mfa_settings_impl
+
+    # State with active account ACC-1002 but no contact_email initially set
+    state_taylor: dict = {"account_id": "ACC-1002", "auth_status": "pass"}
+    r_mfa = manage_mfa_settings_impl(lost_authenticator=True, state=state_taylor)
+    assert r_mfa["status"] == "ok"
+    assert r_mfa["data"]["masked_backup_email"] == "t***@example.com"
+    assert "starting with 't'" in r_mfa["data"]["spoken_message"]
+    assert state_taylor["contact_email"] == "taylor@example.com"
+
+    # Caller passes first_name in kwargs when requesting MFA disable
+    state_david: dict = {"account_id": "A1001", "auth_status": "pass"}
+    r_mfa_david = manage_mfa_settings_impl(lost_authenticator=True, state=state_david, first_name="David")
+    assert r_mfa_david["status"] == "ok"
+    assert r_mfa_david["data"]["masked_backup_email"] == "d***@example.com"
+    assert "starting with 'd'" in r_mfa_david["data"]["spoken_message"]
+    assert state_david["contact_email"] == "david@example.com"
+
