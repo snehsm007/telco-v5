@@ -82,6 +82,15 @@
       }
     },
     {
+      "name": "caller_provided_email",
+      "description": "Email address explicitly spoken or provided by the caller during the current session.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "auth_status",
       "description": "Login progress: none, code_sent, pass or locked. Only check_login_code or check_secret_pin sets pass.",
       "schema": {

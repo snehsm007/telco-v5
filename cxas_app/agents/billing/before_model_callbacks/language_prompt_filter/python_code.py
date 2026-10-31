@@ -266,7 +266,11 @@ def spoken_line(key: str, language: str | None = "en-US", *args: object, **slots
             template = template.replace("[confirmation_number]", val_str).replace("{confirmation_number}", val_str)
     return template
 
-def build_language_sheet(locale: str, agent_name: str = "router") -> str:  # pragma: no cover
+def build_language_sheet(  # pragma: no cover
+    locale: str,
+    agent_name: str = "router",
+    silent_turns: int = 0,
+) -> str:
     """Generate dynamic language sheet containing localized rules and verbatim lines."""
     loc = resolve_locale(locale)
     lang_name = WORLD_LANGUAGE_NAMES.get(loc, loc)
@@ -307,8 +311,115 @@ def build_language_sheet(locale: str, agent_name: str = "router") -> str:  # pra
             f'2. Pass language="{loc}" to tools; if a request cannot be completed accurately without language degradation, politely offer to connect a specialist via handover_to_person(reason="secondary_language_live_agent", language="{loc}").'
         )
 
+    if 1 <= silent_turns < 3:
+        lines.append(
+            f"Post-greeting consecutive silent turns: {silent_turns} of 3 — politely check in and ask the caller to repeat; do NOT call handover_to_person or end_session yet."
+        )
+    elif silent_turns >= 3:
+        lines.append(
+            f'Post-greeting consecutive silent turns: {silent_turns} of 3 — 3rd consecutive silent turn reached; speak verbatim live_agent_handoff and call handover_to_person(reason="no_input_escalation") and end_session(reason="no_input_escalation").'
+        )
+
     lines.append("</active_language_sheet>")
     return "\n".join(lines)
+
+_RE_QUOTED_AGENT_BLOCK = re.compile(  # pragma: no cover
+    r"<<<BEGIN_QUOTED_AGENT_CONTENT>>>[\s\S]*?<<<END_QUOTED_AGENT_CONTENT>>>"
+)
+
+_RE_RELAY_PREFIX = re.compile(  # pragma: no cover
+    r"^(?:For context|\s*\[[^\]]+\]\s*(?:said:|thought:|called tool |`[^`]*` tool returned result:))",
+    re.IGNORECASE,
+)
+
+def _is_relay_or_quoted_part(txt: str) -> bool:  # pragma: no cover
+    """Return True if txt is an ADK relay part, agent event, or quoted content block."""
+    s = txt.strip()
+    if not s:
+        return True
+    if _RE_RELAY_PREFIX.match(s):
+        return True
+    cleaned = _RE_QUOTED_AGENT_BLOCK.sub("", s).strip()
+    if not cleaned:
+        return True
+    if _RE_RELAY_PREFIX.match(cleaned):
+        return True
+    return False
+
+_SILENCE_TOKENS: frozenset[str] = frozenset(  # pragma: no cover
+    {
+        "[silence]",
+        "<silence>",
+        "(silence)",
+        "silence",
+        "no input",
+        "[no input]",
+    }
+)
+
+def _is_silent_utterance(stripped: str) -> bool:  # pragma: no cover
+    """Return True when stripped user text represents silence or punctuation-only noise."""
+    if not stripped:
+        return True
+    if stripped.lower() in _SILENCE_TOKENS:
+        return True
+    return bool(re.fullmatch(r"[.\s…\-_?!]+", stripped))
+
+def count_post_greeting_silent_turns(llm_request: Any) -> int:  # pragma: no cover
+    """Count consecutive post-greeting silent user turns from LLM request contents."""
+    contents = getattr(llm_request, "contents", None)
+    if not contents or not isinstance(contents, (list, tuple)):
+        return 0
+
+    agent_has_spoken = False
+    consecutive_silent = 0
+
+    for item in contents:
+        role = getattr(item, "role", "")
+        parts = getattr(item, "parts", None)
+        if role == "model":
+            if parts and isinstance(parts, (list, tuple)):
+                for part in parts:
+                    if getattr(part, "thought", False):
+                        continue
+                    txt = getattr(part, "text", None)
+                    if isinstance(txt, str) and txt.strip():
+                        agent_has_spoken = True
+                        break
+            elif isinstance(getattr(item, "text", None), str) and item.text.strip():
+                agent_has_spoken = True
+        elif role == "user":
+            user_texts: list[str] = []
+            if parts and isinstance(parts, (list, tuple)):
+                for part in parts:
+                    if getattr(part, "function_response", None) is not None:
+                        continue
+                    if getattr(part, "function_call", None) is not None:
+                        continue
+                    txt = getattr(part, "text", None)
+                    if txt is None or not isinstance(txt, str):
+                        continue
+                    s = txt.strip()
+                    if s and _is_relay_or_quoted_part(txt):
+                        continue
+                    user_texts.append(s)
+            elif isinstance(getattr(item, "text", None), str):
+                raw_t = item.text
+                s = raw_t.strip()
+                if not (s and _is_relay_or_quoted_part(raw_t)):
+                    user_texts.append(s)
+
+            if not user_texts:
+                continue
+
+            stripped = " ".join(t for t in user_texts if t).strip()
+            if _is_silent_utterance(stripped):
+                if agent_has_spoken:
+                    consecutive_silent += 1
+            elif any(c.isalnum() for c in stripped):
+                consecutive_silent = 0
+
+    return consecutive_silent
 
 _DP_EXPLICIT_SWITCH_TERMS: tuple[tuple[str, tuple[str, ...]], ...] = (  # pragma: no cover
     (
@@ -928,29 +1039,6 @@ def detect_utterance_language(utterance: str, current_language: str = "en-US") -
 
     return resolve_locale(current_language)
 
-_RE_QUOTED_AGENT_BLOCK = re.compile(  # pragma: no cover
-    r"<<<BEGIN_QUOTED_AGENT_CONTENT>>>[\s\S]*?<<<END_QUOTED_AGENT_CONTENT>>>"
-)
-
-_RE_RELAY_PREFIX = re.compile(  # pragma: no cover
-    r"^(?:For context|\s*\[[^\]]+\]\s*(?:said:|thought:|called tool |`[^`]*` tool returned result:))",
-    re.IGNORECASE,
-)
-
-def _is_relay_or_quoted_part(txt: str) -> bool:  # pragma: no cover
-    """Return True if txt is an ADK relay part, agent event, or quoted content block."""
-    s = txt.strip()
-    if not s:
-        return True
-    if _RE_RELAY_PREFIX.match(s):
-        return True
-    cleaned = _RE_QUOTED_AGENT_BLOCK.sub("", s).strip()
-    if not cleaned:
-        return True
-    if _RE_RELAY_PREFIX.match(cleaned):
-        return True
-    return False
-
 def extract_user_utterances(llm_request: Any) -> list[str]:  # pragma: no cover
     """Safely extract genuine user utterance strings from LLM request contents, skipping relay parts."""
     utterances: list[str] = []
@@ -1015,7 +1103,12 @@ def apply_language_prompt_filter(  # pragma: no cover
     state = getattr(callback_context, "state", None)
     state_dict = state if callable(getattr(state, "get", None)) else {}
     locale = detect_active_call_language(state_dict, llm_request)
-    sheet = build_language_sheet(locale, agent_name=agent_name)
+    silent_turns = count_post_greeting_silent_turns(llm_request)
+    sheet = build_language_sheet(
+        locale,
+        agent_name=agent_name,
+        silent_turns=silent_turns,
+    )
 
     config = getattr(llm_request, "config", None)
     if config is None:

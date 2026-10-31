@@ -126,3 +126,25 @@ def test_send_password_reset_sms_empty_phone_says_on_file(monkeypatch) -> None:
     assert reply["status"] == "ok"
     assert reply["data"]["destination_phone_last4"] == ""
     assert "on file" in reply["data"]["spoken_summary"]
+
+
+def test_send_password_reset_sms_echoed_account_id_after_name_lookup_preserves_empty_phone(
+    monkeypatch,
+) -> None:
+    from lib.services import lookup_account_impl
+
+    st: dict = {}
+    lookup_res = lookup_account_impl(full_name="Pat Sample", state=st)
+    assert lookup_res["status"] == "ok"
+    assert st["identified"] is True
+    assert st["phone_last4"] == ""
+
+    session = SimpleNamespace(state=st)
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.send_password_reset_sms(identifier=st["account_id"])
+    assert reply["status"] == "ok"
+    assert reply["data"]["destination_phone_last4"] == ""
+    assert "on file" in reply["data"]["spoken_summary"]
+    assert session.state["phone_last4"] == ""
+    assert session.state["lookup_by_name"] is True
+

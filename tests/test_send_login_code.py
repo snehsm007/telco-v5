@@ -278,3 +278,62 @@ def test_send_login_code_email_spoken_phrases_locales(monkeypatch) -> None:
     assert res_unid["status"] == "ok"
     assert session_unidentified_email.state["contact_email"] == "jl.dubois@example.fr"
     assert res_unid["data"]["masked_email"] == "j***@example.fr"
+
+
+def test_caller_provided_email_allows_direct_typo_confirmation_without_changing_spoken_or_mask(
+    monkeypatch,
+) -> None:
+    from lib.services import manage_mfa_settings_impl, update_contact_profile_impl
+
+    for locale, expected_phrase in (
+        ("en-US", "confirm directly that it was sent to pat.sample@customdomain.org"),
+        ("fr-CA", "confirmez directement l'envoi à pat.sample@customdomain.org"),
+        ("es-US", "confirme directamente el envío a pat.sample@customdomain.org"),
+    ):
+        session_c = SimpleNamespace(
+            state={
+                "account_id": "ACC-0198",
+                "contact_email": "user0198@example.com",
+                "auth_status": "none",
+            }
+        )
+        monkeypatch.setattr(tool, "context", session_c, raising=False)
+        res = tool.send_login_code(
+            identifier="pat.sample@customdomain.org",
+            channel="email",
+            language=locale,
+        )
+        assert res["status"] == "ok"
+        assert res["data"]["masked_email"] == "p***@customdomain.org"
+        assert "pat.sample@customdomain.org" not in res["data"]["spoken_message"]
+        assert expected_phrase in res["data"]["agent_action"]
+
+    # Also verify example.com caller-provided email and manage_mfa_settings already_sent branch
+    st_mfa: dict = {
+        "account_id": "ACC-0198",
+        "auth_status": "pass",
+        "logged_in": True,
+    }
+    upd_res = update_contact_profile_impl(email="pat.sample@example.com", state=st_mfa)
+    assert upd_res["status"] == "ok"
+    assert st_mfa["caller_provided_email"] == "pat.sample@example.com"
+
+    mfa1 = manage_mfa_settings_impl(
+        action="disable",
+        lost_authenticator=True,
+        email="pat.sample@customdomain.org",
+        state=st_mfa,
+    )
+    assert mfa1["status"] == "ok"
+    assert "confirm directly that it was sent to pat.sample@customdomain.org" in mfa1["agent_action"]
+
+    # Resend without passing email again preserves caller_provided_email action_text
+    mfa2 = manage_mfa_settings_impl(
+        action="disable",
+        lost_authenticator=True,
+        state=st_mfa,
+    )
+    assert mfa2["status"] == "ok"
+    assert mfa2.get("code_resent") is True
+    assert "confirm directly that it was sent to pat.sample@customdomain.org" in mfa2["agent_action"]
+

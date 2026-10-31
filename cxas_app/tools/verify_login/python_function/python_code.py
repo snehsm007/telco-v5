@@ -1705,11 +1705,8 @@ def lookup_account_impl(  # pragma: no cover
     prev_caller_l4 = str(state.get("caller_provided_phone_last4") or "").strip()
     prev_card_l4 = str(state.get("card_last4") or "").strip()
     prev_bank_l4 = str(state.get("bank_last4") or "").strip()
+    prev_lookup_by_name = bool(state.get("lookup_by_name"))
     same_account = bool(state.get("account_id")) and state.get("account_id") == account["account_id"]
-
-    if email_val:
-        account["email"] = email_val
-        state["contact_email"] = email_val
 
     if not same_account:
         # A different account: a login on the previous one must not carry over.
@@ -1724,18 +1721,18 @@ def lookup_account_impl(  # pragma: no cover
         state["login_attempts"] = 0
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
+        state["caller_provided_email"] = ""
         if state.get("account_id") and not is_keypad:
             state["dtmf_digits"] = ""
 
+    if email_val:
+        account["email"] = email_val
+        state["contact_email"] = email_val
+        if "@" in email_val:
+            state["caller_provided_email"] = email_val
+
     if is_keypad:
         state["dtmf_digits"] = normalize_code(dtmf_val) or normalize_code(id_val) or "keypad"
-
-    state["account_id"] = account["account_id"]
-    state["identified"] = True
-    state["lookup_by_name"] = bool(resolved_by_name)
-    state["customer_type"] = "residential"
-    state["business_flag"] = False
-    state["is_blocked"] = False
 
     raw_id_str = str(id_val or "")
     has_alpha = any(c.isalpha() for c in raw_id_str)
@@ -1751,6 +1748,16 @@ def lookup_account_impl(  # pragma: no cover
         and 10 <= len(caller_digits) <= 15
     )
     caller_gave_phone = not has_alpha and (len(norm_caller_digits) == 10 or is_intl)
+    keep_unconfirmed_name_lookup = bool(resolved_by_name) or (
+        same_account and prev_lookup_by_name and not caller_gave_phone
+    )
+
+    state["account_id"] = account["account_id"]
+    state["identified"] = True
+    state["lookup_by_name"] = keep_unconfirmed_name_lookup
+    state["customer_type"] = "residential"
+    state["business_flag"] = False
+    state["is_blocked"] = False
 
     if caller_gave_phone:
         p_l4 = norm_caller_digits[-4:]
@@ -1760,7 +1767,7 @@ def lookup_account_impl(  # pragma: no cover
         p_l4 = prev_phone_l4
         caller_p_l4 = prev_caller_l4
         linked_l4 = prev_phone_l4
-    elif resolved_by_name or resolved_by_email or (is_keypad and not caller_gave_phone) or not account.get("linked_mobile_last4"):
+    elif keep_unconfirmed_name_lookup or resolved_by_email or (is_keypad and not caller_gave_phone) or not account.get("linked_mobile_last4"):
         p_l4 = ""
         caller_p_l4 = ""
         linked_l4 = ""
@@ -1934,7 +1941,15 @@ def verify_login_impl(  # pragma: no cover
         or any(w in str(code_val or "").lower() for w in ("keypad", "dtmf", "clavier", "touch-tone"))
         or any(w in str(id_val or "").lower() for w in ("keypad", "dtmf", "clavier", "touch-tone"))
     )
-    if state.get("auth_status") == "pass" and state.get("logged_in") and not is_step_up:
+    if (
+        state.get("auth_status") == "pass"
+        and state.get("logged_in")
+        and not is_step_up
+        and (
+            _is_placeholder_code(code_val)
+            or login_code_accepted(normalize_code(code_val), attempts=0, max_attempts=MAX_LOGIN_ATTEMPTS)
+        )
+    ):
         if is_keypad_auth:
             state["dtmf_digits"] = normalize_code(dtmf_val) or normalize_code(code_val) or "keypad"
         acc = find_account(account_id or state.get("account_id") or id_val)

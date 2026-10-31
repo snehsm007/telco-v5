@@ -322,5 +322,50 @@ def test_lookup_account_keypad_and_same_account_state_preservation(monkeypatch) 
         assert lookup_account_impl(identifier=ref, state=st_r)["status"] == "ok"
 
 
+def test_lookup_by_name_preserved_across_echoed_account_id_relookup() -> None:
+    from lib.services import lookup_account_impl, send_login_code_impl
+
+    st: dict = {}
+    res_name = lookup_account_impl(full_name="Pat Sample", state=st)
+    assert res_name["status"] == "ok"
+    assert st["lookup_by_name"] is True
+    assert st["phone_last4"] == ""
+    assert st["caller_provided_phone_last4"] == ""
+
+    # Echoing the resolved account_id must not clobber lookup_by_name or phone_last4=""
+    account_id = st["account_id"]
+    res_echo = lookup_account_impl(identifier=account_id, state=st)
+    assert res_echo["status"] == "ok"
+    assert st["lookup_by_name"] is True
+    assert st["phone_last4"] == ""
+    assert st["caller_provided_phone_last4"] == ""
+
+    res_otp = send_login_code_impl(channel="sms", identifier=account_id, state=st)
+    assert res_otp["status"] == "ok"
+    assert res_otp["destination_last4"] == ""
+    assert st["lookup_by_name"] is True
+    assert st["phone_last4"] == ""
+
+    # Providing an explicit 10-digit phone updates phone_last4 and clears unconfirmed name lookup
+    res_phone = lookup_account_impl(identifier="202-555-0143", state=st)
+    assert res_phone["status"] == "ok"
+    assert st["lookup_by_name"] is False
+    assert st["phone_last4"] == "0143"
+
+
+def test_caller_provided_email_tracked_and_reset_on_different_account() -> None:
+    st: dict = {}
+    res1 = lookup_account_impl(identifier="A1001", email="pat.sample@custommail.org", state=st)
+    assert res1["status"] == "ok"
+    assert st["caller_provided_email"] == "pat.sample@custommail.org"
+
+    # Switching to a different account without email resets caller_provided_email
+    res2 = lookup_account_impl(identifier="555-012-3456", state=st)
+    assert res2["status"] == "ok"
+    assert st["account_id"] == "ACC-3456"
+    assert st["caller_provided_email"] == ""
+
+
+
 
 

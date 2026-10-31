@@ -642,3 +642,95 @@ def test_detect_active_call_language_explicit_switch_from_french() -> None:
     # Locked French switches to English on explicit switch request
     assert detect_active_call_language({"language": "fr-CA"}, req) == "en-US"
 
+
+def test_count_post_greeting_silent_turns_and_language_sheet_injection() -> None:
+    from lib.dynamic_prompt import count_post_greeting_silent_turns
+
+    # 1. Empty / missing contents -> 0, and build_language_sheet(silent_turns=0) has no silent line
+    assert count_post_greeting_silent_turns(SimpleNamespace(contents=None)) == 0
+    base_sheet = build_language_sheet("en-US", agent_name="router", silent_turns=0)
+    assert "Post-greeting consecutive silent turns:" not in base_sheet
+    assert base_sheet == build_language_sheet("en-US", agent_name="router")
+
+    # 2. Pre-greeting '...' in user_first simulation does NOT count as a silent strike
+    req_pre = SimpleNamespace(
+        config=SimpleNamespace(system_instruction="Router base."),
+        contents=[
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="...")]),
+        ],
+    )
+    assert count_post_greeting_silent_turns(req_pre) == 0
+
+    # Pure function_call model turn + pure function_response user turn do not count
+    req_tool_only = SimpleNamespace(
+        contents=[
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="...")]),
+            SimpleNamespace(
+                role="model",
+                parts=[
+                    SimpleNamespace(text="thinking", thought=True),
+                    SimpleNamespace(text=None, function_call=SimpleNamespace(name="lookup_account")),
+                ],
+            ),
+            SimpleNamespace(
+                role="user",
+                parts=[SimpleNamespace(text=None, function_response=SimpleNamespace(response={}))],
+            ),
+        ]
+    )
+    assert count_post_greeting_silent_turns(req_tool_only) == 0
+
+    # 3. Two post-greeting silent turns after pre-greeting '...' -> 2 of 3 (do NOT escalate yet)
+    req_two = SimpleNamespace(
+        config=SimpleNamespace(system_instruction="Router base."),
+        contents=[
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="...")]),
+            SimpleNamespace(role="model", parts=[SimpleNamespace(text="Welcome to Telco.")]),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="...")]),
+            SimpleNamespace(role="model", parts=[SimpleNamespace(text="Could you repeat that?")]),
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(text="For context: prior event"),
+                    SimpleNamespace(text="[silence]"),
+                ],
+            ),
+        ],
+    )
+    assert count_post_greeting_silent_turns(req_two) == 2
+    state_ro: dict[str, Any] = {}
+    apply_language_prompt_filter(SimpleNamespace(state=state_ro), req_two, agent_name="router")
+    assert state_ro == {}
+    assert (
+        "Post-greeting consecutive silent turns: 2 of 3 — politely check in and ask the caller to repeat; do NOT call handover_to_person or end_session yet."
+        in req_two.config.system_instruction
+    )
+
+    # 4. Third post-greeting silent turn -> 3 of 3 (escalate with no_input_escalation)
+    req_three = SimpleNamespace(
+        config=SimpleNamespace(system_instruction="Router base."),
+        contents=[
+            *req_two.contents,
+            SimpleNamespace(role="model", text="Are you still there?"),
+            SimpleNamespace(role="user", text=""),
+        ],
+    )
+    assert count_post_greeting_silent_turns(req_three) == 3
+    apply_language_prompt_filter(SimpleNamespace(state=state_ro), req_three, agent_name="router")
+    assert state_ro == {}
+    assert (
+        'Post-greeting consecutive silent turns: 3 of 3 — 3rd consecutive silent turn reached; speak verbatim live_agent_handoff and call handover_to_person(reason="no_input_escalation") and end_session(reason="no_input_escalation").'
+        in req_three.config.system_instruction
+    )
+
+    # 5. Alphanumeric caller speech resets consecutive silent counter back to 0
+    req_recovered = SimpleNamespace(
+        contents=[
+            *req_two.contents,
+            SimpleNamespace(role="model", parts=[SimpleNamespace(text="Are you still there?")]),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="555-010-4455")]),
+        ]
+    )
+    assert count_post_greeting_silent_turns(req_recovered) == 0
+
+

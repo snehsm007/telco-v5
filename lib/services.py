@@ -871,11 +871,8 @@ def lookup_account_impl(
     prev_caller_l4 = str(state.get("caller_provided_phone_last4") or "").strip()
     prev_card_l4 = str(state.get("card_last4") or "").strip()
     prev_bank_l4 = str(state.get("bank_last4") or "").strip()
+    prev_lookup_by_name = bool(state.get("lookup_by_name"))
     same_account = bool(state.get("account_id")) and state.get("account_id") == account["account_id"]
-
-    if email_val:
-        account["email"] = email_val
-        state["contact_email"] = email_val
 
     if not same_account:
         # A different account: a login on the previous one must not carry over.
@@ -890,18 +887,18 @@ def lookup_account_impl(
         state["login_attempts"] = 0
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
+        state["caller_provided_email"] = ""
         if state.get("account_id") and not is_keypad:
             state["dtmf_digits"] = ""
 
+    if email_val:
+        account["email"] = email_val
+        state["contact_email"] = email_val
+        if "@" in email_val:
+            state["caller_provided_email"] = email_val
+
     if is_keypad:
         state["dtmf_digits"] = normalize_code(dtmf_val) or normalize_code(id_val) or "keypad"
-
-    state["account_id"] = account["account_id"]
-    state["identified"] = True
-    state["lookup_by_name"] = bool(resolved_by_name)
-    state["customer_type"] = "residential"
-    state["business_flag"] = False
-    state["is_blocked"] = False
 
     raw_id_str = str(id_val or "")
     has_alpha = any(c.isalpha() for c in raw_id_str)
@@ -917,6 +914,16 @@ def lookup_account_impl(
         and 10 <= len(caller_digits) <= 15
     )
     caller_gave_phone = not has_alpha and (len(norm_caller_digits) == 10 or is_intl)
+    keep_unconfirmed_name_lookup = bool(resolved_by_name) or (
+        same_account and prev_lookup_by_name and not caller_gave_phone
+    )
+
+    state["account_id"] = account["account_id"]
+    state["identified"] = True
+    state["lookup_by_name"] = keep_unconfirmed_name_lookup
+    state["customer_type"] = "residential"
+    state["business_flag"] = False
+    state["is_blocked"] = False
 
     if caller_gave_phone:
         p_l4 = norm_caller_digits[-4:]
@@ -926,7 +933,7 @@ def lookup_account_impl(
         p_l4 = prev_phone_l4
         caller_p_l4 = prev_caller_l4
         linked_l4 = prev_phone_l4
-    elif resolved_by_name or resolved_by_email or (is_keypad and not caller_gave_phone) or not account.get("linked_mobile_last4"):
+    elif keep_unconfirmed_name_lookup or resolved_by_email or (is_keypad and not caller_gave_phone) or not account.get("linked_mobile_last4"):
         p_l4 = ""
         caller_p_l4 = ""
         linked_l4 = ""
@@ -1061,6 +1068,10 @@ def _resolve_session_email_and_mask(
 
     first_char = email_on_file[:1].lower()
     masked = f"{first_char}***@{domain}"
+    is_caller_email = bool(
+        email_on_file
+        and str(state.get("caller_provided_email") or "").strip().lower() == email_on_file.lower()
+    )
 
     if not domain.lower().endswith("example.com"):
         spoken = localized_text(
@@ -1069,12 +1080,20 @@ def _resolve_session_email_and_mask(
             f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » à {domain} — veuillez me le lire.",
             f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}' en {domain}; por favor léamelo.",
         )
-        action_text = localized_text(
-            lang,
-            f"Confirm the code was sent to the email starting with '{first_char}' at {domain}; never spell the masked form.",
-            f"Confirmez que le code a été envoyé au courriel commençant par « {first_char} » à {domain}; ne jamais épeler la forme masquée.",
-            f"Confirme que el código se envió al correo que comienza con '{first_char}' en {domain}; nunca deletree el formato enmascarado.",
-        )
+        if is_caller_email:
+            action_text = localized_text(
+                lang,
+                f"Confirm the 6-digit verification code was sent to the email starting with '{first_char}' at {domain} (if the caller asks to confirm the full email address they provided to check for typos, confirm directly that it was sent to {email_on_file} without spelling asterisks), and ask the caller to read back the 6-digit code without volunteering a transfer.",
+                f"Confirmez que le code de vérification à 6 chiffres a été envoyé au courriel commençant par « {first_char} » à {domain} (si le client demande de confirmer l'adresse complète qu'il a fournie, confirmez directement l'envoi à {email_on_file} sans épeler d'astérisques), et demandez au client de lire le code à 6 chiffres sans proposer de transfert.",
+                f"Confirme que el código de verificación de 6 dígitos se envió al correo que comienza con '{first_char}' en {domain} (si el cliente pide confirmar la dirección completa que proporcionó, confirme directamente el envío a {email_on_file} sin deletrear asteriscos), y pida al cliente que lea el código de 6 dígitos sin ofrecer transferencia.",
+            )
+        else:
+            action_text = localized_text(
+                lang,
+                f"Confirm the code was sent to the email starting with '{first_char}' at {domain}; never spell the masked form.",
+                f"Confirmez que le code a été envoyé au courriel commençant par « {first_char} » à {domain}; ne jamais épeler la forme masquée.",
+                f"Confirme que el código se envió al correo que comienza con '{first_char}' en {domain}; nunca deletree el formato enmascarado.",
+            )
         return email_on_file, first_char, domain, masked, spoken, action_text
 
     spoken = localized_text(
@@ -1083,12 +1102,20 @@ def _resolve_session_email_and_mask(
         f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez me le lire.",
         f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor léamelo.",
     )
-    action_text = localized_text(
-        lang,
-        f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
-        f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
-        f"Mencione la dirección únicamente comme 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
-    )
+    if is_caller_email:
+        action_text = localized_text(
+            lang,
+            f"Confirm the 6-digit verification code was sent to the email starting with '{first_char}' at {domain} (if the caller asks to confirm the full email address they provided to check for typos, confirm directly that it was sent to {email_on_file} without spelling asterisks), and ask the caller to read back the 6-digit code without volunteering a transfer.",
+            f"Confirmez que le code de vérification à 6 chiffres a été envoyé au courriel commençant par « {first_char} » à {domain} (si le client demande de confirmer l'adresse complète qu'il a fournie, confirmez directement l'envoi à {email_on_file} sans épeler d'astérisques), et demandez au client de lire le code à 6 chiffres sans proposer de transfert.",
+            f"Confirme que el código de verificación de 6 dígitos se envió al correo que comienza con '{first_char}' en {domain} (si el cliente pide confirmar la dirección completa que proporcionó, confirme directamente el envío a {email_on_file} sin deletrear asteriscos), y pida al cliente que lea el código de 6 dígitos sin ofrecer transferencia.",
+        )
+    else:
+        action_text = localized_text(
+            lang,
+            f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
+            f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
+            f"Mencione la dirección únicamente comme 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
+        )
     return email_on_file, first_char, domain, masked, spoken, action_text
 
 
@@ -1151,11 +1178,13 @@ def send_login_code_impl(
                 return l_res
     if caller_email and "@" in caller_email:
         state["contact_email"] = caller_email
+        state["caller_provided_email"] = caller_email
         if not state.get("account_id"):
             l_res = lookup_account_impl(email=caller_email, language=lang, state=state)
             if l_res.get("status") == "error":
                 return l_res
         state["contact_email"] = caller_email
+        state["caller_provided_email"] = caller_email
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -1377,7 +1406,15 @@ def verify_login_impl(
         or any(w in str(code_val or "").lower() for w in ("keypad", "dtmf", "clavier", "touch-tone"))
         or any(w in str(id_val or "").lower() for w in ("keypad", "dtmf", "clavier", "touch-tone"))
     )
-    if state.get("auth_status") == "pass" and state.get("logged_in") and not is_step_up:
+    if (
+        state.get("auth_status") == "pass"
+        and state.get("logged_in")
+        and not is_step_up
+        and (
+            _is_placeholder_code(code_val)
+            or login_code_accepted(normalize_code(code_val), attempts=0, max_attempts=MAX_LOGIN_ATTEMPTS)
+        )
+    ):
         if is_keypad_auth:
             state["dtmf_digits"] = normalize_code(dtmf_val) or normalize_code(code_val) or "keypad"
         acc = find_account(account_id or state.get("account_id") or id_val)
@@ -4018,9 +4055,13 @@ def send_password_reset_sms_impl(
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
 
-        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
-        if l_res.get("status") == "error":
-            return l_res
+        if not (
+            state.get("identified")
+            and str(id_val or "").strip().upper() == str(state.get("account_id") or "").strip().upper()
+        ):
+            l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+            if l_res.get("status") == "error":
+                return l_res
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -4121,9 +4162,11 @@ def manage_mfa_settings_impl(
         lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state, full_name=caller_fn)
     if caller_email and "@" in caller_email:
         state["contact_email"] = caller_email
+        state["caller_provided_email"] = caller_email
         if not state.get("account_id"):
             lookup_account_impl(email=caller_email, language=lang, state=state, full_name=caller_fn)
         state["contact_email"] = caller_email
+        state["caller_provided_email"] = caller_email
 
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("manage_mfa_settings", account_id, str(action))
@@ -4220,6 +4263,10 @@ def manage_mfa_settings_impl(
             already_sent = bool(state.get("mfa_email_code_sent")) and not bool(caller_email and "@" in caller_email)
             state["mfa_email_code_sent"] = True
             email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
+            is_caller_email = bool(
+                email_on_file
+                and str(state.get("caller_provided_email") or "").strip().lower() == email_on_file.lower()
+            )
             if already_sent:
                 if first_char:
                     spoken = localized_text(
@@ -4228,12 +4275,13 @@ def manage_mfa_settings_impl(
                         f"J'ai renvoyé le code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez vérifier votre boîte de réception et me le lire.",
                         f"He reenviado el código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor revise su bandeja de entrada y léamelo.",
                     )
-                    action_text = localized_text(
-                        lang,
-                        f"Confirm that the 6-digit verification code was resent to the email address on file starting with '{first_char}' and ask the caller to read it back.",
-                        f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier commençant par « {first_char} » et demandez au client de vous le lire.",
-                        f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado que comienza con '{first_char}' y pídale a quien llama que se lo lea.",
-                    )
+                    if not is_caller_email:
+                        action_text = localized_text(
+                            lang,
+                            f"Confirm that the 6-digit verification code was resent to the email address on file starting with '{first_char}' and ask the caller to read it back.",
+                            f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier commençant par « {first_char} » et demandez au client de vous le lire.",
+                            f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado que comienza con '{first_char}' y pídale a quien llama que se lo lea.",
+                        )
                 else:
                     spoken = localized_text(
                         lang,
@@ -4603,7 +4651,10 @@ def update_contact_profile_impl(
 
     upd: dict[str, Any] = {}
     if email:
-        state["contact_email"] = str(email).strip()
+        clean_email = str(email).strip()
+        state["contact_email"] = clean_email
+        if "@" in clean_email:
+            state["caller_provided_email"] = clean_email
         upd["email"] = state["contact_email"]
     if s_addr:
         state["service_address"] = s_addr

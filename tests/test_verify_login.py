@@ -234,3 +234,21 @@ def test_verify_login_scopes_current_active_plans_by_browsed_plan_category(monke
     assert r_second["status"] == "ok"
     assert r_second["data"]["current_active_plans"]["mobility"]["name"] == "Movilidad Inicial 10 GB"
 
+
+def test_verify_login_does_not_short_circuit_pass_on_always_wrong_sentinel_code(
+    monkeypatch,
+) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "logged_in": True,
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    r_wrong = tool.verify_login(code="9999")
+    assert r_wrong["status"] == "error"
+    assert r_wrong["error"] == "WRONG_CODE"
+    assert session.state["logged_in"] is False
+
+
