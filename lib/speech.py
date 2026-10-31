@@ -198,6 +198,14 @@ def clean_speech(text: str) -> str:
     return mask_long_numbers(strip_markdown(text))
 
 
+_CALLER_EMAIL_DEST_RE = re.compile(
+    r"\b(?:your|the)\s+(?:backup\s+)?e-?mail\s+address\s+on\s+file\b"
+    r"|\b(?:votre|l['’])\s*adresse\s+courriel\s+(?:de\s+secours\s+)?au\s+dossier\b"
+    r"|\b(?:su|el)\s+correo\s+electr[oó]nico\s+(?:de\s+respaldo\s+)?registrado\b",
+    re.IGNORECASE,
+)
+
+
 def clean_agent_speech(
     text: str,
     session_params: Any = None,
@@ -212,6 +220,16 @@ def clean_agent_speech(
     cleaned = clean_speech(text)
     if not callable(getattr(session_params, "get", None)):
         return cleaned
+    caller_email = str(session_params.get("caller_provided_email") or "").strip()
+    contact_email = str(session_params.get("contact_email") or "").strip()
+    if "@" in caller_email and caller_email.lower() == contact_email.lower():
+        cleaned = _CALLER_EMAIL_DEST_RE.sub(lambda _: caller_email, cleaned)
+        cleaned = re.sub(
+            rf"{re.escape(caller_email)}\s+(?:starting\s+with|commençant\s+par|que\s+comienza\s+con)\s+(?:'|«\s*)\w(?:'|\s*»)",
+            lambda _: caller_email,
+            cleaned,
+            flags=re.IGNORECASE,
+        )
     caller_last4 = str(session_params.get("caller_provided_phone_last4") or "").strip()
     profile_last4 = str(session_params.get("phone_last4") or "").strip()
     card_last4 = str(session_params.get("card_last4") or "").strip()

@@ -492,4 +492,84 @@ def test_send_login_code_email_fallback_after_prior_code_invites_caller_email(mo
         assert expected_spoken_part not in res_real["data"]["spoken_message"]
 
 
+def test_send_login_code_sms_resend_acknowledgement() -> None:
+    from lib.copy import spoken_line
+    from lib.services import send_login_code_impl
 
+    # (a) & (b): first SMS send -> no code_resent and verbatim id_verification_otp;
+    # second SMS call to same number -> code_resent is True and spoken contains "resent" + last4
+    st_pre: dict = {
+        "account_id": "ACC-1001",
+        "identified": True,
+        "phone_last4": "0199",
+        "auth_status": "none",
+    }
+    first = send_login_code_impl(identifier="514-555-0199", channel="sms", state=st_pre)
+    assert first["status"] == "ok"
+    assert "code_resent" not in first
+    assert "code_resent" not in first["data"]
+    assert first["spoken_message"] == spoken_line("id_verification_otp", "en-US")
+
+    second = send_login_code_impl(identifier="514-555-0199", channel="sms", state=st_pre)
+    assert second["status"] == "ok"
+    assert second.get("code_resent") is True
+    assert second["data"].get("code_resent") is True
+    assert "resent" in second["spoken_message"].lower()
+    assert "0199" in second["spoken_message"]
+    assert "agent_action" in second and "email address" in second["agent_action"]
+
+    # (c) second call with a NEW 10-digit number -> no code_resent
+    st_new_num: dict = {
+        "account_id": "ACC-1001",
+        "identified": True,
+        "phone_last4": "0199",
+        "auth_status": "none",
+    }
+    send_login_code_impl(identifier="514-555-0199", channel="sms", state=st_new_num)
+    diff_num = send_login_code_impl(identifier="514-555-0143", channel="sms", state=st_new_num)
+    assert diff_num["status"] == "ok"
+    assert "code_resent" not in diff_num
+    assert "code_resent" not in diff_num["data"]
+    assert diff_num["spoken_message"] == spoken_line("id_verification_otp", "en-US")
+
+    # (d) post-login shape with mfa_enabled=True, preferred_mfa_channel="sms"
+    st_post: dict = {
+        "account_id": "ACC-1001",
+        "identified": True,
+        "auth_status": "pass",
+        "logged_in": True,
+        "mfa_enabled": True,
+        "preferred_mfa_channel": "sms",
+    }
+    mfa_first = send_login_code_impl(
+        channel="sms",
+        identifier="+1-555-010-8842",
+        state=st_post,
+    )
+    assert mfa_first["status"] == "ok"
+    assert "code_resent" not in mfa_first
+
+    mfa_second = send_login_code_impl(
+        channel="sms",
+        identifier="+1-555-010-8842",
+        resend=True,
+        state=st_post,
+    )
+    assert mfa_second["status"] == "ok"
+    assert mfa_second.get("code_resent") is True
+    assert mfa_second["data"].get("code_resent") is True
+    assert "8842" in mfa_second["spoken_message"]
+
+    # (e) fr-CA variant contains "renvoyé"
+    st_fr: dict = {
+        "account_id": "ACC-1001",
+        "identified": True,
+        "phone_last4": "0199",
+        "auth_status": "none",
+    }
+    send_login_code_impl(channel="sms", language="fr-CA", state=st_fr)
+    fr_second = send_login_code_impl(channel="sms", resend=True, language="fr-CA", state=st_fr)
+    assert fr_second["status"] == "ok"
+    assert fr_second.get("code_resent") is True
+    assert "renvoyé" in fr_second["spoken_message"]
+    assert "0199" in fr_second["spoken_message"]

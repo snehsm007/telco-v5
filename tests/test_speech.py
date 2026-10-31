@@ -542,3 +542,89 @@ def test_speech_transfer_last4_and_long_number_preservation() -> None:
         == "Le transfert du numéro se terminant par 0199 est en attente."
     )
 
+
+def test_clean_agent_speech_caller_email_destination_naming() -> None:
+    params_match = {
+        "caller_provided_email": "david.miller.work@email.com",
+        "contact_email": "david.miller.work@email.com",
+    }
+    # (a) en/fr/es substitution when caller_provided_email == contact_email
+    assert (
+        clean_agent_speech(
+            "For your security, I just sent a 6-digit verification code to your backup email address on file — please read it back to me.",
+            params_match,
+        )
+        == "For your security, I just sent a 6-digit verification code to david.miller.work@email.com — please read it back to me."
+    )
+    assert (
+        clean_agent_speech(
+            "Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à votre adresse courriel de secours au dossier — veuillez me le lire.",
+            params_match,
+        )
+        == "Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à david.miller.work@email.com — veuillez me le lire."
+    )
+    assert (
+        clean_agent_speech(
+            "Por su seguridad, acabo de enviar un código de verificación de 6 dígitos a su correo electrónico de respaldo registrado; por favor léamelo.",
+            params_match,
+        )
+        == "Por su seguridad, acabo de enviar un código de verificación de 6 dígitos a david.miller.work@email.com; por favor léamelo."
+    )
+
+    # (b) no substitution when caller_provided_email is empty or differs from contact_email
+    en_line = "For your security, I just sent a 6-digit verification code to your backup email address on file — please read it back to me."
+    assert (
+        clean_agent_speech(
+            en_line,
+            {"caller_provided_email": "", "contact_email": "david.miller.work@email.com"},
+        )
+        == en_line
+    )
+    assert (
+        clean_agent_speech(
+            en_line,
+            {
+                "caller_provided_email": "other@email.com",
+                "contact_email": "david.miller.work@email.com",
+            },
+        )
+        == en_line
+    )
+
+    # (c) initial-letter tail ("starting with 'd'", French/Spanish variants) is removed
+    assert (
+        clean_agent_speech(
+            "For your security, I just sent a 6-digit verification code to the email address on file starting with 'd' — please read it back to me.",
+            params_match,
+        )
+        == "For your security, I just sent a 6-digit verification code to david.miller.work@email.com — please read it back to me."
+    )
+    assert (
+        clean_agent_speech(
+            "Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « d » — veuillez me le lire.",
+            params_match,
+        )
+        == "Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à david.miller.work@email.com — veuillez me le lire."
+    )
+    assert (
+        clean_agent_speech(
+            "Por su seguridad, acabo de enviar un código de verificación de 6 dígitos a el correo electrónico registrado que comienza con 'd'; por favor léamelo.",
+            params_match,
+        )
+        == "Por su seguridad, acabo de enviar un código de verificación de 6 dígitos a david.miller.work@email.com; por favor léamelo."
+    )
+
+    # (d) email containing digits survives intact
+    params_digits = {
+        "caller_provided_email": "j.miller82@emailprovider.com",
+        "contact_email": "j.miller82@emailprovider.com",
+        "phone_last4": "0143",
+        "caller_provided_phone_last4": "0199",
+    }
+    assert (
+        clean_agent_speech(
+            "For your security, I just sent a 6-digit verification code to your backup email address on file — please read it back to me.",
+            params_digits,
+        )
+        == "For your security, I just sent a 6-digit verification code to j.miller82@emailprovider.com — please read it back to me."
+    )

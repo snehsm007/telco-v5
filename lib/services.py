@@ -1196,6 +1196,7 @@ def send_login_code_impl(
         and state.get("auth_status") == "pass"
         and state.get("logged_in")
     )
+    prev_caller_l4 = state.get("caller_provided_phone_last4")
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -1338,6 +1339,7 @@ def send_login_code_impl(
 
     prior_mfa_email_sent = bool(state.get("mfa_email_code_sent"))
     prior_code_sent = bool(state.get("login_code_sent"))
+    prev_login_channel = str(state.get("login_channel") or "")
     if already_logged_in and norm_chan == "sms":
         state["login_channel"] = "mfa_sms"
         if pending_lost_stepup:
@@ -1420,13 +1422,48 @@ def send_login_code_impl(
             reply["code_resent"] = True
         return reply
 
-    spoken = spoken_line("id_verification_otp", lang)
+    same_or_no_phone = (not caller_gave_phone_to_send) or (
+        str(state.get("caller_provided_phone_last4") or "") == str(prev_caller_l4 or "")
+    )
+    sms_resent = bool(
+        prior_code_sent
+        and prev_login_channel in ("sms", "mfa_sms")
+        and same_or_no_phone
+    )
+    if sms_resent:
+        if dest_last4:
+            spoken = localized_text(
+                lang,
+                f"I have resent the 6-digit code to the mobile number ending in {dest_last4} — please read it back to me.",
+                f"J'ai renvoyé le code à 6 chiffres au numéro mobile se terminant par {dest_last4} — veuillez me le lire.",
+                f"He reenviado el código de 6 dígitos al número móvil que termina en {dest_last4}; por favor léamelo.",
+            )
+        else:
+            spoken = localized_text(
+                lang,
+                "I have resent the 6-digit code to that number — please read it back to me.",
+                "J'ai renvoyé le code à 6 chiffres à ce numéro — veuillez me le lire.",
+                "He reenviado el código de 6 dígitos a ese número; por favor léamelo.",
+            )
+        sms_action = localized_text(
+            lang,
+            "Confirm the resend; if the code still does not arrive, offer to send it to the caller's email address or verify with their 4-digit PIN instead.",
+            "Confirmez le renvoi; si le code n'arrive toujours pas, proposez de l'envoyer à l'adresse courriel du client ou de vérifier avec son NIP à 4 chiffres.",
+            "Confirme el reenvío; si el código aún no llega, ofrezca enviarlo al correo electrónico del cliente o verificar con su PIN de 4 dígitos.",
+        )
+    else:
+        spoken = spoken_line("id_verification_otp", lang)
+        sms_action = ""
+    sms_data: dict[str, Any] = {
+        "sent": True,
+        "already_verified": False,
+        "destination_last4": dest_last4,
+    }
+    if sms_resent:
+        sms_data["code_resent"] = True
+        sms_data["agent_action"] = sms_action
     reply = ok_reply(
-        {
-            "sent": True,
-            "already_verified": False,
-            "destination_last4": dest_last4,
-        },
+        sms_data,
         reference,
         language=lang,
     )
@@ -1435,6 +1472,9 @@ def send_login_code_impl(
     reply["destination_last4"] = dest_last4
     reply["expires_in_minutes"] = 10
     reply["spoken_message"] = spoken
+    if sms_resent:
+        reply["code_resent"] = True
+        reply["agent_action"] = sms_action
     return reply
 
 

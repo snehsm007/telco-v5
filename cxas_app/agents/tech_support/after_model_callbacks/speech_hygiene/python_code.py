@@ -131,6 +131,13 @@ NUMBER_RUN_RE = re.compile(r"\(?\d+\)?(?:[-.]\(?\d+\)?|\s\(?\d{3,}\)?)*")  # pra
 
 SPEAKABLE_NUMBERS: frozenset[str] = frozenset()  # pragma: no cover
 
+_CALLER_EMAIL_DEST_RE = re.compile(  # pragma: no cover
+    r"\b(?:your|the)\s+(?:backup\s+)?e-?mail\s+address\s+on\s+file\b"
+    r"|\b(?:votre|l['’])\s*adresse\s+courriel\s+(?:de\s+secours\s+)?au\s+dossier\b"
+    r"|\b(?:su|el)\s+correo\s+electr[oó]nico\s+(?:de\s+respaldo\s+)?registrado\b",
+    re.IGNORECASE,
+)
+
 _LAST4_CONTEXT_RE = re.compile(  # pragma: no cover
     r"((?:ending\s+in|terminant\s+par|terminad?[oa]?\s+en|number\s+is|num[eé]ro\s+est|n[uú]mero\s+es)\s+)(\d{4})\b",
     re.IGNORECASE,
@@ -292,6 +299,16 @@ def clean_agent_speech(  # pragma: no cover
     cleaned = clean_speech(text)
     if not callable(getattr(session_params, "get", None)):
         return cleaned
+    caller_email = str(session_params.get("caller_provided_email") or "").strip()
+    contact_email = str(session_params.get("contact_email") or "").strip()
+    if "@" in caller_email and caller_email.lower() == contact_email.lower():
+        cleaned = _CALLER_EMAIL_DEST_RE.sub(lambda _: caller_email, cleaned)
+        cleaned = re.sub(
+            rf"{re.escape(caller_email)}\s+(?:starting\s+with|commençant\s+par|que\s+comienza\s+con)\s+(?:'|«\s*)\w(?:'|\s*»)",
+            lambda _: caller_email,
+            cleaned,
+            flags=re.IGNORECASE,
+        )
     caller_last4 = str(session_params.get("caller_provided_phone_last4") or "").strip()
     profile_last4 = str(session_params.get("phone_last4") or "").strip()
     card_last4 = str(session_params.get("card_last4") or "").strip()
