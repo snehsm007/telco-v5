@@ -57,51 +57,6 @@ import hashlib
 import re
 import sys
 
-FAKE_APPOINTMENTS_DATA: dict[str, Any] = {  # pragma: no cover
-    "active_appointment": {
-        "appointment_id": "APT-4021",
-        "account_id": "A1001",
-        "scheduled_date": "2026-10-30",
-        "window_start": "08:00",
-        "window_end": "12:00",
-        "window_display": "8:00 AM - 12:00 PM",
-        "status": "scheduled",
-        "technician_status": "scheduled",
-        "technician_name": "Marc-Andre",
-        "service_type": "fiber_installation",
-        "address": "123 Maple Avenue, Montreal, QC",
-    },
-    "repair_ticket": {
-        "ticket_id": "TKT-8841",
-        "status": "in_progress",
-        "issue": "intermittent_fiber_loss",
-        "reported_date": "2026-10-28",
-    },
-    "available_reschedule_slots": [
-        {
-            "slot_id": "SLOT-1",
-            "date": "2026-11-02",
-            "window_en": "Morning (8:00 AM - 12:00 PM)",
-            "window_fr": "Matin (8 h 00 - 12 h 00)",
-            "window_es": "Mañana (8:00 AM - 12:00 PM)",
-        },
-        {
-            "slot_id": "SLOT-2",
-            "date": "2026-11-02",
-            "window_en": "Afternoon (1:00 PM - 5:00 PM)",
-            "window_fr": "Après-midi (13 h 00 - 17 h 00)",
-            "window_es": "Tarde (1:00 PM - 5:00 PM)",
-        },
-        {
-            "slot_id": "SLOT-3",
-            "date": "2026-11-03",
-            "window_en": "Morning (8:00 AM - 12:00 PM)",
-            "window_fr": "Matin (8 h 00 - 12 h 00)",
-            "window_es": "Mañana (8:00 AM - 12:00 PM)",
-        },
-    ],
-}
-
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INVALID_INPUT",
     "NOT_FOUND",
@@ -915,6 +870,71 @@ def _check_mock_error(state: dict[str, Any], lang: str) -> dict[str, Any] | None
         )
     return None
 
+FAKE_APPOINTMENTS_DATA: dict[str, Any] = {  # pragma: no cover
+    "active_appointment": {
+        "appointment_id": "APT-4021",
+        "account_id": "A1001",
+        "scheduled_date": "2026-10-30",
+        "window_start": "08:00",
+        "window_end": "12:00",
+        "window_display": "8:00 AM - 12:00 PM",
+        "status": "scheduled",
+        "technician_status": "scheduled",
+        "technician_name": "Marc-Andre",
+        "service_type": "fiber_installation",
+        "address": "123 Maple Avenue, Montreal, QC",
+    },
+    "repair_ticket": {
+        "ticket_id": "TKT-8841",
+        "status": "in_progress",
+        "issue": "intermittent_fiber_loss",
+        "reported_date": "2026-10-28",
+    },
+    "available_reschedule_slots": [
+        {
+            "slot_id": "SLOT-1",
+            "date": "2026-11-02",
+            "window_en": "Morning (8:00 AM - 12:00 PM)",
+            "window_fr": "Matin (8 h 00 - 12 h 00)",
+            "window_es": "Mañana (8:00 AM - 12:00 PM)",
+        },
+        {
+            "slot_id": "SLOT-2",
+            "date": "2026-11-02",
+            "window_en": "Afternoon (1:00 PM - 5:00 PM)",
+            "window_fr": "Après-midi (13 h 00 - 17 h 00)",
+            "window_es": "Tarde (1:00 PM - 5:00 PM)",
+        },
+        {
+            "slot_id": "SLOT-3",
+            "date": "2026-11-03",
+            "window_en": "Morning (8:00 AM - 12:00 PM)",
+            "window_fr": "Matin (8 h 00 - 12 h 00)",
+            "window_es": "Mañana (8:00 AM - 12:00 PM)",
+        },
+    ],
+}
+
+def _dynamic_appointments_data() -> dict[str, Any]:  # pragma: no cover
+    """Return a copy of FAKE_APPOINTMENTS_DATA with dates relative to today."""
+    today = date.today()
+    apt = dict(FAKE_APPOINTMENTS_DATA["active_appointment"])
+    apt["scheduled_date"] = today.isoformat()
+    tkt = dict(FAKE_APPOINTMENTS_DATA["repair_ticket"])
+    tkt["reported_date"] = (today - timedelta(days=2)).isoformat()
+    slot_offsets = (2, 2, 3)
+    slots: list[dict[str, Any]] = []
+    for idx, raw_slot in enumerate(FAKE_APPOINTMENTS_DATA["available_reschedule_slots"]):
+        s_copy = dict(raw_slot)
+        offset = slot_offsets[idx] if idx < len(slot_offsets) else 3
+        s_copy["date"] = (today + timedelta(days=offset)).isoformat()
+        slots.append(s_copy)
+    return {
+        "active_appointment": apt,
+        "repair_ticket": tkt,
+        "available_reschedule_slots": slots,
+    }
+
 def _ensure_default_profile(state: dict[str, Any]) -> None:  # pragma: no cover
     """Initialize safe session status defaults without polluting account identity."""
     state.setdefault("auth_status", "none")
@@ -1149,7 +1169,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             rec["linked_mobile_last4"] = p_last4
             rec[_k_p4] = p_last4
             rec[_k_cp4] = (
-                norm_digits[-4:] if (not has_alpha and len(norm_digits) in (9, 10)) else ""
+                norm_digits[-4:] if (not has_alpha and len(norm_digits) in (7, 9, 10)) else ""
             )
             rec["billing_account"] = "BA-" + rec["phone"][-6:]
             rec[_k_a4] = record["account_id"][-4:]
@@ -1201,7 +1221,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         }
 
     if not has_alpha and len(norm_digits) in (7, 8, 9, 10, 11, 12):
-        if len(norm_digits) == 10:
+        if len(norm_digits) in (7, 10):
             return {
                 "account_id": f"ACC-{norm_digits[-4:]}",
                 "phone": norm_digits,
@@ -1598,6 +1618,177 @@ LOGIN_CODE_LENGTH = 6  # pragma: no cover
 
 SECRET_PIN_LENGTH = 4  # pragma: no cover
 
+def _active_account_plans(  # pragma: no cover
+    state: dict[str, Any],
+    lang: str = "en-US",
+) -> dict[str, dict[str, str]]:
+    """Return localized active service plan details for an authenticated residential account."""
+    selected = str(state.get("selected_plan_id") or "").strip().upper()
+    dl_100 = localized_text(lang, "100 Mbps", "100 Mbit/s", "100 Mbps")
+    dl_500 = localized_text(lang, "500 Mbps", "500 Mbit/s", "500 Mbps")
+    dl_1g = localized_text(lang, "1 Gbps", "1 Gbit/s", "1 Gbps")
+    internet_plan = {
+        "plan_id": "NET-STARTER",
+        "name": localized_text(
+            lang,
+            "Fiber Internet 100",
+            "Fibre Internet 100",
+            "Fibra Internet 100",
+        ),
+        "monthly_price": "45.00",
+        "speed_or_data": localized_text(
+            lang,
+            "100 Mbps symmetrical",
+            "100 Mbit/s symétrique",
+            "100 Mbps simétricos",
+        ),
+        "download_speed": dl_100,
+        "upload_speed": dl_100,
+    }
+    if selected == "NET-PLUS":
+        internet_plan = {
+            "plan_id": "NET-PLUS",
+            "name": localized_text(
+                lang,
+                "Fiber Internet 500",
+                "Fibre Internet 500",
+                "Fibra Internet 500",
+            ),
+            "monthly_price": "75.00",
+            "speed_or_data": localized_text(
+                lang,
+                "500 Mbps symmetrical",
+                "500 Mbit/s symétrique",
+                "500 Mbps simétricos",
+            ),
+            "download_speed": dl_500,
+            "upload_speed": dl_500,
+        }
+    elif selected == "NET-GIG":
+        internet_plan = {
+            "plan_id": "NET-GIG",
+            "name": localized_text(
+                lang,
+                "Gigabit Fiber",
+                "Fibre Gigabit",
+                "Fibra Gigabit",
+            ),
+            "monthly_price": "95.00",
+            "speed_or_data": localized_text(
+                lang,
+                "1 Gbps symmetrical",
+                "1 Gbit/s symétrique",
+                "1 Gbps simétrico",
+            ),
+            "download_speed": dl_1g,
+            "upload_speed": dl_1g,
+        }
+    mobility_plan = {
+        "plan_id": "MOB-STARTER",
+        "name": localized_text(
+            lang,
+            "Mobility Starter 10GB",
+            "Mobilité Départ 10 Go",
+            "Movilidad Inicial 10 GB",
+        ),
+        "monthly_price": "35.00",
+        "speed_or_data": localized_text(
+            lang,
+            "10 GB 5G data",
+            "10 Go de données 5G",
+            "10 GB de datos 5G",
+        ),
+    }
+    if selected == "MOB-LITE":
+        mobility_plan = {
+            "plan_id": "MOB-LITE",
+            "name": localized_text(
+                lang,
+                "5G Essential 25GB",
+                "5G Essentiel 25 Go",
+                "5G Esencial 25 GB",
+            ),
+            "monthly_price": "45.00",
+            "speed_or_data": localized_text(
+                lang,
+                "25 GB 5G data",
+                "25 Go de données 5G",
+                "25 GB de datos 5G",
+            ),
+        }
+    elif selected == "MOB-UNLTD":
+        mobility_plan = {
+            "plan_id": "MOB-UNLTD",
+            "name": localized_text(
+                lang,
+                "5G Unlimited 60GB",
+                "5G Illimité 60 Go",
+                "5G Ilimitado 60 GB",
+            ),
+            "monthly_price": "55.00",
+            "speed_or_data": localized_text(
+                lang,
+                "60 GB 5G+ data",
+                "60 Go de données 5G+",
+                "60 GB de datos 5G+",
+            ),
+        }
+    elif selected == "MOB-PREM":
+        mobility_plan = {
+            "plan_id": "MOB-PREM",
+            "name": localized_text(
+                lang,
+                "5G North America Unlimited",
+                "5G Amérique du Nord Illimité",
+                "5G Norteamérica Ilimitado",
+            ),
+            "monthly_price": "75.00",
+            "speed_or_data": localized_text(
+                lang,
+                "100 GB 5G+ data",
+                "100 Go de données 5G+",
+                "100 GB de datos 5G+",
+            ),
+        }
+    tv_plan = {
+        "plan_id": "TV-STARTER",
+        "name": localized_text(
+            lang,
+            "Fibe TV Starter",
+            "Télé Fibe Départ",
+            "Fibe TV Inicial",
+        ),
+        "monthly_price": "25.00",
+        "speed_or_data": localized_text(
+            lang,
+            "35+ channels",
+            "35+ chaînes",
+            "35+ canales",
+        ),
+    }
+    if selected == "TV-MAX":
+        tv_plan = {
+            "plan_id": "TV-MAX",
+            "name": localized_text(
+                lang,
+                "Fibe TV Complete",
+                "Télé Fibe Complet",
+                "Fibe TV Completo",
+            ),
+            "monthly_price": "65.00",
+            "speed_or_data": localized_text(
+                lang,
+                "100+ channels",
+                "100+ chaînes",
+                "100+ canales",
+            ),
+        }
+    return {
+        "internet": internet_plan,
+        "mobility": mobility_plan,
+        "tv": tv_plan,
+    }
+
 def is_placeholder_code(val: Any) -> bool:  # pragma: no cover
     """Return True for placeholder or no-input codes ("", 0000, 000000, all-same-digit, < 4 digits)."""
     if val is None or isinstance(val, bool):
@@ -1715,14 +1906,17 @@ def verify_login_impl(  # pragma: no cover
             state["card_last4"] = "7742"
         if not state.get("bank_last4"):
             state["bank_last4"] = "6789"
+        pass_data: dict[str, Any] = {
+            "verified": True,
+            "logged_in": True,
+            "auth_status": "pass",
+            "current_balance": state.get("current_balance", "85.50"),
+            "is_suspended": state.get("is_suspended", False),
+        }
+        if bool(state.get("browsed_plan_category")):
+            pass_data["current_active_plans"] = _active_account_plans(state, lang)
         return ok_reply(
-            {
-                "verified": True,
-                "logged_in": True,
-                "auth_status": "pass",
-                "current_balance": state.get("current_balance", "85.50"),
-                "is_suspended": state.get("is_suspended", False),
-            },
+            pass_data,
             reference,
             language=lang,
         )
@@ -1870,14 +2064,17 @@ def verify_login_impl(  # pragma: no cover
     else:
         state["login_channel"] = "sms"
 
+    pass_data_final: dict[str, Any] = {
+        "verified": True,
+        "logged_in": True,
+        "auth_status": "pass",
+        "current_balance": state.get("current_balance", "85.50"),
+        "is_suspended": state.get("is_suspended", False),
+    }
+    if bool(state.get("browsed_plan_category")):
+        pass_data_final["current_active_plans"] = _active_account_plans(state, lang)
     return ok_reply(
-        {
-            "verified": True,
-            "logged_in": True,
-            "auth_status": "pass",
-            "current_balance": state.get("current_balance", "85.50"),
-            "is_suspended": state.get("is_suspended", False),
-        },
+        pass_data_final,
         reference,
         language=lang,
     )
@@ -2005,8 +2202,9 @@ def manage_appointment_impl(  # pragma: no cover
     )
     sel = f"SLOT-{m_slot_num.group(1)}" if m_slot_num else raw_sel.upper()
     sel_low = sel.lower()
+    dyn_slots = _dynamic_appointments_data()["available_reschedule_slots"]
     slot_match = None
-    for s_item in FAKE_APPOINTMENTS_DATA["available_reschedule_slots"]:
+    for s_item in dyn_slots:
         if sel and (
             sel in s_item["slot_id"]
             or (len(sel) >= 4 and sel in s_item["date"])
@@ -2017,7 +2215,7 @@ def manage_appointment_impl(  # pragma: no cover
             slot_match = s_item
             break
     if not slot_match:
-        slot_match = FAKE_APPOINTMENTS_DATA["available_reschedule_slots"][0]
+        slot_match = dyn_slots[0]
 
     state["appointment_status"] = "rescheduled"
     ref = tracking_id("RES_APT", account_id, slot_match["slot_id"])

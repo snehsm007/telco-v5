@@ -198,3 +198,39 @@ def test_verify_login_unidentified_returns_error(monkeypatch) -> None:
     assert reply["error"] == "NOT_IDENTIFIED"
     assert "agent_action" in reply
     assert "mobile number" in reply["agent_action"].lower() or "10-digit" in reply["agent_action"].lower()
+
+
+def test_verify_login_scopes_current_active_plans_by_browsed_plan_category(monkeypatch) -> None:
+    # Unset browsed_plan_category (Billing / Account / Tech Support): omits current_active_plans on both pass paths
+    session_unset = SimpleNamespace(
+        state={"account_id": "A1001", "auth_status": "code_sent", "language": "en-US"}
+    )
+    monkeypatch.setattr(tool, "context", session_unset, raising=False)
+    r_unset_1 = tool.verify_login(code="1234", language="en-US")
+    assert r_unset_1["status"] == "ok"
+    assert "current_active_plans" not in r_unset_1["data"]
+
+    r_unset_2 = tool.verify_login(code="1234", language="en-US")
+    assert r_unset_2["status"] == "ok"
+    assert "current_active_plans" not in r_unset_2["data"]
+
+    # Set browsed_plan_category (Sales pre-auth browse -> verify_login): attaches localized current_active_plans
+    session_sales = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "code_sent",
+            "language": "es-US",
+            "browsed_plan_category": "internet",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_sales, raising=False)
+    r_first = tool.verify_login(code="1234", language="es-US")
+    assert r_first["status"] == "ok"
+    assert r_first["data"]["current_active_plans"]["internet"]["name"] == "Fibra Internet 100"
+    assert r_first["data"]["current_active_plans"]["mobility"]["monthly_price"] == "35.00"
+
+    # Already-authenticated pass shortcut also includes localized current_active_plans when browsed_plan_category is set
+    r_second = tool.verify_login(code="1234", language="es-US")
+    assert r_second["status"] == "ok"
+    assert r_second["data"]["current_active_plans"]["mobility"]["name"] == "Movilidad Inicial 10 GB"
+

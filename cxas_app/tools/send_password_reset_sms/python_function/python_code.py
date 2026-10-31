@@ -1086,7 +1086,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             rec["linked_mobile_last4"] = p_last4
             rec[_k_p4] = p_last4
             rec[_k_cp4] = (
-                norm_digits[-4:] if (not has_alpha and len(norm_digits) in (9, 10)) else ""
+                norm_digits[-4:] if (not has_alpha and len(norm_digits) in (7, 9, 10)) else ""
             )
             rec["billing_account"] = "BA-" + rec["phone"][-6:]
             rec[_k_a4] = record["account_id"][-4:]
@@ -1138,7 +1138,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         }
 
     if not has_alpha and len(norm_digits) in (7, 8, 9, 10, 11, 12):
-        if len(norm_digits) == 10:
+        if len(norm_digits) in (7, 10):
             return {
                 "account_id": f"ACC-{norm_digits[-4:]}",
                 "phone": norm_digits,

@@ -213,7 +213,29 @@ def test_manage_mfa_settings_contact_mirrors_caller_backup_email(monkeypatch) ->
 
 
 def test_manage_mfa_settings_spoken_phrases_locales(monkeypatch) -> None:
-    # en-US
+    # Named emails include starting initial across en-US / fr-CA / es-US
+    for locale, expected_spoken, expected_action in (
+        ("en-US", "starting with 'c'", "starting with c"),
+        ("fr-CA", "commençant par « c »", "commençant par c"),
+        ("es-US", "comienza con 'c'", "comenzando con c"),
+    ):
+        session_named = SimpleNamespace(
+            state={
+                "auth_status": "pass",
+                "mfa_enabled": True,
+                "contact_email": "claire@example.com",
+            }
+        )
+        monkeypatch.setattr(tool, "context", session_named, raising=False)
+        res_named = tool.manage_mfa_settings(lost_authenticator=True, language=locale)
+        assert res_named["data"]["masked_backup_email"] == "c***@example.com"
+        assert expected_spoken in res_named["data"]["spoken_message"]
+        assert expected_action in res_named["data"]["agent_action"]
+        res_named_resend = tool.manage_mfa_settings(lost_authenticator=True, language=locale)
+        assert res_named_resend["data"]["code_resent"] is True
+        assert res_named_resend["data"]["masked_backup_email"] == "c***@example.com"
+
+    # Synthetic placeholder emails omit fake initial 'u' across en-US / fr-CA / es-US
     session_en = SimpleNamespace(
         state={
             "auth_status": "pass",
@@ -223,11 +245,14 @@ def test_manage_mfa_settings_spoken_phrases_locales(monkeypatch) -> None:
     )
     monkeypatch.setattr(tool, "context", session_en, raising=False)
     res_en = tool.manage_mfa_settings(lost_authenticator=True, language="en-US")
-    assert res_en["data"]["masked_backup_email"] == "u***@example.com"
-    assert "starting with 'u'" in res_en["data"]["spoken_message"]
-    assert "starting with u" in res_en["data"]["agent_action"]
+    assert "masked_backup_email" not in res_en["data"]
+    assert "to the email address on file" in res_en["data"]["spoken_message"]
+    assert "starting with" not in res_en["data"]["spoken_message"]
+    res_en_resend = tool.manage_mfa_settings(lost_authenticator=True, language="en-US")
+    assert res_en_resend["data"]["code_resent"] is True
+    assert "masked_backup_email" not in res_en_resend["data"]
+    assert "starting with" not in res_en_resend["data"]["spoken_message"]
 
-    # fr-CA
     session_fr = SimpleNamespace(
         state={
             "auth_status": "pass",
@@ -237,11 +262,10 @@ def test_manage_mfa_settings_spoken_phrases_locales(monkeypatch) -> None:
     )
     monkeypatch.setattr(tool, "context", session_fr, raising=False)
     res_fr = tool.manage_mfa_settings(lost_authenticator=True, language="fr-CA")
-    assert res_fr["data"]["masked_backup_email"] == "u***@example.com"
-    assert "commençant par « u »" in res_fr["data"]["spoken_message"]
-    assert "commençant par u" in res_fr["data"]["agent_action"]
+    assert "masked_backup_email" not in res_fr["data"]
+    assert "à l'adresse courriel au dossier" in res_fr["data"]["spoken_message"]
+    assert "commençant par" not in res_fr["data"]["spoken_message"]
 
-    # es-US
     session_es = SimpleNamespace(
         state={
             "auth_status": "pass",
@@ -251,9 +275,9 @@ def test_manage_mfa_settings_spoken_phrases_locales(monkeypatch) -> None:
     )
     monkeypatch.setattr(tool, "context", session_es, raising=False)
     res_es = tool.manage_mfa_settings(lost_authenticator=True, language="es-US")
-    assert res_es["data"]["masked_backup_email"] == "u***@example.com"
-    assert "comienza con 'u'" in res_es["data"]["spoken_message"]
-    assert "comenzando con u" in res_es["data"]["agent_action"]
+    assert "masked_backup_email" not in res_es["data"]
+    assert "al correo electrónico registrado" in res_es["data"]["spoken_message"]
+    assert "comienza con" not in res_es["data"]["spoken_message"]
 
 
 def test_manage_mfa_settings_backup_email_mirrors_account_caller_david() -> None:

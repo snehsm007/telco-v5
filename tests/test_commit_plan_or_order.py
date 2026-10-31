@@ -117,4 +117,33 @@ def test_commit_plan_or_order_tv_sports_addon_channels_and_combined_monthly(monk
     assert order_res["data"]["combined_monthly_with_tv_starter_with_tax"] == "49.45"
 
 
+def test_commit_plan_or_order_attaches_current_active_plans_quote_and_confirmed(monkeypatch) -> None:
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "A1001", "phone_last4": "0143"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    quote_res = tool.commit_plan_or_order(plan_id="NET-PLUS", confirmed=False, language="fr-CA")
+    assert quote_res["status"] == "error"
+    assert quote_res["error"] == "REQUIRES_CONFIRMATION"
+    assert quote_res["data"]["current_active_plans"]["internet"]["plan_id"] == "NET-STARTER"
+    assert quote_res["data"]["current_active_plans"]["internet"]["name"] == "Fibre Internet 100"
+
+    order_res = tool.commit_plan_or_order(plan_id="NET-PLUS", confirmed=True, language="fr-CA")
+    assert order_res["status"] == "ok"
+    assert order_res["data"]["current_active_plans"]["internet"]["plan_id"] == "NET-PLUS"
+    assert order_res["data"]["current_active_plans"]["internet"]["name"] == "Fibre Internet 500"
+    assert order_res["data"]["current_active_plans"]["internet"]["monthly_price"] == "75.00"
+
+    for plan_id, cat_key in (
+        ("NET-GIG", "internet"),
+        ("MOB-LITE", "mobility"),
+        ("MOB-UNLTD", "mobility"),
+        ("MOB-PREM", "mobility"),
+        ("TV-MAX", "tv"),
+    ):
+        r_ok = tool.commit_plan_or_order(plan_id=plan_id, confirmed=True, language="en-US")
+        assert r_ok["status"] == "ok"
+        assert r_ok["data"]["current_active_plans"][cat_key]["plan_id"] == plan_id
+
+
+
 

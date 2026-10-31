@@ -182,5 +182,37 @@ def test_browse_plans_and_coverage_internet_wfh_technical_specifications(monkeyp
         assert "99.9%" in p["sla_or_guarantee"]
 
 
+def test_browse_plans_sets_browsed_category_budget_flags_and_post_auth_active_plans(monkeypatch) -> None:
+    # Pre-auth browse sets browsed_plan_category + budget flags, omits current_active_plans
+    session_pre = SimpleNamespace(state={"auth_status": "none"})
+    monkeypatch.setattr(tool, "context", session_pre, raising=False)
+    res_pre = tool.browse_plans_and_coverage(category="mobility", max_budget=55, language="en-US")
+    assert res_pre["status"] == "ok"
+    assert session_pre.state["browsed_plan_category"] == "mobility"
+    assert "current_active_plans" not in res_pre["data"]
+    plans_pre = res_pre["data"]["shortlisted_plans"]
+    assert any(p["within_budget_before_tax"] is True and p["within_budget_after_tax"] is True for p in plans_pre)
+    assert any(p["within_budget_before_tax"] is True and p["within_budget_after_tax"] is False for p in plans_pre)
+
+    # Fallback shortlist when max_budget is below lowest plan also sets budget flags
+    res_low = tool.browse_plans_and_coverage(category="mobility", max_budget=10, language="en-US")
+    assert res_low["status"] == "ok"
+    assert all(p["within_budget_before_tax"] is False and p["within_budget_after_tax"] is False for p in res_low["data"]["shortlisted_plans"])
+
+    # Post-auth browse attaches localized current_active_plans
+    session_post = SimpleNamespace(state={"auth_status": "pass", "account_id": "A1001", "language": "fr-CA"})
+    monkeypatch.setattr(tool, "context", session_post, raising=False)
+    res_post = tool.browse_plans_and_coverage(category="internet", language="fr-CA")
+    assert res_post["status"] == "ok"
+    assert session_post.state["browsed_plan_category"] == "internet"
+    active = res_post["data"]["current_active_plans"]
+    assert active["internet"]["plan_id"] == "NET-STARTER"
+    assert active["internet"]["name"] == "Fibre Internet 100"
+    assert active["internet"]["monthly_price"] == "45.00"
+    assert active["mobility"]["plan_id"] == "MOB-STARTER"
+    assert active["mobility"]["monthly_price"] == "35.00"
+
+
+
 
 
