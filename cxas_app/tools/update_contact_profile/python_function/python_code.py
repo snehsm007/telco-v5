@@ -13,8 +13,9 @@ def update_contact_profile(
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    phone_number: str | int | float = "",
 ) -> dict[str, Any]:
-    """Update contact email, billing address, or preferred language.
+    """Update contact email, phone number, billing address, or preferred language.
 
     Args:
         email: New email address.
@@ -25,6 +26,7 @@ def update_contact_profile(
         identifier: Account identifier or phone number.
         verification_code: Verification code if needed.
         language: Preferred language for response.
+        phone_number: Optional new 10-digit contact mobile phone number.
 
     Returns:
         dict[str, Any]: Profile update confirmation and updated fields.
@@ -42,6 +44,7 @@ def update_contact_profile(
         identifier=identifier,
         verification_code=verification_code,
         language=language,
+        phone_number=phone_number,
         state=state,
     )
 
@@ -1516,6 +1519,8 @@ def lookup_account_impl(  # pragma: no cover
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
         state["caller_provided_email"] = ""
+        state["mfa_stepup_alt_offered"] = False
+        state["phone_unconfirmed"] = False
         if state.get("account_id") and not is_keypad:
             state["dtmf_digits"] = ""
 
@@ -1549,6 +1554,7 @@ def lookup_account_impl(  # pragma: no cover
     state["account_id"] = account["account_id"]
     state["identified"] = True
     state["lookup_by_name"] = keep_unconfirmed_name_lookup
+    state["phone_unconfirmed"] = keep_unconfirmed_name_lookup
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False
@@ -1842,6 +1848,31 @@ def is_placeholder_code(val: Any) -> bool:  # pragma: no cover
 
 _is_placeholder_code = is_placeholder_code  # pragma: no cover
 
+def extract_phone_last4(val: Any) -> str:  # pragma: no cover
+    """Return 4-digit phone suffix when val is a valid 10-digit NANP or +intl phone number, else ''."""
+    if val is None or isinstance(val, bool):
+        return ""
+    raw_str = str(val).strip()
+    if not raw_str or any(c.isalpha() for c in raw_str):
+        return ""
+    raw_digits = normalize_code(val)
+    norm_digits = (
+        raw_digits[1:]
+        if (len(raw_digits) == 11 and raw_digits.startswith("1"))
+        else raw_digits
+    )
+    is_intl = (
+        (raw_str.startswith("+") or raw_str.startswith("00"))
+        and 10 <= len(raw_digits) <= 15
+    )
+    if len(norm_digits) == 10 or is_intl:
+        return norm_digits[-4:]
+    return ""
+
+def is_phone_number(val: Any) -> bool:  # pragma: no cover
+    """Return True when val is a valid 10-digit NANP or +intl phone number."""
+    return bool(extract_phone_last4(val))
+
 ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
     {"0000", "000000", "1111", "111111", "9999", "999999"}
 )
@@ -1898,14 +1929,28 @@ def verify_login_impl(  # pragma: no cover
             state["phone_last4"] = caller_l4
             mutated_phone_l4 = True
 
-        already_identified = bool(state.get("identified") and state.get("account_id"))
-        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
-        if l_res.get("status") == "error":
-            if mutated_phone_l4:
-                state["caller_provided_phone_last4"] = prev_caller_l4 or ""
-                state["phone_last4"] = prev_phone_l4 or ""
-            if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
-                return l_res
+        if (
+            bool(
+                state.get("account_id")
+                and state.get("auth_status") == "pass"
+                and state.get("logged_in")
+            )
+            and is_phone_number(id_val)
+            and raw_digits not in BLOCKED_CALLER_NUMBERS
+            and norm_digits not in BLOCKED_CALLER_NUMBERS
+            and not is_synthetic_wrong_identifier(str(id_val), norm_digits)
+        ):
+            state["lookup_by_name"] = False
+            state["phone_unconfirmed"] = False
+        else:
+            already_identified = bool(state.get("identified") and state.get("account_id"))
+            l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+            if l_res.get("status") == "error":
+                if mutated_phone_l4:
+                    state["caller_provided_phone_last4"] = prev_caller_l4 or ""
+                    state["phone_last4"] = prev_phone_l4 or ""
+                if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
+                    return l_res
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -2148,10 +2193,12 @@ def verify_login_impl(  # pragma: no cover
         and method_low != "pin"
         and (bool(state.get("mfa_email_code_sent")) or method_low == "email")
     )
-    if is_email_auth:
-        state["mfa_email_verified"] = True
-    elif was_mfa_sms and len(digits) == LOGIN_CODE_LENGTH and method_low != "pin":
+    if was_mfa_sms and len(digits) == LOGIN_CODE_LENGTH and method_low != "pin":
         state["login_channel"] = "mfa_sms_verified"
+        if state.get("mfa_email_code_sent") or state.get("lost_authenticator"):
+            state["mfa_email_verified"] = True
+    elif is_email_auth:
+        state["mfa_email_verified"] = True
     elif method_low == "pin" or len(digits) == SECRET_PIN_LENGTH:
         state["login_channel"] = "pin"
     else:
@@ -2229,11 +2276,12 @@ def update_contact_profile_impl(  # pragma: no cover
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    phone_number: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Update contact email, billing address, or preferred language."""
+    """Update contact email, phone number, billing address, or preferred language."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
     lang = _session_language(state, language)
@@ -2256,8 +2304,14 @@ def update_contact_profile_impl(  # pragma: no cover
     s_addr = str(service_address or kwargs.get("mailing_address") or "").strip()
     p_code = str(postal_code or "").strip().upper()
     pref_lang = str(preferred_language_update or "").strip()
+    raw_phone = str(
+        phone_number
+        or kwargs.get("mobile_number")
+        or kwargs.get("phone")
+        or ""
+    ).strip()
 
-    if not any((email, s_addr, p_code, pref_lang, notification_preference)):
+    if not any((email, s_addr, p_code, pref_lang, notification_preference, raw_phone)):
         return error_reply("MISSING_INPUT", reference=reference, language=lang)
 
     _record_audit(state)
@@ -2269,6 +2323,16 @@ def update_contact_profile_impl(  # pragma: no cover
         if "@" in clean_email:
             state["caller_provided_email"] = clean_email
         upd["email"] = state["contact_email"]
+    if raw_phone:
+        if is_phone_number(raw_phone):
+            p_l4 = extract_phone_last4(raw_phone)
+            state["caller_provided_phone_last4"] = p_l4
+            state["phone_last4"] = p_l4
+            state["lookup_by_name"] = False
+            state["phone_unconfirmed"] = False
+            upd["phone_last4"] = p_l4
+        else:
+            upd["phone_number"] = raw_phone
     if s_addr:
         state["service_address"] = s_addr
         upd["service_address"] = state["service_address"]

@@ -337,3 +337,66 @@ def test_caller_provided_email_allows_direct_typo_confirmation_without_changing_
     assert mfa2.get("code_resent") is True
     assert "confirm directly that it was sent to pat.sample@customdomain.org" in mfa2["agent_action"]
 
+
+def test_send_login_code_post_auth_sms_stepup_and_new_phone_verification(monkeypatch) -> None:
+    from lib.services import manage_mfa_settings_impl, verify_login_impl
+
+    # (a) Pending lost-authenticator step-up allows SMS code dispatch while logged in without wiping session
+    st_lost: dict = {
+        "account_id": "A1001",
+        "identified": True,
+        "auth_status": "pass",
+        "logged_in": True,
+        "lost_authenticator": True,
+        "mfa_email_code_sent": True,
+        "mfa_email_verified": False,
+    }
+    monkeypatch.setattr(tool, "context", SimpleNamespace(state=st_lost), raising=False)
+    sms_stepup = tool.send_login_code(identifier="514-555-0199", channel="sms")
+    assert sms_stepup["status"] == "ok"
+    assert sms_stepup["data"]["sent"] is True
+    assert sms_stepup["data"]["already_verified"] is False
+    assert sms_stepup["data"]["destination_last4"] == "0199"
+    assert st_lost["account_id"] == "A1001"
+    assert st_lost["auth_status"] == "pass"
+    assert st_lost["logged_in"] is True
+    assert st_lost["login_channel"] == "mfa_sms"
+    assert st_lost["mfa_email_code_sent"] is True
+
+    ver_res = verify_login_impl(code="384920", identifier="514-555-0199", state=st_lost)
+    assert ver_res["status"] == "ok"
+    assert st_lost["account_id"] == "A1001"
+    assert st_lost["login_channel"] == "mfa_sms_verified"
+    assert st_lost["mfa_email_verified"] is True
+
+    dis_res = manage_mfa_settings_impl(action="disable", lost_authenticator=True, state=st_lost)
+    assert dis_res["status"] == "ok"
+    assert dis_res["data"]["mfa_updated"] is True
+    assert dis_res["data"]["mfa_enabled"] is False
+
+    # (b) Caller explicitly provides a valid phone number while logged in (e.g. verifying new SMS 2FA number)
+    st_new_phone: dict = {
+        "account_id": "ACC-1001",
+        "identified": True,
+        "lookup_by_name": True,
+        "phone_unconfirmed": True,
+        "phone_last4": "",
+        "auth_status": "pass",
+        "logged_in": True,
+        "mfa_email_verified": True,
+    }
+    monkeypatch.setattr(tool, "context", SimpleNamespace(state=st_new_phone), raising=False)
+    sms_new = tool.send_login_code(identifier="708-555-0192", channel="sms")
+    assert sms_new["status"] == "ok"
+    assert sms_new["data"]["sent"] is True
+    assert sms_new["data"]["destination_last4"] == "0192"
+    assert st_new_phone["account_id"] == "ACC-1001"
+    assert st_new_phone["auth_status"] == "pass"
+    assert st_new_phone["logged_in"] is True
+    assert st_new_phone["login_channel"] == "mfa_sms"
+    assert st_new_phone["caller_provided_phone_last4"] == "0192"
+    assert st_new_phone["phone_last4"] == "0192"
+    assert st_new_phone["lookup_by_name"] is False
+    assert st_new_phone["phone_unconfirmed"] is False
+
+

@@ -1567,6 +1567,8 @@ def lookup_account_impl(  # pragma: no cover
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
         state["caller_provided_email"] = ""
+        state["mfa_stepup_alt_offered"] = False
+        state["phone_unconfirmed"] = False
         if state.get("account_id") and not is_keypad:
             state["dtmf_digits"] = ""
 
@@ -1600,6 +1602,7 @@ def lookup_account_impl(  # pragma: no cover
     state["account_id"] = account["account_id"]
     state["identified"] = True
     state["lookup_by_name"] = keep_unconfirmed_name_lookup
+    state["phone_unconfirmed"] = keep_unconfirmed_name_lookup
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False

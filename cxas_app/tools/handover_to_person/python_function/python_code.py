@@ -874,6 +874,15 @@ def error_reply(  # pragma: no cover
             reply[key] = payload[key]
     return reply
 
+def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:  # pragma: no cover
+    """Return text localized for the caller's target language."""
+    loc = resolve_copy_locale(language)
+    if loc == "fr-CA":
+        return fr
+    if loc == "es-US":
+        return es or en
+    return en
+
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 
 def ok_reply(  # pragma: no cover
@@ -1055,6 +1064,7 @@ def handover_to_person_impl(  # pragma: no cover
     if not isinstance(language, str) and callable(getattr(language, "get", None)) and state is None:
         state = language
         language = ""
+    explicit_session = state is not None or session_state is not None
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
     clean_reason = " ".join(str(reason or summary or "caller_requested").split()) or "caller_requested"
@@ -1077,10 +1087,51 @@ def handover_to_person_impl(  # pragma: no cover
     if state.get("mock_error") == "SYSTEM_DOWN":
         return error_reply("SYSTEM_DOWN", reference=reference, language=resolved_lang)
 
-    _record_audit(state)
-
     r_low = clean_reason.lower()
     tq_low = str(target_queue or "").lower()
+    if (
+        explicit_session
+        and state.get("auth_status") == "pass"
+        and bool(state.get("logged_in"))
+        and bool(state.get("lost_authenticator"))
+        and bool(state.get("mfa_email_code_sent"))
+        and not (
+            bool(state.get("mfa_email_verified"))
+            or state.get("login_channel") == "mfa_sms_verified"
+        )
+        and read_count(state, "auth_failure_count") == 0
+        and not any(
+            w in r_low
+            for w in (
+                "fraud",
+                "unauthorized",
+                "security",
+                "fraude",
+                "compromis",
+                "business",
+                "entreprise",
+                "commercial",
+                "no_input",
+            )
+        )
+        and tq_low not in ("fraud_and_security_24x7", "business_solutions")
+        and not bool(state.get("mfa_stepup_alt_offered"))
+    ):
+        state["mfa_stepup_alt_offered"] = True
+        state["last_tracking_id"] = reference
+        return error_reply(
+            "REQUIRES_CONFIRMATION",
+            agent_action=localized_text(
+                resolved_lang,
+                "Before transferring, offer once to send the 6-digit step-up code to an alternate backup email address (via manage_mfa_settings with email) or via SMS to an accessible mobile number (via send_login_code with channel='sms'); transfer on the next turn only if the caller still asks for a representative.",
+                "Avant de transférer, proposez une fois d'envoyer le code à 6 chiffres à une autre adresse courriel de secours (via manage_mfa_settings avec email) ou par SMS à un numéro mobile accessible (via send_login_code avec channel='sms'); ne transférez au tour suivant que si le client demande toujours un représentant.",
+                "Antes de transferir, ofrezca una vez enviar el código de 6 dígitos a un correo alternativo (mediante manage_mfa_settings con email) o por SMS a un número móvil accesible (mediante send_login_code con channel='sms'); transfiera en el siguiente turno solo si el cliente aún pide un representante.",
+            ),
+            reference=reference,
+            language=resolved_lang,
+        )
+
+    _record_audit(state)
     if (
         "business" in r_low
         or state.get("business_flag")

@@ -72,3 +72,34 @@ def test_handover_to_person_preserves_french_session_when_model_passes_en_us(mon
     assert reply["data"]["language"] == "fr-CA"
     assert session.state["language"] == "fr-CA"
     assert "représentant" in session.state["handoff_message"].lower()
+
+
+def test_handover_to_person_one_shot_lost_mfa_stepup_guard(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "logged_in": True,
+            "lost_authenticator": True,
+            "mfa_email_code_sent": True,
+            "mfa_email_verified": False,
+            "auth_failure_count": 0,
+            "language": "en-US",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    # First premature transfer attempt returns REQUIRES_CONFIRMATION and offers SMS/alternate email
+    first = tool.handover_to_person(reason="step_up_email_delayed")
+    assert first["status"] == "error"
+    assert first["error"] == "REQUIRES_CONFIRMATION"
+    assert "send_login_code" in first["agent_action"]
+    assert session.state["mfa_stepup_alt_offered"] is True
+    assert not session.state.get("handover_complete")
+
+    # Second attempt succeeds if caller still wants a representative
+    second = tool.handover_to_person(reason="caller_requested")
+    assert second["status"] == "ok"
+    assert second["data"]["handover_complete"] is True
+    assert session.state["handover_complete"] is True
+

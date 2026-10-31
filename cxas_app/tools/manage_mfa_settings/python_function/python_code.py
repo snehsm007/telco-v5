@@ -13,6 +13,7 @@ def manage_mfa_settings(
     verification_code: str | int | float = "",
     language: str = "",
     email: str = "",
+    phone_number: str | int | float = "",
 ) -> dict[str, Any]:
     """Configure MFA settings with lost-device backup email step-up.
 
@@ -25,6 +26,7 @@ def manage_mfa_settings(
         verification_code: Alternative verification code parameter.
         language: Preferred language code.
         email: Optional backup email address provided by the caller.
+        phone_number: Optional 10-digit mobile phone number for SMS MFA setup.
 
     Returns:
         dict[str, Any]: Operation status and details.
@@ -42,6 +44,7 @@ def manage_mfa_settings(
         verification_code=verification_code,
         language=language,
         email=email,
+        phone_number=phone_number,
         state=state,
     )
 
@@ -990,6 +993,15 @@ def _is_placeholder_email(email_str: str) -> bool:  # pragma: no cover
         return True
     return bool(re.fullmatch(r"user\d*@example\.com", clean, re.IGNORECASE))
 
+def _is_truthy_bool(val: Any) -> bool:  # pragma: no cover
+    """Return True if val represents a truthy boolean or affirmation string."""
+    if val is True:
+        return True
+    if isinstance(val, (str, int, float)) and not isinstance(val, bool):
+        s = str(val).strip().lower()
+        return s in {"true", "1", "yes", "oui", "sí", "si"}
+    return False
+
 def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
@@ -1359,6 +1371,40 @@ def _session_language(state: dict[str, Any] | None, language: Any = "") -> str: 
 
     return resolve_copy_locale(None)
 
+def _stepup_delayed_email_guidance(lang: str) -> str:  # pragma: no cover
+    """Return concise localized fallback guidance when backup email step-up is delayed."""
+    return localized_text(
+        lang,
+        "If the caller still has not received the email code or asks for another option, ask for an alternate backup email address (pass email to manage_mfa_settings) or offer to send a 6-digit verification code via SMS to an accessible mobile number (call send_login_code with channel='sms' and identifier if they give a number), and do not offer live-agent transfer unless the caller explicitly asks for a representative.",
+        "Si le client n'a toujours pas reçu le code par courriel ou demande une autre option, demandez une autre adresse courriel de secours (passez email à manage_mfa_settings) ou proposez d'envoyer un code de vérification à 6 chiffres par SMS à un numéro de mobile accessible (appelez send_login_code avec channel='sms' et identifier s'il donne un numéro), et ne proposez pas de transfert à un agent à moins que le client ne demande explicitement un représentant.",
+        "Si el cliente aún no ha recibido el código por correo o pide otra opción, pida un correo electrónico de respaldo alternativo (pase email a manage_mfa_settings) u ofrezca enviar un código de verificación de 6 dígitos por SMS a un número móvil accesible (llame a send_login_code con channel='sms' e identifier si da un número), y no ofrezca transferir a un agente a menos que el cliente pida explícitamente un representante.",
+    )
+
+def extract_phone_last4(val: Any) -> str:  # pragma: no cover
+    """Return 4-digit phone suffix when val is a valid 10-digit NANP or +intl phone number, else ''."""
+    if val is None or isinstance(val, bool):
+        return ""
+    raw_str = str(val).strip()
+    if not raw_str or any(c.isalpha() for c in raw_str):
+        return ""
+    raw_digits = normalize_code(val)
+    norm_digits = (
+        raw_digits[1:]
+        if (len(raw_digits) == 11 and raw_digits.startswith("1"))
+        else raw_digits
+    )
+    is_intl = (
+        (raw_str.startswith("+") or raw_str.startswith("00"))
+        and 10 <= len(raw_digits) <= 15
+    )
+    if len(norm_digits) == 10 or is_intl:
+        return norm_digits[-4:]
+    return ""
+
+def is_phone_number(val: Any) -> bool:  # pragma: no cover
+    """Return True when val is a valid 10-digit NANP or +intl phone number."""
+    return bool(extract_phone_last4(val))
+
 ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
     {"0000", "000000", "1111", "111111", "9999", "999999"}
 )
@@ -1638,6 +1684,8 @@ def lookup_account_impl(  # pragma: no cover
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
         state["caller_provided_email"] = ""
+        state["mfa_stepup_alt_offered"] = False
+        state["phone_unconfirmed"] = False
         if state.get("account_id") and not is_keypad:
             state["dtmf_digits"] = ""
 
@@ -1671,6 +1719,7 @@ def lookup_account_impl(  # pragma: no cover
     state["account_id"] = account["account_id"]
     state["identified"] = True
     state["lookup_by_name"] = keep_unconfirmed_name_lookup
+    state["phone_unconfirmed"] = keep_unconfirmed_name_lookup
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False
@@ -1777,6 +1826,7 @@ def manage_mfa_settings_impl(  # pragma: no cover
     verification_code: str | int | float = "",
     language: str = "",
     email: str = "",
+    phone_number: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -1797,12 +1847,28 @@ def manage_mfa_settings_impl(  # pragma: no cover
     if "@" in str(id_val or "").strip():
         id_val = ""
 
+    raw_phone = str(
+        phone_number
+        or kwargs.get("mobile_number")
+        or kwargs.get("phone")
+        or ""
+    ).strip()
+    if not raw_phone and is_phone_number(id_val):
+        raw_phone = str(id_val).strip()
+
     caller_fn = str(kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("first_name") or "").strip()
     if caller_fn and (not state.get("contact_email") or _is_placeholder_email(str(state.get("contact_email") or ""))):
         state["contact_email"] = f"{caller_fn.split()[0].lower()}@example.com"
 
     if str(id_val or "").strip() and not state.get("account_id"):
         lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state, full_name=caller_fn)
+    if raw_phone and is_phone_number(raw_phone):
+        p_l4 = extract_phone_last4(raw_phone)
+        if p_l4:
+            state["caller_provided_phone_last4"] = p_l4
+            state["phone_last4"] = p_l4
+            state["lookup_by_name"] = False
+            state["phone_unconfirmed"] = False
     if caller_email and "@" in caller_email:
         state["contact_email"] = caller_email
         state["caller_provided_email"] = caller_email
@@ -1880,7 +1946,15 @@ def manage_mfa_settings_impl(  # pragma: no cover
             state["auth_status"] = "pass"
             state["logged_in"] = True
             state["auth_failure_count"] = 0
-            if state.get("mfa_email_code_sent") and len(digits) == LOGIN_CODE_LENGTH:
+            if state.get("login_channel") == "mfa_sms" and len(digits) == LOGIN_CODE_LENGTH:
+                state["login_channel"] = "mfa_sms_verified"
+                if (
+                    state.get("mfa_email_code_sent")
+                    or state.get("lost_authenticator")
+                    or _is_truthy_bool(lost_authenticator)
+                ):
+                    state["mfa_email_verified"] = True
+            elif state.get("mfa_email_code_sent") and len(digits) == LOGIN_CODE_LENGTH:
                 state["mfa_email_verified"] = True
             elif len(digits) == LOGIN_CODE_LENGTH:
                 state["login_channel"] = "mfa_sms_verified"
@@ -1902,8 +1976,13 @@ def manage_mfa_settings_impl(  # pragma: no cover
 
     if is_lost:
         state["lost_authenticator"] = True
-        if not state.get("mfa_email_verified"):
-            already_sent = bool(state.get("mfa_email_code_sent")) and not bool(caller_email and "@" in caller_email)
+        step_up_done = (
+            bool(state.get("mfa_email_verified"))
+            or state.get("login_channel") == "mfa_sms_verified"
+        )
+        if not step_up_done:
+            prior_email_sent = bool(state.get("mfa_email_code_sent"))
+            already_sent = prior_email_sent and not bool(caller_email and "@" in caller_email)
             state["mfa_email_code_sent"] = True
             email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
             is_caller_email = bool(
@@ -1938,6 +2017,8 @@ def manage_mfa_settings_impl(  # pragma: no cover
                         f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier sans annoncer d'initiale spontanément et demandez au client de vous le lire; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
                         f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado sin indicar una inicial espontáneamente y pídale a quien llama que se lo lea; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
                     )
+            if already_sent or prior_email_sent:
+                action_text = f"{action_text} {_stepup_delayed_email_guidance(lang)}"
             rep_data: dict[str, Any] = {
                 "requires_email_step_up": True,
                 "requires_step_up": True,
@@ -1998,6 +2079,7 @@ def manage_mfa_settings_impl(  # pragma: no cover
         state["mfa_enabled"] = True
         state["preferred_mfa_channel"] = norm_channel
 
+        enrolled_l4 = ""
         if norm_channel == "authenticator_app":
             spoken = localized_text(
                 lang,
@@ -2025,33 +2107,60 @@ def manage_mfa_settings_impl(  # pragma: no cover
                 "Confirme que la autenticación de dos factores por correo ya está habilitada en la cuenta con códigos de respaldo; no dirija al cliente a un portal en línea.",
             )
         else:
-            spoken = localized_text(
-                lang,
-                "Two-factor authentication has been enabled and is now active on your account via text message; backup verification codes have been generated and saved to your profile.",
-                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte par message texte; les codes de secours ont été générés et enregistrés à votre profil.",
-                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta a través de mensaje de texto; los códigos de verificación de respaldo se han generado y guardado en su perfil.",
-            )
-            action_text = localized_text(
-                lang,
-                "Confirm that SMS text message MFA is now enabled and active on the account, with backup recovery codes generated.",
-                "Confirmez que l'A2F par message texte est maintenant activée sur le compte, avec les codes de secours générés.",
-                "Confirme que la autenticación de dos factores por mensaje de texto ya está habilitada en la cuenta, con códigos de respaldo generados.",
-            )
+            cand_l4 = str(
+                state.get("caller_provided_phone_last4")
+                or (
+                    ""
+                    if (state.get("phone_unconfirmed") or state.get("lookup_by_name"))
+                    else state.get("phone_last4")
+                )
+                or ""
+            ).strip()
+            if len(cand_l4) == 4 and cand_l4.isdigit():
+                enrolled_l4 = cand_l4
+                spoken = localized_text(
+                    lang,
+                    f"Two-factor authentication has been enabled and is now active on your account via text message to your mobile number ending in {enrolled_l4}; backup verification codes have been generated and saved to your profile.",
+                    f"L'authentification à deux facteurs a été activée et est maintenant active sur votre compte par message texte au numéro de mobile se terminant par {enrolled_l4}; les codes de secours ont été générés et enregistrés à votre profil.",
+                    f"La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta por mensaje de texto al número móvil terminado en {enrolled_l4}; los códigos de verificación de respaldo se han generado y guardado en su perfil.",
+                )
+                action_text = localized_text(
+                    lang,
+                    f"Confirm that SMS text message MFA is now enabled and active on the account for the mobile number ending in {enrolled_l4}, with backup recovery codes generated.",
+                    f"Confirmez que l'A2F par message texte est maintenant activée sur le compte pour le numéro de mobile se terminant par {enrolled_l4}, avec les codes de secours générés.",
+                    f"Confirme que la autenticación de dos factores por mensaje de texto ya está habilitada en la cuenta para el número móvil terminado en {enrolled_l4}, con códigos de respaldo generados.",
+                )
+            else:
+                spoken = localized_text(
+                    lang,
+                    "Two-factor authentication has been enabled and is now active on your account via text message; backup verification codes have been generated and saved to your profile.",
+                    "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte par message texte; les codes de secours ont été générés et enregistrés à votre profil.",
+                    "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta a través de mensaje de texto; los códigos de verificación de respaldo se han generado y guardado en su perfil.",
+                )
+                action_text = localized_text(
+                    lang,
+                    "Confirm that SMS text message MFA is now enabled and active on the account, with backup recovery codes generated.",
+                    "Confirmez que l'A2F par message texte est maintenant activée sur le compte, avec les codes de secours générés.",
+                    "Confirme que la autenticación de dos factores por mensaje de texto ya está habilitada en la cuenta, con códigos de respaldo generados.",
+                )
 
+        enable_data: dict[str, Any] = {
+            "mfa_updated": True,
+            "mfa_enabled": True,
+            "setup_complete": True,
+            "preferred_mfa_channel": norm_channel,
+            "backup_codes_generated": True,
+            "backup_recovery_active": True,
+            "action_fulfilled": True,
+            "task_completed": True,
+            "user_goal_fulfilled": True,
+            "spoken_message": spoken,
+            "agent_action": action_text,
+        }
+        if enrolled_l4:
+            enable_data["destination_phone_last4"] = enrolled_l4
         return ok_reply(
-            {
-                "mfa_updated": True,
-                "mfa_enabled": True,
-                "setup_complete": True,
-                "preferred_mfa_channel": norm_channel,
-                "backup_codes_generated": True,
-                "backup_recovery_active": True,
-                "action_fulfilled": True,
-                "task_completed": True,
-                "user_goal_fulfilled": True,
-                "spoken_message": spoken,
-                "agent_action": action_text,
-            },
+            enable_data,
             reference,
             language=lang,
         )

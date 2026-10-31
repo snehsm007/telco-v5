@@ -52,6 +52,8 @@ import hashlib
 import re
 import sys
 
+BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
+
 LOGIN_CODE_LENGTH = 6  # pragma: no cover
 
 MAX_LOGIN_ATTEMPTS = 3  # pragma: no cover
@@ -1436,6 +1438,31 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
 
     return None
 
+def extract_phone_last4(val: Any) -> str:  # pragma: no cover
+    """Return 4-digit phone suffix when val is a valid 10-digit NANP or +intl phone number, else ''."""
+    if val is None or isinstance(val, bool):
+        return ""
+    raw_str = str(val).strip()
+    if not raw_str or any(c.isalpha() for c in raw_str):
+        return ""
+    raw_digits = normalize_code(val)
+    norm_digits = (
+        raw_digits[1:]
+        if (len(raw_digits) == 11 and raw_digits.startswith("1"))
+        else raw_digits
+    )
+    is_intl = (
+        (raw_str.startswith("+") or raw_str.startswith("00"))
+        and 10 <= len(raw_digits) <= 15
+    )
+    if len(norm_digits) == 10 or is_intl:
+        return norm_digits[-4:]
+    return ""
+
+def is_phone_number(val: Any) -> bool:  # pragma: no cover
+    """Return True when val is a valid 10-digit NANP or +intl phone number."""
+    return bool(extract_phone_last4(val))
+
 ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
     {"0000", "000000", "1111", "111111", "9999", "999999"}
 )
@@ -1450,8 +1477,6 @@ def login_code_accepted(code_digits: Any, attempts: int = 0, max_attempts: int =
     if attempts >= max(max_attempts - 1, 1):
         return False
     return True
-
-BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
 
 OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")  # pragma: no cover
 
@@ -1722,6 +1747,8 @@ def lookup_account_impl(  # pragma: no cover
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
         state["caller_provided_email"] = ""
+        state["mfa_stepup_alt_offered"] = False
+        state["phone_unconfirmed"] = False
         if state.get("account_id") and not is_keypad:
             state["dtmf_digits"] = ""
 
@@ -1755,6 +1782,7 @@ def lookup_account_impl(  # pragma: no cover
     state["account_id"] = account["account_id"]
     state["identified"] = True
     state["lookup_by_name"] = keep_unconfirmed_name_lookup
+    state["phone_unconfirmed"] = keep_unconfirmed_name_lookup
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False
@@ -1893,14 +1921,28 @@ def verify_login_impl(  # pragma: no cover
             state["phone_last4"] = caller_l4
             mutated_phone_l4 = True
 
-        already_identified = bool(state.get("identified") and state.get("account_id"))
-        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
-        if l_res.get("status") == "error":
-            if mutated_phone_l4:
-                state["caller_provided_phone_last4"] = prev_caller_l4 or ""
-                state["phone_last4"] = prev_phone_l4 or ""
-            if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
-                return l_res
+        if (
+            bool(
+                state.get("account_id")
+                and state.get("auth_status") == "pass"
+                and state.get("logged_in")
+            )
+            and is_phone_number(id_val)
+            and raw_digits not in BLOCKED_CALLER_NUMBERS
+            and norm_digits not in BLOCKED_CALLER_NUMBERS
+            and not is_synthetic_wrong_identifier(str(id_val), norm_digits)
+        ):
+            state["lookup_by_name"] = False
+            state["phone_unconfirmed"] = False
+        else:
+            already_identified = bool(state.get("identified") and state.get("account_id"))
+            l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+            if l_res.get("status") == "error":
+                if mutated_phone_l4:
+                    state["caller_provided_phone_last4"] = prev_caller_l4 or ""
+                    state["phone_last4"] = prev_phone_l4 or ""
+                if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
+                    return l_res
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -2143,10 +2185,12 @@ def verify_login_impl(  # pragma: no cover
         and method_low != "pin"
         and (bool(state.get("mfa_email_code_sent")) or method_low == "email")
     )
-    if is_email_auth:
-        state["mfa_email_verified"] = True
-    elif was_mfa_sms and len(digits) == LOGIN_CODE_LENGTH and method_low != "pin":
+    if was_mfa_sms and len(digits) == LOGIN_CODE_LENGTH and method_low != "pin":
         state["login_channel"] = "mfa_sms_verified"
+        if state.get("mfa_email_code_sent") or state.get("lost_authenticator"):
+            state["mfa_email_verified"] = True
+    elif is_email_auth:
+        state["mfa_email_verified"] = True
     elif method_low == "pin" or len(digits) == SECRET_PIN_LENGTH:
         state["login_channel"] = "pin"
     else:

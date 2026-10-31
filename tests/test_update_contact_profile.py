@@ -91,3 +91,25 @@ def test_update_contact_profile_localization(monkeypatch) -> None:
     assert reply["status"] == "ok"
     assert reply["data"]["profile_updated"] is True
     assert session.state["language"] == "es-US"
+
+
+def test_update_contact_profile_phone_number_only(monkeypatch) -> None:
+    session = SimpleNamespace(
+        state={
+            "auth_status": "pass",
+            "account_id": "ACC-1001",
+            "lookup_by_name": True,
+            "phone_unconfirmed": True,
+            "phone_last4": "",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    reply = tool.update_contact_profile(phone_number="708-555-0192")
+    assert reply["status"] == "ok"
+    assert reply["data"]["profile_updated"] is True
+    assert reply["data"]["updated_fields"]["phone_last4"] == "0192"
+    assert session.state["caller_provided_phone_last4"] == "0192"
+    assert session.state["phone_last4"] == "0192"
+    assert session.state["lookup_by_name"] is False
+    assert session.state["phone_unconfirmed"] is False
+

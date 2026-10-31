@@ -48,6 +48,8 @@ import hashlib
 import re
 import sys
 
+BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
+
 MAX_LOGIN_ATTEMPTS = 3  # pragma: no cover
 
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
@@ -1343,7 +1345,39 @@ def _session_language(state: dict[str, Any] | None, language: Any = "") -> str: 
 
     return resolve_copy_locale(None)
 
-BLOCKED_CALLER_NUMBERS: frozenset[str] = frozenset({"9005550199", "8005550000"})  # pragma: no cover
+def _stepup_delayed_email_guidance(lang: str) -> str:  # pragma: no cover
+    """Return concise localized fallback guidance when backup email step-up is delayed."""
+    return localized_text(
+        lang,
+        "If the caller still has not received the email code or asks for another option, ask for an alternate backup email address (pass email to manage_mfa_settings) or offer to send a 6-digit verification code via SMS to an accessible mobile number (call send_login_code with channel='sms' and identifier if they give a number), and do not offer live-agent transfer unless the caller explicitly asks for a representative.",
+        "Si le client n'a toujours pas reçu le code par courriel ou demande une autre option, demandez une autre adresse courriel de secours (passez email à manage_mfa_settings) ou proposez d'envoyer un code de vérification à 6 chiffres par SMS à un numéro de mobile accessible (appelez send_login_code avec channel='sms' et identifier s'il donne un numéro), et ne proposez pas de transfert à un agent à moins que le client ne demande explicitement un représentant.",
+        "Si el cliente aún no ha recibido el código por correo o pide otra opción, pida un correo electrónico de respaldo alternativo (pase email a manage_mfa_settings) u ofrezca enviar un código de verificación de 6 dígitos por SMS a un número móvil accesible (llame a send_login_code con channel='sms' e identifier si da un número), y no ofrezca transferir a un agente a menos que el cliente pida explícitamente un representante.",
+    )
+
+def extract_phone_last4(val: Any) -> str:  # pragma: no cover
+    """Return 4-digit phone suffix when val is a valid 10-digit NANP or +intl phone number, else ''."""
+    if val is None or isinstance(val, bool):
+        return ""
+    raw_str = str(val).strip()
+    if not raw_str or any(c.isalpha() for c in raw_str):
+        return ""
+    raw_digits = normalize_code(val)
+    norm_digits = (
+        raw_digits[1:]
+        if (len(raw_digits) == 11 and raw_digits.startswith("1"))
+        else raw_digits
+    )
+    is_intl = (
+        (raw_str.startswith("+") or raw_str.startswith("00"))
+        and 10 <= len(raw_digits) <= 15
+    )
+    if len(norm_digits) == 10 or is_intl:
+        return norm_digits[-4:]
+    return ""
+
+def is_phone_number(val: Any) -> bool:  # pragma: no cover
+    """Return True when val is a valid 10-digit NANP or +intl phone number."""
+    return bool(extract_phone_last4(val))
 
 OUTAGE_POSTAL_PREFIXES: tuple[str, ...] = ("H3Z", "G1R")  # pragma: no cover
 
@@ -1607,6 +1641,8 @@ def lookup_account_impl(  # pragma: no cover
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
         state["caller_provided_email"] = ""
+        state["mfa_stepup_alt_offered"] = False
+        state["phone_unconfirmed"] = False
         if state.get("account_id") and not is_keypad:
             state["dtmf_digits"] = ""
 
@@ -1640,6 +1676,7 @@ def lookup_account_impl(  # pragma: no cover
     state["account_id"] = account["account_id"]
     state["identified"] = True
     state["lookup_by_name"] = keep_unconfirmed_name_lookup
+    state["phone_unconfirmed"] = keep_unconfirmed_name_lookup
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False
@@ -1764,6 +1801,12 @@ def send_login_code_impl(  # pragma: no cover
         caller_email = str(id_val).strip()
     if "@" in str(id_val or "").strip():
         id_val = ""
+    caller_gave_phone_to_send = bool(id_val and is_phone_number(id_val))
+    already_logged_in_before = bool(
+        state.get("account_id")
+        and state.get("auth_status") == "pass"
+        and state.get("logged_in")
+    )
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -1782,14 +1825,26 @@ def send_login_code_impl(  # pragma: no cover
             state["phone_last4"] = caller_l4
             mutated_phone_l4 = True
 
-        already_identified = bool(state.get("identified") and state.get("account_id"))
-        l_res = lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state)
-        if l_res.get("status") == "error":
-            if mutated_phone_l4:
-                state["caller_provided_phone_last4"] = prev_caller_l4 or ""
-                state["phone_last4"] = prev_phone_l4 or ""
-            if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
-                return l_res
+        if (
+            already_logged_in_before
+            and caller_gave_phone_to_send
+            and raw_digits not in BLOCKED_CALLER_NUMBERS
+            and norm_digits not in BLOCKED_CALLER_NUMBERS
+            and not is_synthetic_wrong_identifier(str(id_val), norm_digits)
+        ):
+            state["lookup_by_name"] = False
+            state["phone_unconfirmed"] = False
+        else:
+            already_identified = bool(state.get("identified") and state.get("account_id"))
+            l_res = lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state)
+            if l_res.get("status") == "error":
+                if mutated_phone_l4:
+                    state["caller_provided_phone_last4"] = prev_caller_l4 or ""
+                    state["phone_last4"] = prev_phone_l4 or ""
+                if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
+                    return l_res
+            elif caller_gave_phone_to_send:
+                state["phone_unconfirmed"] = False
     if caller_email and "@" in caller_email:
         state["contact_email"] = caller_email
         state["caller_provided_email"] = caller_email
@@ -1826,7 +1881,25 @@ def send_login_code_impl(  # pragma: no cover
 
     norm_chan = "email" if (str(channel or "").strip().lower() in {"email", "courriel", "correo"} or bool(caller_email and "@" in caller_email)) else "sms"
 
-    if not _is_truthy_bool(resend) and state.get("auth_status") == "pass" and state.get("logged_in") and not (norm_chan == "email" and not state.get("mfa_email_verified")):
+    already_logged_in = bool(state.get("auth_status") == "pass" and state.get("logged_in"))
+    pending_lost_stepup = bool(state.get("lost_authenticator")) and not (
+        bool(state.get("mfa_email_verified"))
+        or state.get("login_channel") == "mfa_sms_verified"
+    )
+    pending_mfa_sms_verify = (
+        norm_chan == "sms"
+        and bool(state.get("mfa_enabled"))
+        and state.get("preferred_mfa_channel") == "sms"
+        and state.get("login_channel") not in ("sms", "mfa_sms", "mfa_sms_verified")
+    )
+    if (
+        not _is_truthy_bool(resend)
+        and already_logged_in
+        and not (norm_chan == "email" and not state.get("mfa_email_verified"))
+        and not pending_lost_stepup
+        and not caller_gave_phone_to_send
+        and not pending_mfa_sms_verify
+    ):
         return ok_reply(
             {"sent": False, "already_verified": True},
             reference,
@@ -1874,14 +1947,22 @@ def send_login_code_impl(  # pragma: no cover
                 data={"agent_action": action_text},
             )
 
-    state["login_channel"] = norm_chan
+    prior_mfa_email_sent = bool(state.get("mfa_email_code_sent"))
+    if already_logged_in and norm_chan == "sms":
+        state["login_channel"] = "mfa_sms"
+        if pending_lost_stepup:
+            state["mfa_email_code_sent"] = True
+    else:
+        state["login_channel"] = norm_chan
     state["login_code_sent"] = True
-    if not (state.get("auth_status") == "pass" and state.get("logged_in")):
+    if not already_logged_in:
         state["auth_status"] = "code_sent"
 
     if norm_chan == "email":
         state["mfa_email_code_sent"] = True
         email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
+        if pending_lost_stepup and prior_mfa_email_sent:
+            action_text = f"{action_text} {_stepup_delayed_email_guidance(lang)}"
         email_data: dict[str, Any] = {
             "sent": True,
             "already_verified": False,

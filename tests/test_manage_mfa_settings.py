@@ -539,3 +539,61 @@ def test_manage_mfa_settings_alternate_email_and_domain_mask(monkeypatch) -> Non
     assert session.state["contact_email"] == "m.miller_work_backup@emailprovider.com"
 
 
+def test_manage_mfa_settings_phone_number_sms_enrollment_and_delayed_stepup_guidance(
+    monkeypatch,
+) -> None:
+    # Enable SMS MFA with explicit phone_number across locales
+    for locale, expected_fragment in (
+        ("en-US", "ending in 0192"),
+        ("fr-CA", "se terminant par 0192"),
+        ("es-US", "terminado en 0192"),
+    ):
+        session = SimpleNamespace(
+            state={
+                "account_id": "ACC-1001",
+                "auth_status": "pass",
+                "logged_in": True,
+                "lookup_by_name": True,
+                "phone_unconfirmed": True,
+                "phone_last4": "",
+            }
+        )
+        monkeypatch.setattr(tool, "context", session, raising=False)
+        res = tool.manage_mfa_settings(
+            action="enable",
+            preferred_mfa_channel="sms",
+            phone_number="708-555-0192",
+            language=locale,
+        )
+        assert res["status"] == "ok"
+        assert res["data"]["destination_phone_last4"] == "0192"
+        assert expected_fragment in res["data"]["spoken_message"]
+        assert session.state["caller_provided_phone_last4"] == "0192"
+        assert session.state["phone_last4"] == "0192"
+        assert session.state["phone_unconfirmed"] is False
+
+    # Delayed email resend includes SMS / alternate email guidance and mfa_sms_verified satisfies is_lost
+    session_lost = SimpleNamespace(
+        state={
+            "account_id": "A1001",
+            "auth_status": "pass",
+            "logged_in": True,
+            "lost_authenticator": True,
+            "mfa_email_code_sent": True,
+            "contact_email": "jordan@example.com",
+        }
+    )
+    monkeypatch.setattr(tool, "context", session_lost, raising=False)
+    resend = tool.manage_mfa_settings(action="disable", lost_authenticator=True, language="en-US")
+    assert resend["status"] == "ok"
+    assert "send_login_code" in resend["agent_action"]
+    assert "channel='sms'" in resend["agent_action"]
+
+    session_lost.state["login_channel"] = "mfa_sms_verified"
+    done = tool.manage_mfa_settings(action="disable", lost_authenticator=True, language="en-US")
+    assert done["status"] == "ok"
+    assert done["data"]["mfa_updated"] is True
+    assert done["data"]["mfa_enabled"] is False
+
+
+

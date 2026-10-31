@@ -827,6 +827,24 @@
         "default": 0,
         "required": []
       }
+    },
+    {
+      "name": "phone_unconfirmed",
+      "description": "True when the account was identified without a caller-confirmed mobile phone number.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
+      "name": "mfa_stepup_alt_offered",
+      "description": "True once an alternate email or SMS step-up option has been offered before transfer.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
     }
   ],
   "guardrails": [

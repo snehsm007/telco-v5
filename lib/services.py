@@ -262,6 +262,43 @@ def _extract_last4(val: Any) -> str | None:
     return digits[-4:]
 
 
+def extract_phone_last4(val: Any) -> str:
+    """Return 4-digit phone suffix when val is a valid 10-digit NANP or +intl phone number, else ''."""
+    if val is None or isinstance(val, bool):
+        return ""
+    raw_str = str(val).strip()
+    if not raw_str or any(c.isalpha() for c in raw_str):
+        return ""
+    raw_digits = normalize_code(val)
+    norm_digits = (
+        raw_digits[1:]
+        if (len(raw_digits) == 11 and raw_digits.startswith("1"))
+        else raw_digits
+    )
+    is_intl = (
+        (raw_str.startswith("+") or raw_str.startswith("00"))
+        and 10 <= len(raw_digits) <= 15
+    )
+    if len(norm_digits) == 10 or is_intl:
+        return norm_digits[-4:]
+    return ""
+
+
+def is_phone_number(val: Any) -> bool:
+    """Return True when val is a valid 10-digit NANP or +intl phone number."""
+    return bool(extract_phone_last4(val))
+
+
+def _stepup_delayed_email_guidance(lang: str) -> str:
+    """Return concise localized fallback guidance when backup email step-up is delayed."""
+    return localized_text(
+        lang,
+        "If the caller still has not received the email code or asks for another option, ask for an alternate backup email address (pass email to manage_mfa_settings) or offer to send a 6-digit verification code via SMS to an accessible mobile number (call send_login_code with channel='sms' and identifier if they give a number), and do not offer live-agent transfer unless the caller explicitly asks for a representative.",
+        "Si le client n'a toujours pas reçu le code par courriel ou demande une autre option, demandez une autre adresse courriel de secours (passez email à manage_mfa_settings) ou proposez d'envoyer un code de vérification à 6 chiffres par SMS à un numéro de mobile accessible (appelez send_login_code avec channel='sms' et identifier s'il donne un numéro), et ne proposez pas de transfert à un agent à moins que le client ne demande explicitement un représentant.",
+        "Si el cliente aún no ha recibido el código por correo o pide otra opción, pida un correo electrónico de respaldo alternativo (pase email a manage_mfa_settings) u ofrezca enviar un código de verificación de 6 dígitos por SMS a un número móvil accesible (llame a send_login_code con channel='sms' e identifier si da un número), y no ofrezca transferir a un agente a menos que el cliente pida explícitamente un representante.",
+    )
+
+
 def _record_audit(state: dict[str, Any]) -> None:
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
@@ -888,6 +925,8 @@ def lookup_account_impl(
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
         state["caller_provided_email"] = ""
+        state["mfa_stepup_alt_offered"] = False
+        state["phone_unconfirmed"] = False
         if state.get("account_id") and not is_keypad:
             state["dtmf_digits"] = ""
 
@@ -921,6 +960,7 @@ def lookup_account_impl(
     state["account_id"] = account["account_id"]
     state["identified"] = True
     state["lookup_by_name"] = keep_unconfirmed_name_lookup
+    state["phone_unconfirmed"] = keep_unconfirmed_name_lookup
     state["customer_type"] = "residential"
     state["business_flag"] = False
     state["is_blocked"] = False
@@ -1150,6 +1190,12 @@ def send_login_code_impl(
         caller_email = str(id_val).strip()
     if "@" in str(id_val or "").strip():
         id_val = ""
+    caller_gave_phone_to_send = bool(id_val and is_phone_number(id_val))
+    already_logged_in_before = bool(
+        state.get("account_id")
+        and state.get("auth_status") == "pass"
+        and state.get("logged_in")
+    )
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -1168,14 +1214,26 @@ def send_login_code_impl(
             state["phone_last4"] = caller_l4
             mutated_phone_l4 = True
 
-        already_identified = bool(state.get("identified") and state.get("account_id"))
-        l_res = lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state)
-        if l_res.get("status") == "error":
-            if mutated_phone_l4:
-                state["caller_provided_phone_last4"] = prev_caller_l4 or ""
-                state["phone_last4"] = prev_phone_l4 or ""
-            if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
-                return l_res
+        if (
+            already_logged_in_before
+            and caller_gave_phone_to_send
+            and raw_digits not in BLOCKED_CALLER_NUMBERS
+            and norm_digits not in BLOCKED_CALLER_NUMBERS
+            and not is_synthetic_wrong_identifier(str(id_val), norm_digits)
+        ):
+            state["lookup_by_name"] = False
+            state["phone_unconfirmed"] = False
+        else:
+            already_identified = bool(state.get("identified") and state.get("account_id"))
+            l_res = lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state)
+            if l_res.get("status") == "error":
+                if mutated_phone_l4:
+                    state["caller_provided_phone_last4"] = prev_caller_l4 or ""
+                    state["phone_last4"] = prev_phone_l4 or ""
+                if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
+                    return l_res
+            elif caller_gave_phone_to_send:
+                state["phone_unconfirmed"] = False
     if caller_email and "@" in caller_email:
         state["contact_email"] = caller_email
         state["caller_provided_email"] = caller_email
@@ -1212,7 +1270,25 @@ def send_login_code_impl(
 
     norm_chan = "email" if (str(channel or "").strip().lower() in {"email", "courriel", "correo"} or bool(caller_email and "@" in caller_email)) else "sms"
 
-    if not _is_truthy_bool(resend) and state.get("auth_status") == "pass" and state.get("logged_in") and not (norm_chan == "email" and not state.get("mfa_email_verified")):
+    already_logged_in = bool(state.get("auth_status") == "pass" and state.get("logged_in"))
+    pending_lost_stepup = bool(state.get("lost_authenticator")) and not (
+        bool(state.get("mfa_email_verified"))
+        or state.get("login_channel") == "mfa_sms_verified"
+    )
+    pending_mfa_sms_verify = (
+        norm_chan == "sms"
+        and bool(state.get("mfa_enabled"))
+        and state.get("preferred_mfa_channel") == "sms"
+        and state.get("login_channel") not in ("sms", "mfa_sms", "mfa_sms_verified")
+    )
+    if (
+        not _is_truthy_bool(resend)
+        and already_logged_in
+        and not (norm_chan == "email" and not state.get("mfa_email_verified"))
+        and not pending_lost_stepup
+        and not caller_gave_phone_to_send
+        and not pending_mfa_sms_verify
+    ):
         return ok_reply(
             {"sent": False, "already_verified": True},
             reference,
@@ -1260,14 +1336,22 @@ def send_login_code_impl(
                 data={"agent_action": action_text},
             )
 
-    state["login_channel"] = norm_chan
+    prior_mfa_email_sent = bool(state.get("mfa_email_code_sent"))
+    if already_logged_in and norm_chan == "sms":
+        state["login_channel"] = "mfa_sms"
+        if pending_lost_stepup:
+            state["mfa_email_code_sent"] = True
+    else:
+        state["login_channel"] = norm_chan
     state["login_code_sent"] = True
-    if not (state.get("auth_status") == "pass" and state.get("logged_in")):
+    if not already_logged_in:
         state["auth_status"] = "code_sent"
 
     if norm_chan == "email":
         state["mfa_email_code_sent"] = True
         email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
+        if pending_lost_stepup and prior_mfa_email_sent:
+            action_text = f"{action_text} {_stepup_delayed_email_guidance(lang)}"
         email_data: dict[str, Any] = {
             "sent": True,
             "already_verified": False,
@@ -1358,14 +1442,28 @@ def verify_login_impl(
             state["phone_last4"] = caller_l4
             mutated_phone_l4 = True
 
-        already_identified = bool(state.get("identified") and state.get("account_id"))
-        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
-        if l_res.get("status") == "error":
-            if mutated_phone_l4:
-                state["caller_provided_phone_last4"] = prev_caller_l4 or ""
-                state["phone_last4"] = prev_phone_l4 or ""
-            if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
-                return l_res
+        if (
+            bool(
+                state.get("account_id")
+                and state.get("auth_status") == "pass"
+                and state.get("logged_in")
+            )
+            and is_phone_number(id_val)
+            and raw_digits not in BLOCKED_CALLER_NUMBERS
+            and norm_digits not in BLOCKED_CALLER_NUMBERS
+            and not is_synthetic_wrong_identifier(str(id_val), norm_digits)
+        ):
+            state["lookup_by_name"] = False
+            state["phone_unconfirmed"] = False
+        else:
+            already_identified = bool(state.get("identified") and state.get("account_id"))
+            l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+            if l_res.get("status") == "error":
+                if mutated_phone_l4:
+                    state["caller_provided_phone_last4"] = prev_caller_l4 or ""
+                    state["phone_last4"] = prev_phone_l4 or ""
+                if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
+                    return l_res
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -1608,10 +1706,12 @@ def verify_login_impl(
         and method_low != "pin"
         and (bool(state.get("mfa_email_code_sent")) or method_low == "email")
     )
-    if is_email_auth:
-        state["mfa_email_verified"] = True
-    elif was_mfa_sms and len(digits) == LOGIN_CODE_LENGTH and method_low != "pin":
+    if was_mfa_sms and len(digits) == LOGIN_CODE_LENGTH and method_low != "pin":
         state["login_channel"] = "mfa_sms_verified"
+        if state.get("mfa_email_code_sent") or state.get("lost_authenticator"):
+            state["mfa_email_verified"] = True
+    elif is_email_auth:
+        state["mfa_email_verified"] = True
     elif method_low == "pin" or len(digits) == SECRET_PIN_LENGTH:
         state["login_channel"] = "pin"
     else:
@@ -1678,6 +1778,7 @@ def handover_to_person_impl(
     if not isinstance(language, str) and callable(getattr(language, "get", None)) and state is None:
         state = language
         language = ""
+    explicit_session = state is not None or session_state is not None
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
     clean_reason = " ".join(str(reason or summary or "caller_requested").split()) or "caller_requested"
@@ -1700,10 +1801,51 @@ def handover_to_person_impl(
     if state.get("mock_error") == "SYSTEM_DOWN":
         return error_reply("SYSTEM_DOWN", reference=reference, language=resolved_lang)
 
-    _record_audit(state)
-
     r_low = clean_reason.lower()
     tq_low = str(target_queue or "").lower()
+    if (
+        explicit_session
+        and state.get("auth_status") == "pass"
+        and bool(state.get("logged_in"))
+        and bool(state.get("lost_authenticator"))
+        and bool(state.get("mfa_email_code_sent"))
+        and not (
+            bool(state.get("mfa_email_verified"))
+            or state.get("login_channel") == "mfa_sms_verified"
+        )
+        and read_count(state, "auth_failure_count") == 0
+        and not any(
+            w in r_low
+            for w in (
+                "fraud",
+                "unauthorized",
+                "security",
+                "fraude",
+                "compromis",
+                "business",
+                "entreprise",
+                "commercial",
+                "no_input",
+            )
+        )
+        and tq_low not in ("fraud_and_security_24x7", "business_solutions")
+        and not bool(state.get("mfa_stepup_alt_offered"))
+    ):
+        state["mfa_stepup_alt_offered"] = True
+        state["last_tracking_id"] = reference
+        return error_reply(
+            "REQUIRES_CONFIRMATION",
+            agent_action=localized_text(
+                resolved_lang,
+                "Before transferring, offer once to send the 6-digit step-up code to an alternate backup email address (via manage_mfa_settings with email) or via SMS to an accessible mobile number (via send_login_code with channel='sms'); transfer on the next turn only if the caller still asks for a representative.",
+                "Avant de transférer, proposez une fois d'envoyer le code à 6 chiffres à une autre adresse courriel de secours (via manage_mfa_settings avec email) ou par SMS à un numéro mobile accessible (via send_login_code avec channel='sms'); ne transférez au tour suivant que si le client demande toujours un représentant.",
+                "Antes de transferir, ofrezca una vez enviar el código de 6 dígitos a un correo alternativo (mediante manage_mfa_settings con email) o por SMS a un número móvil accesible (mediante send_login_code con channel='sms'); transfiera en el siguiente turno solo si el cliente aún pide un representante.",
+            ),
+            reference=reference,
+            language=resolved_lang,
+        )
+
+    _record_audit(state)
     if (
         "business" in r_low
         or state.get("business_flag")
@@ -4134,6 +4276,7 @@ def manage_mfa_settings_impl(
     verification_code: str | int | float = "",
     language: str = "",
     email: str = "",
+    phone_number: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -4154,12 +4297,28 @@ def manage_mfa_settings_impl(
     if "@" in str(id_val or "").strip():
         id_val = ""
 
+    raw_phone = str(
+        phone_number
+        or kwargs.get("mobile_number")
+        or kwargs.get("phone")
+        or ""
+    ).strip()
+    if not raw_phone and is_phone_number(id_val):
+        raw_phone = str(id_val).strip()
+
     caller_fn = str(kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("first_name") or "").strip()
     if caller_fn and (not state.get("contact_email") or _is_placeholder_email(str(state.get("contact_email") or ""))):
         state["contact_email"] = f"{caller_fn.split()[0].lower()}@example.com"
 
     if str(id_val or "").strip() and not state.get("account_id"):
         lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state, full_name=caller_fn)
+    if raw_phone and is_phone_number(raw_phone):
+        p_l4 = extract_phone_last4(raw_phone)
+        if p_l4:
+            state["caller_provided_phone_last4"] = p_l4
+            state["phone_last4"] = p_l4
+            state["lookup_by_name"] = False
+            state["phone_unconfirmed"] = False
     if caller_email and "@" in caller_email:
         state["contact_email"] = caller_email
         state["caller_provided_email"] = caller_email
@@ -4237,7 +4396,15 @@ def manage_mfa_settings_impl(
             state["auth_status"] = "pass"
             state["logged_in"] = True
             state["auth_failure_count"] = 0
-            if state.get("mfa_email_code_sent") and len(digits) == LOGIN_CODE_LENGTH:
+            if state.get("login_channel") == "mfa_sms" and len(digits) == LOGIN_CODE_LENGTH:
+                state["login_channel"] = "mfa_sms_verified"
+                if (
+                    state.get("mfa_email_code_sent")
+                    or state.get("lost_authenticator")
+                    or _is_truthy_bool(lost_authenticator)
+                ):
+                    state["mfa_email_verified"] = True
+            elif state.get("mfa_email_code_sent") and len(digits) == LOGIN_CODE_LENGTH:
                 state["mfa_email_verified"] = True
             elif len(digits) == LOGIN_CODE_LENGTH:
                 state["login_channel"] = "mfa_sms_verified"
@@ -4259,8 +4426,13 @@ def manage_mfa_settings_impl(
 
     if is_lost:
         state["lost_authenticator"] = True
-        if not state.get("mfa_email_verified"):
-            already_sent = bool(state.get("mfa_email_code_sent")) and not bool(caller_email and "@" in caller_email)
+        step_up_done = (
+            bool(state.get("mfa_email_verified"))
+            or state.get("login_channel") == "mfa_sms_verified"
+        )
+        if not step_up_done:
+            prior_email_sent = bool(state.get("mfa_email_code_sent"))
+            already_sent = prior_email_sent and not bool(caller_email and "@" in caller_email)
             state["mfa_email_code_sent"] = True
             email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
             is_caller_email = bool(
@@ -4295,6 +4467,8 @@ def manage_mfa_settings_impl(
                         f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier sans annoncer d'initiale spontanément et demandez au client de vous le lire; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
                         f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado sin indicar una inicial espontáneamente y pídale a quien llama que se lo lea; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
                     )
+            if already_sent or prior_email_sent:
+                action_text = f"{action_text} {_stepup_delayed_email_guidance(lang)}"
             rep_data: dict[str, Any] = {
                 "requires_email_step_up": True,
                 "requires_step_up": True,
@@ -4355,6 +4529,7 @@ def manage_mfa_settings_impl(
         state["mfa_enabled"] = True
         state["preferred_mfa_channel"] = norm_channel
 
+        enrolled_l4 = ""
         if norm_channel == "authenticator_app":
             spoken = localized_text(
                 lang,
@@ -4382,33 +4557,60 @@ def manage_mfa_settings_impl(
                 "Confirme que la autenticación de dos factores por correo ya está habilitada en la cuenta con códigos de respaldo; no dirija al cliente a un portal en línea.",
             )
         else:
-            spoken = localized_text(
-                lang,
-                "Two-factor authentication has been enabled and is now active on your account via text message; backup verification codes have been generated and saved to your profile.",
-                "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte par message texte; les codes de secours ont été générés et enregistrés à votre profil.",
-                "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta a través de mensaje de texto; los códigos de verificación de respaldo se han generado y guardado en su perfil.",
-            )
-            action_text = localized_text(
-                lang,
-                "Confirm that SMS text message MFA is now enabled and active on the account, with backup recovery codes generated.",
-                "Confirmez que l'A2F par message texte est maintenant activée sur le compte, avec les codes de secours générés.",
-                "Confirme que la autenticación de dos factores por mensaje de texto ya está habilitada en la cuenta, con códigos de respaldo generados.",
-            )
+            cand_l4 = str(
+                state.get("caller_provided_phone_last4")
+                or (
+                    ""
+                    if (state.get("phone_unconfirmed") or state.get("lookup_by_name"))
+                    else state.get("phone_last4")
+                )
+                or ""
+            ).strip()
+            if len(cand_l4) == 4 and cand_l4.isdigit():
+                enrolled_l4 = cand_l4
+                spoken = localized_text(
+                    lang,
+                    f"Two-factor authentication has been enabled and is now active on your account via text message to your mobile number ending in {enrolled_l4}; backup verification codes have been generated and saved to your profile.",
+                    f"L'authentification à deux facteurs a été activée et est maintenant active sur votre compte par message texte au numéro de mobile se terminant par {enrolled_l4}; les codes de secours ont été générés et enregistrés à votre profil.",
+                    f"La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta por mensaje de texto al número móvil terminado en {enrolled_l4}; los códigos de verificación de respaldo se han generado y guardado en su perfil.",
+                )
+                action_text = localized_text(
+                    lang,
+                    f"Confirm that SMS text message MFA is now enabled and active on the account for the mobile number ending in {enrolled_l4}, with backup recovery codes generated.",
+                    f"Confirmez que l'A2F par message texte est maintenant activée sur le compte pour le numéro de mobile se terminant par {enrolled_l4}, avec les codes de secours générés.",
+                    f"Confirme que la autenticación de dos factores por mensaje de texto ya está habilitada en la cuenta para el número móvil terminado en {enrolled_l4}, con códigos de respaldo generados.",
+                )
+            else:
+                spoken = localized_text(
+                    lang,
+                    "Two-factor authentication has been enabled and is now active on your account via text message; backup verification codes have been generated and saved to your profile.",
+                    "L'authentification à deux facteurs a été activée et est maintenant active sur votre compte par message texte; les codes de secours ont été générés et enregistrés à votre profil.",
+                    "La autenticación de dos factores se ha habilitado y ahora está activa en su cuenta a través de mensaje de texto; los códigos de verificación de respaldo se han generado y guardado en su perfil.",
+                )
+                action_text = localized_text(
+                    lang,
+                    "Confirm that SMS text message MFA is now enabled and active on the account, with backup recovery codes generated.",
+                    "Confirmez que l'A2F par message texte est maintenant activée sur le compte, avec les codes de secours générés.",
+                    "Confirme que la autenticación de dos factores por mensaje de texto ya está habilitada en la cuenta, con códigos de respaldo generados.",
+                )
 
+        enable_data: dict[str, Any] = {
+            "mfa_updated": True,
+            "mfa_enabled": True,
+            "setup_complete": True,
+            "preferred_mfa_channel": norm_channel,
+            "backup_codes_generated": True,
+            "backup_recovery_active": True,
+            "action_fulfilled": True,
+            "task_completed": True,
+            "user_goal_fulfilled": True,
+            "spoken_message": spoken,
+            "agent_action": action_text,
+        }
+        if enrolled_l4:
+            enable_data["destination_phone_last4"] = enrolled_l4
         return ok_reply(
-            {
-                "mfa_updated": True,
-                "mfa_enabled": True,
-                "setup_complete": True,
-                "preferred_mfa_channel": norm_channel,
-                "backup_codes_generated": True,
-                "backup_recovery_active": True,
-                "action_fulfilled": True,
-                "task_completed": True,
-                "user_goal_fulfilled": True,
-                "spoken_message": spoken,
-                "agent_action": action_text,
-            },
+            enable_data,
             reference,
             language=lang,
         )
@@ -4616,11 +4818,12 @@ def update_contact_profile_impl(
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    phone_number: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Update contact email, billing address, or preferred language."""
+    """Update contact email, phone number, billing address, or preferred language."""
     state = _get_state(state, session_state)
     _ensure_default_profile(state)
     lang = _session_language(state, language)
@@ -4643,8 +4846,14 @@ def update_contact_profile_impl(
     s_addr = str(service_address or kwargs.get("mailing_address") or "").strip()
     p_code = str(postal_code or "").strip().upper()
     pref_lang = str(preferred_language_update or "").strip()
+    raw_phone = str(
+        phone_number
+        or kwargs.get("mobile_number")
+        or kwargs.get("phone")
+        or ""
+    ).strip()
 
-    if not any((email, s_addr, p_code, pref_lang, notification_preference)):
+    if not any((email, s_addr, p_code, pref_lang, notification_preference, raw_phone)):
         return error_reply("MISSING_INPUT", reference=reference, language=lang)
 
     _record_audit(state)
@@ -4656,6 +4865,16 @@ def update_contact_profile_impl(
         if "@" in clean_email:
             state["caller_provided_email"] = clean_email
         upd["email"] = state["contact_email"]
+    if raw_phone:
+        if is_phone_number(raw_phone):
+            p_l4 = extract_phone_last4(raw_phone)
+            state["caller_provided_phone_last4"] = p_l4
+            state["phone_last4"] = p_l4
+            state["lookup_by_name"] = False
+            state["phone_unconfirmed"] = False
+            upd["phone_last4"] = p_l4
+        else:
+            upd["phone_number"] = raw_phone
     if s_addr:
         state["service_address"] = s_addr
         upd["service_address"] = state["service_address"]
