@@ -613,6 +613,42 @@
       }
     },
     {
+      "name": "port_in_checklist_given",
+      "description": "True if pre-login number transfer checklist was provided.",
+      "schema": {
+        "type": "BOOLEAN",
+        "default": false,
+        "required": []
+      }
+    },
+    {
+      "name": "pending_transfer_phone",
+      "description": "Phone number requested to be transferred/ported.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "transfer_phone_last4",
+      "description": "Last 4 digits of phone number requested to be transferred/ported.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
+      "name": "pending_transfer_carrier",
+      "description": "Donor carrier name for number transfer.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "postal_code",
       "description": "Postal code for service location.",
       "schema": {

@@ -2049,6 +2049,16 @@ def verify_login_impl(  # pragma: no cover
             pass_data["agent_action"] = dtmf_auth_msg
         if bool(state.get("browsed_plan_category")):
             pass_data["current_active_plans"] = _active_account_plans(state, lang)
+        if bool(state.get("port_in_checklist_given")) and not bool(
+            state.get("port_in_request_id")
+        ):
+            pass_data["pending_port_in_intake"] = True
+            pass_data["port_in_next_step"] = localized_text(
+                lang,
+                "Call initiate_number_transfer immediately once any transfer phone number or donor carrier is shared (or now if already provided) so port_in_request_id is logged even when donor account number or transfer PIN are still missing.",
+                "Appelez immédiatement initiate_number_transfer dès qu'un numéro à transférer ou fournisseur actuel est indiqué (ou maintenant s'il a déjà été fourni) afin d'enregistrer port_in_request_id même s'il manque le numéro de compte ou le NIP de transfert.",
+                "Llame de inmediato a initiate_number_transfer en cuanto se indique algún número a transferir u operador actual (o ahora si ya se proporcionó) para registrar port_in_request_id incluso si aún faltan el número de cuenta o el PIN de transferencia.",
+            )
         rep_pass = ok_reply(
             pass_data,
             reference,
@@ -2230,6 +2240,16 @@ def verify_login_impl(  # pragma: no cover
         pass_data_final["agent_action"] = dtmf_auth_msg
     if bool(state.get("browsed_plan_category")):
         pass_data_final["current_active_plans"] = _active_account_plans(state, lang)
+    if bool(state.get("port_in_checklist_given")) and not bool(
+        state.get("port_in_request_id")
+    ):
+        pass_data_final["pending_port_in_intake"] = True
+        pass_data_final["port_in_next_step"] = localized_text(
+            lang,
+            "Call initiate_number_transfer immediately once any transfer phone number or donor carrier is shared (or now if already provided) so port_in_request_id is logged even when donor account number or transfer PIN are still missing.",
+            "Appelez immédiatement initiate_number_transfer dès qu'un numéro à transférer ou fournisseur actuel est indiqué (ou maintenant s'il a déjà été fourni) afin d'enregistrer port_in_request_id même s'il manque le numéro de compte ou le NIP de transfert.",
+            "Llame de inmediato a initiate_number_transfer en cuanto se indique algún número a transferir u operador actual (o ahora si ya se proporcionó) para registrar port_in_request_id incluso si aún faltan el número de cuenta o el PIN de transferencia.",
+        )
     rep_final = ok_reply(
         pass_data_final,
         reference,

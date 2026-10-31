@@ -484,3 +484,61 @@ def test_enforce_handover_fraud_empathy_precedes_hold_line() -> None:
         tool_args_list=({"reason": "fraud_escalation", "language": "en-US"},),
     )
     assert lead_in_out.index("facing challenges") < lead_in_out.index("Please hold")
+
+
+def test_speech_transfer_last4_and_long_number_preservation() -> None:
+    params_no_caller = {
+        "phone_last4": "0143",
+        "caller_provided_phone_last4": "",
+    }
+    assert (
+        clean_agent_speech(
+            "I have noted the transfer number ending in 0199.",
+            params_no_caller,
+        )
+        == "I have noted the transfer number ending in 0199."
+    )
+    assert (
+        clean_agent_speech("I noted 514-555-0199.", params_no_caller)
+        == "I noted 0199."
+    )
+    assert (
+        clean_agent_speech("The number is 514-555-0199.", params_no_caller)
+        == "The number is 0199."
+    )
+    assert (
+        clean_agent_speech("Your line ending in 0199 is ready.", params_no_caller)
+        == "Your line ending in 0199 is ready."
+    )
+    assert (
+        clean_agent_speech("Your phone ending in 0000 is verified.", params_no_caller)
+        == "Your phone ending in 0143 is verified."
+    )
+
+    params_with_transfer = {
+        "phone_last4": "0143",
+        "caller_provided_phone_last4": "0143",
+        "transfer_phone_last4": "0199",
+    }
+    assert (
+        clean_agent_speech(
+            "I logged the transfer for the phone ending in 0199.",
+            params_with_transfer,
+        )
+        == "I logged the transfer for the phone ending in 0199."
+    )
+    assert (
+        clean_agent_speech(
+            "Your port request for the number ending in 0000 is pending.",
+            params_with_transfer,
+        )
+        == "Your port request for the number ending in 0199 is pending."
+    )
+    assert (
+        clean_agent_speech(
+            "Le transfert du numéro se terminant par 0000 est en attente.",
+            {"transfer_phone_last4": "0199"},
+        )
+        == "Le transfert du numéro se terminant par 0199 est en attente."
+    )
+

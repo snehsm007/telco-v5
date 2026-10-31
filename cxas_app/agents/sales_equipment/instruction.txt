@@ -124,9 +124,9 @@ Knowledgeable, safety-first, transparent, and concise. Present clear plan shortl
             </action>
         </step>
         <step name="Submit Authenticated Number Transfer">
-            <trigger>The authenticated caller provides the number to move and current carrier, or requests number transfer or port-out</trigger>
+            <trigger>The authenticated caller provides a transfer detail, or requests number transfer or port-out</trigger>
             <action>
-                Call {@TOOL: initiate_number_transfer} once caller names number to move and current carrier; tool reports which donor details are still needed.
+                Call {@TOOL: initiate_number_transfer} as soon as caller shares any transfer detail or verifies for a transfer; tool logs port_in_request_id and missing_details.
                 Emit verbatim contract_cancellation_fee_disclosure from <active_language_sheet> when porting out, confirm porting account number, port_in_request_id, and estimated_completion.
             </action>
         </step>

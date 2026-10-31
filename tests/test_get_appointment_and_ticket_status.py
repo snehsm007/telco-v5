@@ -70,6 +70,10 @@ def test_get_appointment_and_ticket_status_single_language_replies(
     assert data["window_display"] == expected_window_display
     assert data["active_appointment"]["arrival_window"] == expected_window_display
     assert data["active_appointment"]["window_display"] == expected_window_display
+    assert data["technician_status"] == "scheduled"
+    assert data["active_appointment"]["technician_status"] == "scheduled"
+    assert isinstance(data["technician_progress"], str) and data["technician_progress"]
+    assert data["active_appointment"]["technician_progress"] == data["technician_progress"]
 
     # Check available_slots single localized window field and absence of _en/_fr/_es siblings
     slots = data["available_slots"]

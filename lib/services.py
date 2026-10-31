@@ -1413,6 +1413,16 @@ def verify_login_impl(
             pass_data["agent_action"] = dtmf_auth_msg
         if bool(state.get("browsed_plan_category")):
             pass_data["current_active_plans"] = _active_account_plans(state, lang)
+        if bool(state.get("port_in_checklist_given")) and not bool(
+            state.get("port_in_request_id")
+        ):
+            pass_data["pending_port_in_intake"] = True
+            pass_data["port_in_next_step"] = localized_text(
+                lang,
+                "Call initiate_number_transfer immediately once any transfer phone number or donor carrier is shared (or now if already provided) so port_in_request_id is logged even when donor account number or transfer PIN are still missing.",
+                "Appelez immédiatement initiate_number_transfer dès qu'un numéro à transférer ou fournisseur actuel est indiqué (ou maintenant s'il a déjà été fourni) afin d'enregistrer port_in_request_id même s'il manque le numéro de compte ou le NIP de transfert.",
+                "Llame de inmediato a initiate_number_transfer en cuanto se indique algún número a transferir u operador actual (o ahora si ya se proporcionó) para registrar port_in_request_id incluso si aún faltan el número de cuenta o el PIN de transferencia.",
+            )
         rep_pass = ok_reply(
             pass_data,
             reference,
@@ -1594,6 +1604,16 @@ def verify_login_impl(
         pass_data_final["agent_action"] = dtmf_auth_msg
     if bool(state.get("browsed_plan_category")):
         pass_data_final["current_active_plans"] = _active_account_plans(state, lang)
+    if bool(state.get("port_in_checklist_given")) and not bool(
+        state.get("port_in_request_id")
+    ):
+        pass_data_final["pending_port_in_intake"] = True
+        pass_data_final["port_in_next_step"] = localized_text(
+            lang,
+            "Call initiate_number_transfer immediately once any transfer phone number or donor carrier is shared (or now if already provided) so port_in_request_id is logged even when donor account number or transfer PIN are still missing.",
+            "Appelez immédiatement initiate_number_transfer dès qu'un numéro à transférer ou fournisseur actuel est indiqué (ou maintenant s'il a déjà été fourni) afin d'enregistrer port_in_request_id même s'il manque le numéro de compte ou le NIP de transfert.",
+            "Llame de inmediato a initiate_number_transfer en cuanto se indique algún número a transferir u operador actual (o ahora si ya se proporcionó) para registrar port_in_request_id incluso si aún faltan el número de cuenta o el PIN de transferencia.",
+        )
     rep_final = ok_reply(
         pass_data_final,
         reference,
@@ -3064,6 +3084,13 @@ def get_appointment_and_ticket_status_impl(
     apt_copy = dict(apt)
     apt_copy["window_display"] = loc_window_display
     apt_copy["arrival_window"] = loc_window_display
+    tech_progress = localized_text(
+        lang,
+        "Scheduled for today's window; technician is wrapping up a prior job and running toward the later part of the window (not yet en route). Available reschedule slots are included if you prefer another day.",
+        "Prévu pour la plage d'aujourd'hui ; le technicien termine une intervention précédente et arrivera plus tard dans la plage (pas encore en route). Des plages de report sont proposées si vous préférez un autre jour.",
+        "Programado para la ventana de hoy; el técnico está terminando un trabajo previo y llegará hacia la parte final de la ventana (aún no está en camino). Se incluyen horarios disponibles si prefiere otro día.",
+    )
+    apt_copy["technician_progress"] = tech_progress
 
     win_key = "window_fr" if lang == "fr-CA" else ("window_es" if lang == "es-US" else "window_en")
     localized_slots = []
@@ -3082,6 +3109,7 @@ def get_appointment_and_ticket_status_impl(
             "arrival_window": loc_window_display,
             "window_display": loc_window_display,
             "technician_status": apt["technician_status"],
+            "technician_progress": tech_progress,
             "ticket_id": tkt["ticket_id"],
             "ticket_status": tkt["status"],
         },
@@ -3634,9 +3662,13 @@ def initiate_number_transfer_impl(
     if state.get("auth_status") == "pass" and not state.get("account_id"):
         _hydrate_default_account_if_needed(state)
 
-    target_phone = str(phone_to_transfer).strip() if str(phone_to_transfer or "").strip() else str(transfer_number or kwargs.get("transfer_number", "")).strip()
-    if not target_phone and state.get("auth_status") == "pass":
-        target_phone = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or (ACCOUNTS[0]["phone"] if ACCOUNTS else ""))
+    raw_phone = (
+        str(phone_to_transfer).strip()
+        if str(phone_to_transfer or "").strip()
+        else str(transfer_number or kwargs.get("transfer_number", "")).strip()
+    )
+    if raw_phone.lower() in {"unknown", "none", "don't have", "n/a", "missing"}:
+        raw_phone = ""
 
     can_raw = str(carrier_account_number or kwargs.get("account_number") or kwargs.get("donor_account_number") or "").strip()
     ppin_raw = str(port_pin or kwargs.get("pin") or kwargs.get("donor_pin") or kwargs.get("transfer_pin") or "").strip()
@@ -3648,6 +3680,25 @@ def initiate_number_transfer_impl(
         action in {"port_out", "portout", "outbound", "out", "cancel"}
         or carrier_lower in {"bell", "our", "internal", "none"}
     )
+
+    if raw_phone:
+        state["pending_transfer_phone"] = raw_phone
+        raw_p_digits = re.sub(r"\D", "", raw_phone)
+        if len(raw_p_digits) >= 4:
+            state["transfer_phone_last4"] = raw_p_digits[-4:]
+
+    if not is_port_out:
+        if carrier_lower in {"unknown", "don't have", "n/a", "missing"}:
+            carrier = ""
+        if carrier:
+            state["pending_transfer_carrier"] = carrier
+        elif state.get("pending_transfer_carrier"):
+            carrier = str(state.get("pending_transfer_carrier") or "").strip()
+        target_phone = raw_phone or str(state.get("pending_transfer_phone") or "").strip()
+    else:
+        target_phone = raw_phone
+        if not target_phone and state.get("auth_status") == "pass":
+            target_phone = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or (ACCOUNTS[0]["phone"] if ACCOUNTS else ""))
 
     account_id = str(state.get("account_id") or (ACCOUNTS[0]["account_id"] if ACCOUNTS else "ACC-0001"))
     reference = tracking_id("initiate_number_transfer", account_id, str(target_phone))
@@ -3672,6 +3723,8 @@ def initiate_number_transfer_impl(
     if not is_authenticated:
         if can_provided and ppin_provided:
             return error_reply("NOT_AUTHENTICATED", reference=reference, language=lang)
+        if not is_port_out:
+            state["port_in_checklist_given"] = True
 
         chk = [
             localized_text(
@@ -3728,10 +3781,15 @@ def initiate_number_transfer_impl(
             language=lang,
         )
 
-    port_id = tracking_id("PRT", account_id, str(target_phone))
+    port_id = tracking_id("PRT", account_id, str(target_phone or carrier or "pending"))
     state["port_in_request_id"] = port_id
 
     missing_details: list[str] = []
+    if not is_port_out:
+        if not target_phone:
+            missing_details.append("phone_to_transfer")
+        if not carrier:
+            missing_details.append("current_carrier")
     if not can_provided:
         missing_details.append("carrier_account_number")
     if not ppin_provided:
@@ -3744,12 +3802,27 @@ def initiate_number_transfer_impl(
         status_val = "ok"
         mode_val = "transfer_submitted"
 
-    auth_action_text = localized_text(
-        lang,
-        "Emit verbatim contract_cancellation_fee_disclosure from active language sheet, provide porting account number and confirm transfer PIN dispatched by SMS, and share final bill estimate.",
-        "Émettez la divulgation textuelle contract_cancellation_fee_disclosure de la feuille de langue active, fournissez le numéro de compte de transfert et confirmez l'envoi du NIP par SMS, et partagez l'estimation de facture finale.",
-        "Emita la divulgación textual contract_cancellation_fee_disclosure de la hoja de idioma activo, proporcione el número de cuenta de transferencia y confirme el PIN enviado por SMS, y comparta el estimado de factura final.",
-    )
+    if is_port_out:
+        auth_action_text = localized_text(
+            lang,
+            "Emit verbatim contract_cancellation_fee_disclosure from active language sheet, provide porting account number and confirm transfer PIN dispatched by SMS, and share final bill estimate.",
+            "Émettez la divulgation textuelle contract_cancellation_fee_disclosure de la feuille de langue active, fournissez le numéro de compte de transfert et confirmez l'envoi du NIP par SMS, et partagez l'estimation de facture finale.",
+            "Emita la divulgación textual contract_cancellation_fee_disclosure de la hoja de idioma activo, proporcione el número de cuenta de transferencia y confirme el PIN enviado por SMS, y comparta el estimado de factura final.",
+        )
+    elif missing_details:
+        auth_action_text = localized_text(
+            lang,
+            "Confirm port_in_request_id is logged as pending, confirm any transfer phone last 4 digits or donor carrier received, and ask for the remaining missing_details (if the caller does not have their donor account number or transfer PIN ready yet, reassure them the pending request is saved and remind them to keep their existing line active).",
+            "Confirmez que port_in_request_id est enregistré en attente, confirmez les 4 derniers chiffres du numéro à transférer ou le fournisseur reçus, et demandez les éléments manquants dans missing_details (si le client n'a pas encore son numéro de compte ou NIP de transfert, confirmez que la demande en attente est sauvegardée et rappelez de garder la ligne actuelle active).",
+            "Confirme que port_in_request_id quedó registrado como pendiente, confirme los últimos 4 dígitos del número a transferir o el operador recibidos, y solicite los datos faltantes en missing_details (si el cliente aún no tiene el número de cuenta o PIN de transferencia, asegúrele que la solicitud pendiente quedó guardada y recuérdele mantener activa su línea actual).",
+        )
+    else:
+        auth_action_text = localized_text(
+            lang,
+            "Confirm port_in_request_id, phone_to_transfer last 4 digits, estimated_completion, SMS status updates, and remind the caller to keep their existing line active until transfer completes.",
+            "Confirmez port_in_request_id, les 4 derniers chiffres de phone_to_transfer, estimated_completion, les mises à jour par SMS, et rappelez au client de garder sa ligne actuelle active jusqu'à la fin du transfert.",
+            "Confirme port_in_request_id, los últimos 4 dígitos de phone_to_transfer, estimated_completion, las actualizaciones por SMS, y recuérdele al cliente mantener activa su línea actual hasta completar la transferencia.",
+        )
 
     data: dict[str, Any] = {
         "status": status_val,

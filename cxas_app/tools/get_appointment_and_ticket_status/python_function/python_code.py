@@ -2025,6 +2025,16 @@ def verify_login_impl(  # pragma: no cover
             pass_data["agent_action"] = dtmf_auth_msg
         if bool(state.get("browsed_plan_category")):
             pass_data["current_active_plans"] = _active_account_plans(state, lang)
+        if bool(state.get("port_in_checklist_given")) and not bool(
+            state.get("port_in_request_id")
+        ):
+            pass_data["pending_port_in_intake"] = True
+            pass_data["port_in_next_step"] = localized_text(
+                lang,
+                "Call initiate_number_transfer immediately once any transfer phone number or donor carrier is shared (or now if already provided) so port_in_request_id is logged even when donor account number or transfer PIN are still missing.",
+                "Appelez immédiatement initiate_number_transfer dès qu'un numéro à transférer ou fournisseur actuel est indiqué (ou maintenant s'il a déjà été fourni) afin d'enregistrer port_in_request_id même s'il manque le numéro de compte ou le NIP de transfert.",
+                "Llame de inmediato a initiate_number_transfer en cuanto se indique algún número a transferir u operador actual (o ahora si ya se proporcionó) para registrar port_in_request_id incluso si aún faltan el número de cuenta o el PIN de transferencia.",
+            )
         rep_pass = ok_reply(
             pass_data,
             reference,
@@ -2206,6 +2216,16 @@ def verify_login_impl(  # pragma: no cover
         pass_data_final["agent_action"] = dtmf_auth_msg
     if bool(state.get("browsed_plan_category")):
         pass_data_final["current_active_plans"] = _active_account_plans(state, lang)
+    if bool(state.get("port_in_checklist_given")) and not bool(
+        state.get("port_in_request_id")
+    ):
+        pass_data_final["pending_port_in_intake"] = True
+        pass_data_final["port_in_next_step"] = localized_text(
+            lang,
+            "Call initiate_number_transfer immediately once any transfer phone number or donor carrier is shared (or now if already provided) so port_in_request_id is logged even when donor account number or transfer PIN are still missing.",
+            "Appelez immédiatement initiate_number_transfer dès qu'un numéro à transférer ou fournisseur actuel est indiqué (ou maintenant s'il a déjà été fourni) afin d'enregistrer port_in_request_id même s'il manque le numéro de compte ou le NIP de transfert.",
+            "Llame de inmediato a initiate_number_transfer en cuanto se indique algún número a transferir u operador actual (o ahora si ya se proporcionó) para registrar port_in_request_id incluso si aún faltan el número de cuenta o el PIN de transferencia.",
+        )
     rep_final = ok_reply(
         pass_data_final,
         reference,
@@ -2284,6 +2304,13 @@ def get_appointment_and_ticket_status_impl(  # pragma: no cover
     apt_copy = dict(apt)
     apt_copy["window_display"] = loc_window_display
     apt_copy["arrival_window"] = loc_window_display
+    tech_progress = localized_text(
+        lang,
+        "Scheduled for today's window; technician is wrapping up a prior job and running toward the later part of the window (not yet en route). Available reschedule slots are included if you prefer another day.",
+        "Prévu pour la plage d'aujourd'hui ; le technicien termine une intervention précédente et arrivera plus tard dans la plage (pas encore en route). Des plages de report sont proposées si vous préférez un autre jour.",
+        "Programado para la ventana de hoy; el técnico está terminando un trabajo previo y llegará hacia la parte final de la ventana (aún no está en camino). Se incluyen horarios disponibles si prefiere otro día.",
+    )
+    apt_copy["technician_progress"] = tech_progress
 
     win_key = "window_fr" if lang == "fr-CA" else ("window_es" if lang == "es-US" else "window_en")
     localized_slots = []
@@ -2302,6 +2329,7 @@ def get_appointment_and_ticket_status_impl(  # pragma: no cover
             "arrival_window": loc_window_display,
             "window_display": loc_window_display,
             "technician_status": apt["technician_status"],
+            "technician_progress": tech_progress,
             "ticket_id": tkt["ticket_id"],
             "ticket_status": tkt["status"],
         },

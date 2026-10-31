@@ -113,4 +113,72 @@ def test_sales_equipment_language_sheet_includes_contract_disclosure() -> None:
     assert "Please note that cancelling or transferring your line" in sheet
 
 
+def test_port_in_partial_intake_across_pre_auth_verify_and_post_auth(monkeypatch) -> None:
+    from lib.fakes import VALID_PINS
+    from lib.services import verify_login_impl
+
+    state: dict[str, object] = {
+        "account_id": "ACC-0143",
+        "phone_last4": "0143",
+        "caller_provided_phone_last4": "",
+    }
+    session = SimpleNamespace(state=state)
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    # 1. Pre-auth checklist records port_in_checklist_given + transfer phone state
+    res_pre = tool.initiate_number_transfer(
+        phone_to_transfer="514-555-0199",
+        current_carrier="Rogers",
+        language="en-US",
+    )
+    assert res_pre["status"] == "ok"
+    assert res_pre["data"]["mode"] == "checklist_provided"
+    assert state["port_in_checklist_given"] is True
+    assert state["pending_transfer_phone"] == "514-555-0199"
+    assert state["transfer_phone_last4"] == "0199"
+    assert state["pending_transfer_carrier"] == "Rogers"
+
+    # 2. verify_login_impl surfaces pending_port_in_intake + port_in_next_step (fresh login & repeat call)
+    ver_res = verify_login_impl(code=min(VALID_PINS), method="pin", language="en-US", state=state)
+    assert ver_res["status"] == "ok"
+    assert ver_res["data"]["pending_port_in_intake"] is True
+    assert "initiate_number_transfer" in ver_res["data"]["port_in_next_step"]
+
+    ver_repeat = verify_login_impl(code=min(VALID_PINS), method="pin", language="en-US", state=state)
+    assert ver_repeat["status"] == "ok"
+    assert ver_repeat["data"]["pending_port_in_intake"] is True
+    assert "initiate_number_transfer" in ver_repeat["data"]["port_in_next_step"]
+
+    # 3. Post-auth zero-arg call reuses Turn-1 phone & carrier, does NOT overwrite with 0143, mints PRT ID
+    res_post = tool.initiate_number_transfer(language="en-US")
+    assert res_post["status"] == "ok"
+    post_data = res_post["data"]
+    assert post_data["mode"] == "transfer_pending_details"
+    assert post_data["phone_to_transfer"] == "514-555-0199"
+    assert "0143" not in post_data["phone_to_transfer"]
+    assert post_data["current_carrier"] == "Rogers"
+    assert post_data["port_in_request_id"].startswith("R")
+    assert state["port_in_request_id"] == post_data["port_in_request_id"]
+    assert post_data["missing_details"] == ["carrier_account_number", "port_pin"]
+    assert "pending" in post_data["agent_action"]
+    assert "contract_cancellation_fee_disclosure" not in post_data["agent_action"]
+
+    # 4. Post-auth with neither phone nor carrier yet logs PRT pending without falling back to 0143
+    empty_state: dict[str, object] = {
+        "auth_status": "pass",
+        "account_id": "ACC-0143",
+        "phone_last4": "0143",
+    }
+    monkeypatch.setattr(tool, "context", SimpleNamespace(state=empty_state), raising=False)
+    res_zero = tool.initiate_number_transfer(language="es-US")
+    assert res_zero["status"] == "ok"
+    z_data = res_zero["data"]
+    assert z_data["mode"] == "transfer_pending_details"
+    assert z_data["phone_to_transfer"] == ""
+    assert z_data["port_in_request_id"].startswith("R")
+    assert "phone_to_transfer" in z_data["missing_details"]
+    assert "current_carrier" in z_data["missing_details"]
+
+
+
 

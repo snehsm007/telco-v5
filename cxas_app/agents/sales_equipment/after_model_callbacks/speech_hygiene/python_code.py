@@ -127,6 +127,10 @@ from typing import Any
 import re
 import sys
 
+NUMBER_RUN_RE = re.compile(r"\(?\d+\)?(?:[-.]\(?\d+\)?|\s\(?\d{3,}\)?)*")  # pragma: no cover
+
+SPEAKABLE_NUMBERS: frozenset[str] = frozenset()  # pragma: no cover
+
 _LAST4_CONTEXT_RE = re.compile(  # pragma: no cover
     r"((?:ending\s+in|terminant\s+par|terminad?[oa]?\s+en|number\s+is|num[eé]ro\s+est|n[uú]mero\s+es)\s+)(\d{4})\b",
     re.IGNORECASE,
@@ -220,6 +224,22 @@ _SP_PHONE_KWS: tuple[str, ...] = (  # pragma: no cover
     "móvil",
 )
 
+_SP_TRANSFER_KWS: tuple[str, ...] = (  # pragma: no cover
+    "transfer",
+    "port",
+    "porting",
+    "move",
+    "transfert",
+    "transférer",
+    "transferer",
+    "porter",
+    "portabilité",
+    "portabilite",
+    "transferencia",
+    "portar",
+    "portabilidad",
+)
+
 def _sp_term_pos(segment: str, terms: tuple[str, ...]) -> int:  # pragma: no cover
     """Return last word-start match offset of any term in segment, or -1."""
     best = -1
@@ -233,10 +253,6 @@ def _sp_term_pos(segment: str, terms: tuple[str, ...]) -> int:  # pragma: no cov
             if match.start() > best:
                 best = match.start()
     return best
-
-NUMBER_RUN_RE = re.compile(r"\(?\d+\)?(?:[-.]\(?\d+\)?|\s\(?\d{3,}\)?)*")  # pragma: no cover
-
-SPEAKABLE_NUMBERS: frozenset[str] = frozenset()  # pragma: no cover
 
 def mask_long_numbers(text: str, min_digits: int = 9) -> str:  # pragma: no cover
     """Replace every number of min_digits or more digits by its last 4 digits."""
@@ -267,6 +283,12 @@ def clean_agent_speech(  # pragma: no cover
     session_params: Any = None,
 ) -> str:
     """Clean speech and preserve caller phone, card, bank, and account last-4 numbers."""
+    raw_long_last4s: set[str] = set()
+    for m_num in NUMBER_RUN_RE.finditer(text or ""):
+        d_num = re.sub(r"\D", "", m_num.group(0))
+        if len(d_num) >= 9 and d_num not in SPEAKABLE_NUMBERS:
+            raw_long_last4s.add(d_num[-4:])
+
     cleaned = clean_speech(text)
     if not callable(getattr(session_params, "get", None)):
         return cleaned
@@ -275,6 +297,7 @@ def clean_agent_speech(  # pragma: no cover
     card_last4 = str(session_params.get("card_last4") or "").strip()
     bank_last4 = str(session_params.get("bank_last4") or "").strip()
     declined_last4 = str(session_params.get("declined_card_last4") or "").strip()
+    transfer_last4 = str(session_params.get("transfer_phone_last4") or "").strip()
     acc_digits = re.sub(r"\D", "", str(session_params.get("account_id") or ""))
     account_last4 = acc_digits[-4:] if len(acc_digits) >= 4 else ""
 
@@ -283,6 +306,7 @@ def clean_agent_speech(  # pragma: no cover
     valid_card = len(card_last4) == 4 and card_last4.isdigit()
     valid_bank = len(bank_last4) == 4 and bank_last4.isdigit()
     valid_declined = len(declined_last4) == 4 and declined_last4.isdigit()
+    valid_transfer = len(transfer_last4) == 4 and transfer_last4.isdigit()
     effective_phone_last4 = (
         caller_last4 if valid_caller else (profile_last4 if valid_profile else "")
     )
@@ -303,7 +327,13 @@ def clean_agent_speech(  # pragma: no cover
                 cleaned,
             )
 
-    if effective_phone_last4 or valid_card or valid_bank or valid_declined:
+    if (
+        effective_phone_last4
+        or valid_card
+        or valid_bank
+        or valid_declined
+        or valid_transfer
+    ):
 
         def _replace_non_card_last4(m: re.Match[str]) -> str:
             raw_prefix = cleaned[max(0, m.start() - 35) : m.start()].lower()
@@ -324,6 +354,10 @@ def clean_agent_speech(  # pragma: no cover
             ):
                 bank_pos = -1
             phone_pos = _sp_term_pos(prefix, _SP_PHONE_KWS)
+            transfer_window = cleaned[
+                max(0, m.start() - 60) : min(len(cleaned), m.end() + 30)
+            ].lower()
+            transfer_pos = _sp_term_pos(transfer_window, _SP_TRANSFER_KWS)
             is_number_is_cue = any(
                 c in cue
                 for c in (
@@ -337,6 +371,23 @@ def clean_agent_speech(  # pragma: no cover
             explicit_phone_only = (
                 is_number_is_cue and card_pos < 0 and bank_pos < 0
             ) or (phone_pos >= 0 and phone_pos > max(card_pos, bank_pos))
+
+            if card_pos < 0 and bank_pos < 0:
+                if digits4 in raw_long_last4s:
+                    return m.group(0)
+                if valid_transfer and digits4 == transfer_last4:
+                    return m.group(0)
+                if transfer_pos >= 0:
+                    if len(set(digits4)) > 1:
+                        return m.group(0)
+                    if valid_transfer:
+                        return f"{m.group(1)}{transfer_last4}"
+                if (
+                    not valid_caller
+                    and len(set(digits4)) > 1
+                    and digits4 != profile_last4
+                ):
+                    return m.group(0)
 
             if not explicit_phone_only:
                 if card_pos >= 0 and valid_declined and digits4 == declined_last4:
