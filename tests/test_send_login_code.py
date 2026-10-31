@@ -400,3 +400,68 @@ def test_send_login_code_post_auth_sms_stepup_and_new_phone_verification(monkeyp
     assert st_new_phone["phone_unconfirmed"] is False
 
 
+def test_send_login_code_email_fallback_after_prior_code_invites_caller_email(monkeypatch) -> None:
+    # 1. Direct initial email send (prior_code_sent == False, e.g. VE-41 no-signal caller) stays unchanged
+    st_direct: dict = {
+        "account_id": "ACC-4433",
+        "identified": True,
+        "contact_email": "user@example.com",
+        "auth_status": "none",
+    }
+    monkeypatch.setattr(tool, "context", SimpleNamespace(state=st_direct), raising=False)
+    res_direct = tool.send_login_code(channel="email", language="en-US")
+    assert res_direct["status"] == "ok"
+    assert (
+        res_direct["data"]["spoken_message"]
+        == "For your security, I just sent a 6-digit verification code to the email address on file — please read it back to me."
+    )
+    assert "without proactively naming an initial letter" in res_direct["data"]["agent_action"]
+
+    # 2. Email fallback after prior SMS attempt (prior_code_sent == True) on placeholder email invites caller email/phone
+    for locale, expected_spoken_part, expected_action_part in (
+        (
+            "en-US",
+            "share your email address if you need me to send it directly there",
+            "ask once for their email address or alternate mobile number before considering transfer",
+        ),
+        (
+            "fr-CA",
+            "indiquez-moi votre adresse courriel si vous souhaitez que je l'y envoie directement",
+            "demandez une fois son courriel ou un autre numéro avant d'envisager un transfert",
+        ),
+        (
+            "es-US",
+            "indíqueme su dirección de correo si necesita que lo envíe directamente allí",
+            "pida una vez su correo o número alternativo antes de transferir",
+        ),
+    ):
+        st_fallback: dict = {
+            "account_id": "ACC-4433",
+            "identified": True,
+            "phone_last4": "4433",
+            "caller_provided_phone_last4": "4433",
+            "contact_email": "user@example.com",
+            "auth_status": "none",
+        }
+        monkeypatch.setattr(tool, "context", SimpleNamespace(state=st_fallback), raising=False)
+        res_sms = tool.send_login_code(identifier="5550124433", channel="sms", language=locale)
+        assert res_sms["status"] == "ok"
+        assert st_fallback["login_code_sent"] is True
+
+        res_email = tool.send_login_code(identifier="5550124433", channel="email", language=locale)
+        assert res_email["status"] == "ok"
+        assert expected_spoken_part in res_email["data"]["spoken_message"]
+        assert expected_action_part in res_email["data"]["agent_action"]
+
+        # Subsequent caller-provided real email uses normal caller-email confirmation
+        res_real = tool.send_login_code(
+            identifier="alex.morgan@custommail.org",
+            channel="email",
+            language=locale,
+        )
+        assert res_real["status"] == "ok"
+        assert res_real["data"]["masked_email"] == "a***@custommail.org"
+        assert expected_spoken_part not in res_real["data"]["spoken_message"]
+
+
+

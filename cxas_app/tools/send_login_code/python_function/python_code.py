@@ -960,6 +960,13 @@ def _is_echoed_ref(val: Any) -> bool:  # pragma: no cover
     d = normalize_code(val)
     return not any(w in s for w in ("wrong", "incorrect", "invalid")) and (len(d) < 4 or len(set(d[-4:])) > 1)
 
+def _is_placeholder_email(email_str: str) -> bool:  # pragma: no cover
+    """Return True when an email string is empty or a synthetic user...@example.com placeholder."""
+    clean = str(email_str or "").strip()
+    if not clean:
+        return True
+    return bool(re.fullmatch(r"user\d*@example\.com", clean, re.IGNORECASE))
+
 def _is_truthy_bool(val: Any) -> bool:  # pragma: no cover
     """Return True if val represents a truthy boolean or affirmation string."""
     if val is True:
@@ -972,13 +979,6 @@ def _is_truthy_bool(val: Any) -> bool:  # pragma: no cover
 def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
-
-def _is_placeholder_email(email_str: str) -> bool:  # pragma: no cover
-    """Return True when an email string is empty or a synthetic user...@example.com placeholder."""
-    clean = str(email_str or "").strip()
-    if not clean:
-        return True
-    return bool(re.fullmatch(r"user\d*@example\.com", clean, re.IGNORECASE))
 
 _NON_ACCOUNT_REF_KEYWORDS: frozenset[str] = frozenset(  # pragma: no cover
     {"visa", "mastercard", "amex", "discover", "card", "carte", "tarjeta", "keypad", "dtmf", "clavier", "touch-tone", "wrong", "incorrect", "invalid"}
@@ -1948,6 +1948,7 @@ def send_login_code_impl(  # pragma: no cover
             )
 
     prior_mfa_email_sent = bool(state.get("mfa_email_code_sent"))
+    prior_code_sent = bool(state.get("login_code_sent"))
     if already_logged_in and norm_chan == "sms":
         state["login_channel"] = "mfa_sms"
         if pending_lost_stepup:
@@ -1961,6 +1962,19 @@ def send_login_code_impl(  # pragma: no cover
     if norm_chan == "email":
         state["mfa_email_code_sent"] = True
         email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
+        if prior_code_sent and not pending_lost_stepup and _is_placeholder_email(email_on_file):
+            spoken = localized_text(
+                lang,
+                "For your security, I just sent a 6-digit verification code to the email address on file — please read it back to me, or share your email address if you need me to send it directly there.",
+                "Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier — veuillez me le lire, ou indiquez-moi votre adresse courriel si vous souhaitez que je l'y envoie directement.",
+                "Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado; por favor léamelo o indíqueme su dirección de correo si necesita que lo envíe directamente allí.",
+            )
+            action_text = localized_text(
+                lang,
+                "Refer to the destination as 'the email address on file' without naming an initial letter, and invite the caller to read back the 6-digit code, enter their 4-digit PIN, or state their email address (or an alternate 10-digit mobile number) so you can call send_login_code with identifier set to it; if the code still does not arrive and they have no PIN, ask once for their email address or alternate mobile number before considering transfer (unless the caller declines or asks for a representative).",
+                "Mentionnez la destination comme « l'adresse courriel au dossier » sans annoncer d'initiale, et invitez le client à lire le code à 6 chiffres, composer son NIP à 4 chiffres, ou indiquer son adresse courriel (ou un autre numéro mobile à 10 chiffres) pour appeler send_login_code avec identifier; si le code n'arrive toujours pas et qu'il n'a pas de NIP, demandez une fois son courriel ou un autre numéro avant d'envisager un transfert (sauf s'il refuse ou demande un représentant).",
+                "Mencione el destino como 'el correo electrónico registrado' sin indicar una inicial, e invite al cliente a leer el código de 6 dígitos, ingresar su PIN de 4 dígitos o indicar su correo electrónico (o un móvil alternativo de 10 dígitos) para llamar a send_login_code con identifier; si el código aún no llega y no tiene PIN, pida una vez su correo o número alternativo antes de transferir (salvo que lo rechace o pida un representante).",
+            )
         if pending_lost_stepup and prior_mfa_email_sent:
             action_text = f"{action_text} {_stepup_delayed_email_guidance(lang)}"
         email_data: dict[str, Any] = {

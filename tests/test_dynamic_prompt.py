@@ -734,3 +734,184 @@ def test_count_post_greeting_silent_turns_and_language_sheet_injection() -> None
     assert count_post_greeting_silent_turns(req_recovered) == 0
 
 
+def test_early_silence_connect_normalization_and_tool_suppression() -> None:
+    from google.genai import types
+
+    def _make_tools() -> list[Any]:
+        return [
+            types.Tool(
+                function_declarations=[
+                    types.FunctionDeclaration(name="lookup_account", description="lookup"),
+                    types.FunctionDeclaration(name="handover_to_person", description="handover"),
+                    types.FunctionDeclaration(name="end_session", description="end"),
+                ]
+            ),
+            types.Tool(
+                function_declarations=[
+                    types.FunctionDeclaration(name="end_session", description="only end"),
+                ]
+            ),
+            SimpleNamespace(
+                function_declarations=[
+                    SimpleNamespace(name="check_outage_status"),
+                    SimpleNamespace(name="handover_to_person"),
+                ],
+                extra_flag="kept",
+            ),
+            SimpleNamespace(
+                function_declarations=[SimpleNamespace(name="lookup_account")],
+            ),
+            {"function_declarations": [{"name": "end_session"}, {"name": "send_login_code"}]},
+            {"name": "handover_to_person"},
+            {"other_tool": True},
+            SimpleNamespace(name="end_session"),
+            SimpleNamespace(name="safe_stub"),
+        ]
+
+    state_ro: dict[str, Any] = {}
+    ctx = SimpleNamespace(state=state_ro)
+
+    # (a) silent_turns == 0 (pre-greeting "..." only or normal speech) -> contents & config.tools 100% untouched
+    orig_tools_0 = _make_tools()
+    req_0 = SimpleNamespace(
+        config=SimpleNamespace(system_instruction="Router base.", tools=orig_tools_0),
+        contents=[SimpleNamespace(role="user", parts=[SimpleNamespace(text="...")])],
+    )
+    apply_language_prompt_filter(ctx, req_0, agent_name="router")
+    assert req_0.contents[0].parts[0].text == "..."
+    assert req_0.config.tools is orig_tools_0
+    assert len(orig_tools_0[0].function_declarations) == 3
+
+    # (b) Turn 2 "..." (silent_turns == 1) and Turn 3 "..." (silent_turns == 2) ->
+    # Turn 1 becomes "[call connected]", post-greeting "..." stays "...", and escalation tools are filtered out
+    shared_tools = _make_tools()
+    req_1 = SimpleNamespace(
+        config=SimpleNamespace(system_instruction="Router base.", tools=shared_tools),
+        contents=[
+            SimpleNamespace(
+                role="user",
+                parts=[
+                    SimpleNamespace(text=None, function_call=SimpleNamespace(name="noop")),
+                    SimpleNamespace(text=None, function_response=SimpleNamespace(response={})),
+                    SimpleNamespace(text="..."),
+                ],
+            ),
+            SimpleNamespace(
+                role="model",
+                parts=[
+                    SimpleNamespace(text="thinking", thought=True),
+                    SimpleNamespace(text="Welcome to Telco."),
+                ],
+            ),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="...")]),
+        ],
+    )
+    apply_language_prompt_filter(ctx, req_1, agent_name="router")
+    # Calling twice is idempotent
+    apply_language_prompt_filter(ctx, req_1, agent_name="router")
+    assert state_ro == {}
+    assert req_1.contents[0].parts[2].text == "[call connected]"
+    assert req_1.contents[2].parts[0].text == "..."
+    # Original shared Tool object was NOT mutated in place
+    assert [fd.name for fd in shared_tools[0].function_declarations] == [
+        "lookup_account",
+        "handover_to_person",
+        "end_session",
+    ]
+    # Filtered tools retain lookup_account, check_outage_status, send_login_code, safe_stub; omit empty end_session-only Tool
+    t0 = req_1.config.tools[0]
+    assert [fd.name for fd in t0.function_declarations] == ["lookup_account"]
+    t1 = req_1.config.tools[1]
+    assert [fd.name for fd in t1.function_declarations] == ["check_outage_status"]
+    assert t1.extra_flag == "kept"
+    for t in req_1.config.tools:
+        if isinstance(t, dict):
+            assert t.get("name") not in ("end_session", "handover_to_person")
+            for fd in t.get("function_declarations", []):
+                assert fd["name"] not in ("end_session", "handover_to_person")
+        else:
+            assert getattr(t, "name", "") not in ("end_session", "handover_to_person")
+            for fd in getattr(t, "function_declarations", None) or []:
+                assert fd.name not in ("end_session", "handover_to_person")
+
+    # Turn 3 "..." (silent_turns == 2) with direct item.text format
+    req_2 = SimpleNamespace(
+        config=SimpleNamespace(system_instruction="Router base.", tools=_make_tools()),
+        contents=[
+            SimpleNamespace(role="user", text="..."),
+            SimpleNamespace(role="model", text="Welcome to Telco."),
+            SimpleNamespace(role="user", text="..."),
+            SimpleNamespace(role="model", text="I didn't hear anything."),
+            SimpleNamespace(role="user", text="..."),
+        ],
+    )
+    apply_language_prompt_filter(ctx, req_2, agent_name="router")
+    assert req_2.contents[0].text == "[call connected]"
+    assert req_2.contents[2].text == "..."
+    assert req_2.contents[4].text == "..."
+    assert [fd.name for fd in req_2.config.tools[0].function_declarations] == ["lookup_account"]
+
+    # (c) Turn 4 "..." (silent_turns == 3) -> escalation tools remain PRESENT so 3-strike escalation runs
+    tools_3 = _make_tools()
+    req_3 = SimpleNamespace(
+        config=SimpleNamespace(system_instruction="Router base.", tools=tools_3),
+        contents=[
+            *req_2.contents,
+            SimpleNamespace(role="model", text="Are you still there?"),
+            SimpleNamespace(role="user", text="..."),
+        ],
+    )
+    apply_language_prompt_filter(ctx, req_3, agent_name="router")
+    assert req_3.config.tools is tools_3
+    assert [fd.name for fd in req_3.config.tools[0].function_declarations] == [
+        "lookup_account",
+        "handover_to_person",
+        "end_session",
+    ]
+
+    # (d) Turn 4 "My phone is 555-012-3456" (silent_turns == 0) -> escalation tools remain PRESENT
+    tools_4 = _make_tools()
+    req_4 = SimpleNamespace(
+        config=SimpleNamespace(system_instruction="Router base.", tools=tools_4),
+        contents=[
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="...")]),
+            SimpleNamespace(role="model", parts=[SimpleNamespace(text="Welcome to Telco.")]),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="...")]),
+            SimpleNamespace(role="model", parts=[SimpleNamespace(text="I didn't hear anything.")]),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="...")]),
+            SimpleNamespace(role="model", parts=[SimpleNamespace(text="Could you repeat that?")]),
+            SimpleNamespace(role="user", parts=[SimpleNamespace(text="My phone is 555-012-3456")]),
+        ],
+    )
+    apply_language_prompt_filter(ctx, req_4, agent_name="router")
+    assert req_4.config.tools is tools_4
+    assert [fd.name for fd in req_4.config.tools[0].function_declarations] == [
+        "lookup_account",
+        "handover_to_person",
+        "end_session",
+    ]
+
+    # Edge cases: empty contents / non-list tools
+    from lib.dynamic_prompt import (
+        _normalize_pre_greeting_connect_silence,
+        _suppress_escalation_tools_on_early_silence,
+        extract_user_utterances,
+    )
+
+    _normalize_pre_greeting_connect_silence(SimpleNamespace(contents=None))
+    _normalize_pre_greeting_connect_silence(
+        SimpleNamespace(contents=[SimpleNamespace(role="user", text="[call connected]")])
+    )
+    _suppress_escalation_tools_on_early_silence(SimpleNamespace(tools=None))
+    assert extract_user_utterances(
+        SimpleNamespace(
+            contents=[
+                SimpleNamespace(role="user", parts=[SimpleNamespace(text="[call connected]")]),
+                SimpleNamespace(role="user", text="[call connected]"),
+                SimpleNamespace(role="user", text="Bonjour"),
+            ]
+        )
+    ) == ["Bonjour"]
+
+
+

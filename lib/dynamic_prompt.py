@@ -712,11 +712,14 @@ def extract_user_utterances(llm_request: Any) -> list[str]:
                 for part in parts:
                     txt = getattr(part, "text", None)
                     if txt and isinstance(txt, str) and txt.strip():
+                        s = txt.strip()
+                        if s.lower() == _PRE_GREETING_CONNECT_TOKEN:
+                            continue
                         if not _is_relay_or_quoted_part(txt):
-                            utterances.append(txt.strip())
+                            utterances.append(s)
             elif isinstance(getattr(item, "text", None), str):
                 t = item.text.strip()
-                if t and not _is_relay_or_quoted_part(t):
+                if t and t.lower() != _PRE_GREETING_CONNECT_TOKEN and not _is_relay_or_quoted_part(t):
                     utterances.append(t)
     return utterances
 
@@ -756,6 +759,15 @@ def detect_active_call_language(state_dict: Any, llm_request: Any) -> str:
     return current
 
 
+_PRE_GREETING_CONNECT_TOKEN = "[call connected]"
+
+_EARLY_SILENCE_SUPPRESSED_TOOLS: frozenset[str] = frozenset(
+    {
+        "end_session",
+        "handover_to_person",
+    }
+)
+
 _SILENCE_TOKENS: frozenset[str] = frozenset(
     {
         "[silence]",
@@ -775,6 +787,129 @@ def _is_silent_utterance(stripped: str) -> bool:
     if stripped.lower() in _SILENCE_TOKENS:
         return True
     return bool(re.fullmatch(r"[.\s…\-_?!]+", stripped))
+
+
+def _normalize_pre_greeting_connect_silence(llm_request: Any) -> None:
+    """Replace pre-greeting silent connect turns with '[call connected]' in-place."""
+    contents = getattr(llm_request, "contents", None)
+    if not contents or not isinstance(contents, (list, tuple)):
+        return None
+
+    for item in contents:
+        role = getattr(item, "role", "")
+        parts = getattr(item, "parts", None)
+        if role == "model":
+            if parts and isinstance(parts, (list, tuple)):
+                for part in parts:
+                    if getattr(part, "thought", False):
+                        continue
+                    txt = getattr(part, "text", None)
+                    if isinstance(txt, str) and txt.strip():
+                        return None
+            elif isinstance(getattr(item, "text", None), str) and item.text.strip():
+                return None
+        elif role == "user":
+            if parts and isinstance(parts, (list, tuple)):
+                for part in parts:
+                    if getattr(part, "function_response", None) is not None:
+                        continue
+                    if getattr(part, "function_call", None) is not None:
+                        continue
+                    txt = getattr(part, "text", None)
+                    if isinstance(txt, str) and _is_silent_utterance(txt.strip()):
+                        try:
+                            part.text = _PRE_GREETING_CONNECT_TOKEN
+                        except Exception:  # pragma: no cover
+                            pass
+            elif isinstance(getattr(item, "text", None), str) and _is_silent_utterance(item.text.strip()):
+                try:
+                    item.text = _PRE_GREETING_CONNECT_TOKEN
+                except Exception:  # pragma: no cover
+                    pass
+    return None
+
+
+def _suppress_escalation_tools_on_early_silence(config: Any) -> None:
+    """Filter end_session and handover_to_person from config.tools during silent turns 1-2."""
+    tools = getattr(config, "tools", None)
+    if not isinstance(tools, (list, tuple)):
+        return None
+
+    filtered_tools: list[Any] = []
+    for t in tools:
+        if isinstance(t, dict):
+            if t.get("name", "") in _EARLY_SILENCE_SUPPRESSED_TOOLS:
+                continue
+            fds_dict = t.get("function_declarations")
+            if isinstance(fds_dict, (list, tuple)):
+                fds_kept = [
+                    fd
+                    for fd in fds_dict
+                    if (fd.get("name", "") if isinstance(fd, dict) else getattr(fd, "name", ""))
+                    not in _EARLY_SILENCE_SUPPRESSED_TOOLS
+                ]
+                other_keys = {k: v for k, v in t.items() if k != "function_declarations" and v}
+                if fds_kept or other_keys:
+                    filtered_tools.append({**t, "function_declarations": fds_kept})
+                continue
+            filtered_tools.append(t)
+            continue
+
+        if (
+            getattr(t, "name", "") in _EARLY_SILENCE_SUPPRESSED_TOOLS
+            or getattr(t, "__name__", "") in _EARLY_SILENCE_SUPPRESSED_TOOLS
+        ):
+            continue
+
+        fds_raw = getattr(t, "function_declarations", None)
+        if isinstance(fds_raw, (list, tuple)) and fds_raw:
+            fds = [
+                fd
+                for fd in fds_raw
+                if (fd.get("name", "") if isinstance(fd, dict) else getattr(fd, "name", ""))
+                not in _EARLY_SILENCE_SUPPRESSED_TOOLS
+            ]
+            if len(fds) == len(fds_raw):
+                filtered_tools.append(t)
+                continue
+            if hasattr(t, "model_dump"):
+                other_fields = {
+                    k: v
+                    for k, v in t.model_dump(exclude_none=True).items()
+                    if k != "function_declarations" and v
+                }
+            elif hasattr(t, "__dict__"):
+                other_fields = {
+                    k: v for k, v in vars(t).items() if k != "function_declarations" and v
+                }
+            else:  # pragma: no cover
+                other_fields = {}
+            if not fds and not other_fields:
+                continue
+            try:
+                if callable(getattr(t, "model_copy", None)):
+                    filtered_tools.append(t.model_copy(update={"function_declarations": fds or None}))
+                elif hasattr(t, "__dict__") and other_fields:
+                    filtered_tools.append(type(t)(**{**vars(t), "function_declarations": fds}))
+                else:
+                    filtered_tools.append(type(t)(function_declarations=fds))
+            except Exception:  # pragma: no cover
+                try:
+                    clone = object.__new__(type(t))
+                    clone.__dict__.update(t.__dict__)
+                    clone.function_declarations = fds
+                    filtered_tools.append(clone)
+                except Exception:
+                    filtered_tools.append(t)
+            continue
+
+        filtered_tools.append(t)
+
+    try:
+        config.tools = filtered_tools
+    except Exception:  # pragma: no cover
+        pass
+    return None
 
 
 def count_post_greeting_silent_turns(llm_request: Any) -> int:
@@ -825,6 +960,8 @@ def count_post_greeting_silent_turns(llm_request: Any) -> int:
                 continue
 
             stripped = " ".join(t for t in user_texts if t).strip()
+            if not agent_has_spoken and stripped.lower() == _PRE_GREETING_CONNECT_TOKEN:
+                continue
             if _is_silent_utterance(stripped):
                 if agent_has_spoken:
                     consecutive_silent += 1
@@ -902,6 +1039,8 @@ def apply_language_prompt_filter(
     state_dict = state if callable(getattr(state, "get", None)) else {}
     locale = detect_active_call_language(state_dict, llm_request)
     silent_turns = count_post_greeting_silent_turns(llm_request)
+    if silent_turns >= 1:
+        _normalize_pre_greeting_connect_silence(llm_request)
     sheet = build_language_sheet(
         locale,
         agent_name=agent_name,
@@ -911,6 +1050,8 @@ def apply_language_prompt_filter(
     config = getattr(llm_request, "config", None)
     if config is None:
         return None
+    if 1 <= silent_turns < 3:
+        _suppress_escalation_tools_on_early_silence(config)
     sys_inst = getattr(config, "system_instruction", None)
     if sys_inst is None:
         return None
