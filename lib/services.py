@@ -969,7 +969,7 @@ def _resolve_session_email_and_mask(
     domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
     if _is_placeholder_email(email_on_file):
         first_char = ""
-        masked = ""
+        masked = f"***@{domain}"
         spoken = localized_text(
             lang,
             "For your security, I just sent a 6-digit verification code to the email address on file — please read it back to me.",
@@ -978,9 +978,9 @@ def _resolve_session_email_and_mask(
         )
         action_text = localized_text(
             lang,
-            "Refer to the destination only as 'the email address on file'; never invent or spell out an email address.",
-            "Mentionnez la destination uniquement comme « l'adresse courriel au dossier »; n'inventez et n'épelez jamais une adresse courriel.",
-            "Mencione el destino únicamente como 'el correo electrónico registrado'; nunca invente ni deletree una dirección de correo.",
+            f"Refer to the destination as 'the email address on file' without proactively naming an initial letter; if the caller asks to verify the email or domain, confirm the domain @{domain} or send the code to an email address they provide.",
+            f"Mentionnez la destination comme « l'adresse courriel au dossier » sans annoncer d'initiale spontanément; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
+            f"Mencione el destino como 'el correo electrónico registrado' sin indicar una inicial espontáneamente; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
         )
         return email_on_file, first_char, domain, masked, spoken, action_text
 
@@ -1028,6 +1028,11 @@ def send_login_code_impl(
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
+    caller_email = str(kwargs.get("email") or "").strip()
+    if not caller_email and "@" in str(id_val or "").strip():
+        caller_email = str(id_val).strip()
+    if "@" in str(id_val or "").strip():
+        id_val = ""
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -1042,9 +1047,16 @@ def send_login_code_impl(
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
 
-        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+        l_res = lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state)
         if l_res.get("status") == "error":
             return l_res
+    if caller_email and "@" in caller_email:
+        state["contact_email"] = caller_email
+        if not state.get("account_id"):
+            l_res = lookup_account_impl(email=caller_email, language=lang, state=state)
+            if l_res.get("status") == "error":
+                return l_res
+        state["contact_email"] = caller_email
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -1133,6 +1145,7 @@ def send_login_code_impl(
             "destination_last4": dest_last4,
             "code_sent": True,
             "channel": "email",
+            "email_domain": domain,
             "expires_in_minutes": 10,
             "spoken_message": spoken,
             "agent_action": action_text,
@@ -3853,12 +3866,24 @@ def manage_mfa_settings_impl(
     if mock_err:
         return mock_err
 
+    id_val: str | int | float = identifier
+    caller_email = str(kwargs.get("email") or "").strip()
+    if not caller_email and "@" in str(id_val or "").strip():
+        caller_email = str(id_val).strip()
+    if "@" in str(id_val or "").strip():
+        id_val = ""
+
     caller_fn = str(kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("first_name") or "").strip()
-    if caller_fn and (not state.get("contact_email") or state.get("contact_email") == "user@example.com"):
+    if caller_fn and (not state.get("contact_email") or _is_placeholder_email(str(state.get("contact_email") or ""))):
         state["contact_email"] = f"{caller_fn.split()[0].lower()}@example.com"
 
-    if identifier and not state.get("account_id"):
-        lookup_account_impl(identifier=identifier, language=lang, state=state, full_name=caller_fn)
+    if str(id_val or "").strip() and not state.get("account_id"):
+        lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state, full_name=caller_fn)
+    if caller_email and "@" in caller_email:
+        state["contact_email"] = caller_email
+        if not state.get("account_id"):
+            lookup_account_impl(email=caller_email, language=lang, state=state, full_name=caller_fn)
+        state["contact_email"] = caller_email
 
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("manage_mfa_settings", account_id, str(action))
@@ -3978,14 +4003,15 @@ def manage_mfa_settings_impl(
                     )
                     action_text = localized_text(
                         lang,
-                        "Confirm that the 6-digit verification code was resent to the email address on file and ask the caller to read it back.",
-                        "Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier et demandez au client de vous le lire.",
-                        "Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado y pídale a quien llama que se lo lea.",
+                        f"Confirm that the 6-digit verification code was resent to the email address on file without proactively naming an initial letter and ask the caller to read it back; if the caller asks to verify the email or domain, confirm the domain @{domain} or send the code to an email address they provide.",
+                        f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier sans annoncer d'initiale spontanément et demandez au client de vous le lire; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
+                        f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado sin indicar una inicial espontáneamente y pídale a quien llama que se lo lea; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
                     )
             rep_data: dict[str, Any] = {
                 "requires_email_step_up": True,
                 "requires_step_up": True,
                 "step_up_channel": "email",
+                "email_domain": domain,
                 "mfa_updated": False,
                 "spoken_message": spoken,
                 "agent_action": action_text,

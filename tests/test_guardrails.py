@@ -20,6 +20,7 @@ def test_default_prompt_guardrail_language_aware() -> None:
         term in prompt_lower
         for term in ("same language", "caller is using", "exact language", "caller's language")
     ), f"Prompt guardrail answer prompt must be language-aware: {prompt!r}"
+    assert "cannot fulfill that request" not in prompt_lower
 
 
 def test_default_safety_guardrail_language_aware() -> None:

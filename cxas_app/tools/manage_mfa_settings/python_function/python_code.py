@@ -20,7 +20,7 @@ def manage_mfa_settings(
         lost_authenticator: Flag indicating lost primary MFA device.
         step_up_code: Backup verification code entered by user.
         preferred_mfa_channel: MFA communication channel (e.g. 'sms').
-        identifier: Account identifier or phone number.
+        identifier: Optional phone, account number, or email address if not already in session.
         verification_code: Alternative verification code parameter.
         language: Preferred language code.
 
@@ -980,16 +980,16 @@ def is_placeholder_code(val: Any) -> bool:  # pragma: no cover
 
 _is_placeholder_code = is_placeholder_code  # pragma: no cover
 
-def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
-    """Increment audit log count inside auth, mutation, and handover tools."""
-    state["audit_log_count"] = read_count(state, "audit_log_count") + 1
-
 def _is_placeholder_email(email_str: str) -> bool:  # pragma: no cover
     """Return True when an email string is empty or a synthetic user...@example.com placeholder."""
     clean = str(email_str or "").strip()
     if not clean:
         return True
     return bool(re.fullmatch(r"user\d*@example\.com", clean, re.IGNORECASE))
+
+def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
+    """Increment audit log count inside auth, mutation, and handover tools."""
+    state["audit_log_count"] = read_count(state, "audit_log_count") + 1
 
 def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma: no cover
     """Return True when an identifier is intentionally invalid or synthetic wrong."""
@@ -1059,7 +1059,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             rec["linked_mobile_last4"] = p_last4
             rec[_k_p4] = p_last4
             rec[_k_cp4] = (
-                norm_digits[-4:] if (not has_alpha and len(norm_digits) in (7, 9, 10)) else ""
+                norm_digits[-4:] if (not has_alpha and len(norm_digits) in (9, 10)) else ""
             )
             rec["billing_account"] = "BA-" + rec["phone"][-6:]
             rec[_k_a4] = record["account_id"][-4:]
@@ -1111,7 +1111,7 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
         }
 
     if not has_alpha and len(norm_digits) in (7, 8, 9, 10, 11, 12):
-        if len(norm_digits) in (7, 10):
+        if len(norm_digits) == 10:
             return {
                 "account_id": f"ACC-{norm_digits[-4:]}",
                 "phone": norm_digits,
@@ -1210,7 +1210,7 @@ def _resolve_session_email_and_mask(  # pragma: no cover
     domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
     if _is_placeholder_email(email_on_file):
         first_char = ""
-        masked = ""
+        masked = f"***@{domain}"
         spoken = localized_text(
             lang,
             "For your security, I just sent a 6-digit verification code to the email address on file — please read it back to me.",
@@ -1219,9 +1219,9 @@ def _resolve_session_email_and_mask(  # pragma: no cover
         )
         action_text = localized_text(
             lang,
-            "Refer to the destination only as 'the email address on file'; never invent or spell out an email address.",
-            "Mentionnez la destination uniquement comme « l'adresse courriel au dossier »; n'inventez et n'épelez jamais une adresse courriel.",
-            "Mencione el destino únicamente como 'el correo electrónico registrado'; nunca invente ni deletree una dirección de correo.",
+            f"Refer to the destination as 'the email address on file' without proactively naming an initial letter; if the caller asks to verify the email or domain, confirm the domain @{domain} or send the code to an email address they provide.",
+            f"Mentionnez la destination comme « l'adresse courriel au dossier » sans annoncer d'initiale spontanément; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
+            f"Mencione el destino como 'el correo electrónico registrado' sin indicar una inicial espontáneamente; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
         )
         return email_on_file, first_char, domain, masked, spoken, action_text
 
@@ -1657,12 +1657,24 @@ def manage_mfa_settings_impl(  # pragma: no cover
     if mock_err:
         return mock_err
 
+    id_val: str | int | float = identifier
+    caller_email = str(kwargs.get("email") or "").strip()
+    if not caller_email and "@" in str(id_val or "").strip():
+        caller_email = str(id_val).strip()
+    if "@" in str(id_val or "").strip():
+        id_val = ""
+
     caller_fn = str(kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("first_name") or "").strip()
-    if caller_fn and (not state.get("contact_email") or state.get("contact_email") == "user@example.com"):
+    if caller_fn and (not state.get("contact_email") or _is_placeholder_email(str(state.get("contact_email") or ""))):
         state["contact_email"] = f"{caller_fn.split()[0].lower()}@example.com"
 
-    if identifier and not state.get("account_id"):
-        lookup_account_impl(identifier=identifier, language=lang, state=state, full_name=caller_fn)
+    if str(id_val or "").strip() and not state.get("account_id"):
+        lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state, full_name=caller_fn)
+    if caller_email and "@" in caller_email:
+        state["contact_email"] = caller_email
+        if not state.get("account_id"):
+            lookup_account_impl(email=caller_email, language=lang, state=state, full_name=caller_fn)
+        state["contact_email"] = caller_email
 
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("manage_mfa_settings", account_id, str(action))
@@ -1782,14 +1794,15 @@ def manage_mfa_settings_impl(  # pragma: no cover
                     )
                     action_text = localized_text(
                         lang,
-                        "Confirm that the 6-digit verification code was resent to the email address on file and ask the caller to read it back.",
-                        "Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier et demandez au client de vous le lire.",
-                        "Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado y pídale a quien llama que se lo lea.",
+                        f"Confirm that the 6-digit verification code was resent to the email address on file without proactively naming an initial letter and ask the caller to read it back; if the caller asks to verify the email or domain, confirm the domain @{domain} or send the code to an email address they provide.",
+                        f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier sans annoncer d'initiale spontanément et demandez au client de vous le lire; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
+                        f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado sin indicar una inicial espontáneamente y pídale a quien llama que se lo lea; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
                     )
             rep_data: dict[str, Any] = {
                 "requires_email_step_up": True,
                 "requires_step_up": True,
                 "step_up_channel": "email",
+                "email_domain": domain,
                 "mfa_updated": False,
                 "spoken_message": spoken,
                 "agent_action": action_text,

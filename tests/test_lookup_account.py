@@ -280,27 +280,4 @@ def test_lookup_account_12_digit_billing_account(monkeypatch) -> None:
     assert reply_9999["error"] == "NOT_FOUND"
 
 
-def test_lookup_account_7_digit_local_phone_and_sms_login(monkeypatch) -> None:
-    import cxas_app.tools.send_login_code.python_function.python_code as send_tool
-
-    for local_phone, expected_last4 in (("555-0198", "0198"), ("555-0128", "0128")):
-        session = SimpleNamespace(state={})
-        monkeypatch.setattr(tool, "context", session, raising=False)
-        monkeypatch.setattr(send_tool, "context", session, raising=False)
-
-        reply = tool.lookup_account(local_phone)
-        assert reply["status"] == "ok"
-        assert reply["data"]["account_id"] == f"ACC-{expected_last4}"
-        assert reply["data"]["linked_mobile_last4"] == expected_last4
-        assert reply["data"]["phone_last4"] == expected_last4
-        assert session.state["phone_last4"] == expected_last4
-        assert session.state["caller_provided_phone_last4"] == expected_last4
-
-        sms_reply = send_tool.send_login_code(channel="sms")
-        assert sms_reply["status"] == "ok"
-        assert sms_reply["channel"] == "sms"
-        assert sms_reply["data"]["destination_last4"] == expected_last4
-
-
-
 
