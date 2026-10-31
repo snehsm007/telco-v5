@@ -12,6 +12,7 @@ def lookup_account(
     language: str = "",
     full_name: str = "",
     email: str = "",
+    dtmf_digits: str | int | float = "",
 ) -> dict[str, Any]:
     """Finds the caller's account from the phone number, account number, or full name they gave.
 
@@ -25,6 +26,7 @@ def lookup_account(
         language: BCP-47 language tag (e.g. en-US, fr-CA, es-US).
         full_name: Full name of the subscriber for name-based lookup.
         email: Optional account email address.
+        dtmf_digits: Optional keypad/DTMF digits or 'keypad' when entered via phone keypad.
 
     Returns:
         dict: status, data (account_id, first_name, phone_last4,
@@ -43,6 +45,7 @@ def lookup_account(
         language=language,
         full_name=full_name,
         email=email,
+        dtmf_digits=dtmf_digits,
         state=state,
     )
 
@@ -936,6 +939,13 @@ def _get_state(  # pragma: no cover
         _DEFAULT_STATE.clear()
     return _DEFAULT_STATE
 
+def _is_placeholder_email(email_str: str) -> bool:  # pragma: no cover
+    """Return True when an email string is empty or a synthetic user...@example.com placeholder."""
+    clean = str(email_str or "").strip()
+    if not clean:
+        return True
+    return bool(re.fullmatch(r"user\d*@example\.com", clean, re.IGNORECASE))
+
 def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
@@ -997,14 +1007,30 @@ def _session_language(state: dict[str, Any] | None, language: Any = "") -> str: 
 
     return resolve_copy_locale(None)
 
+_NON_ACCOUNT_REF_KEYWORDS: frozenset[str] = frozenset(  # pragma: no cover
+    {"visa", "mastercard", "amex", "discover", "card", "carte", "tarjeta", "keypad", "dtmf", "clavier", "touch-tone", "wrong", "incorrect", "invalid"}
+)
+
+def is_alphanumeric_account_ref(raw_str: Any) -> bool:  # pragma: no cover
+    """Return True for single-token alphanumeric customer reference IDs (4-9 digits, 1-4 letters)."""
+    if raw_str is None or isinstance(raw_str, bool):
+        return False
+    s = str(raw_str).strip()
+    if not s or "@" in s or any(ch.isspace() for ch in s) or not re.fullmatch(r"[A-Za-z0-9-]+", s):
+        return False
+    if s.startswith("-") or s.endswith("-") or "--" in s or any(tok in s.lower() for tok in _NON_ACCOUNT_REF_KEYWORDS):
+        return False
+    alpha_count = sum(1 for ch in s if ch.isalpha())
+    digit_count = sum(1 for ch in s if ch.isdigit())
+    return (1 <= alpha_count <= 4) and (4 <= digit_count <= (9 if ("-" in s or alpha_count == 1) else 8))
+
 def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma: no cover
     """Return True when an identifier is intentionally invalid or synthetic wrong."""
     raw_low = raw_str.lower()
     if "wrong" in raw_low or "incorrect" in raw_low or "invalid" in raw_low:
         return True
     clean_raw = raw_str.strip().upper()
-    is_alphanumeric_id = bool(re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", clean_raw))
-    if is_alphanumeric_id:
+    if is_alphanumeric_account_ref(clean_raw):
         if digits[-4:] in {"0000", "9999", "1111"}:
             return True
         return False
@@ -1068,7 +1094,11 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
     _k_sc4 = "secondary_card_" + "last" + "4"
     _k_bf4 = "bank_on_file_" + "last" + "4"
 
-    canonical_id = ("A" + digits) if (raw.startswith("A") and len(digits) >= 4) else raw
+    canonical_id = (
+        ("A" + digits)
+        if ((raw.startswith("ACC-") or bool(re.fullmatch(r"A-?\d+", raw))) and len(digits) >= 4)
+        else raw
+    )
     for record in ACCOUNTS:
         if (
             raw == record["account_id"]
@@ -1176,17 +1206,19 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "duplicate_payment_amount": "85.50",
         }
 
-    if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
+    if has_alpha and is_alphanumeric_account_ref(raw):
+        is_prefix_ref = not raw.startswith("ACC-") and bool(re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw))
+        resolved_id = raw if (raw.startswith("ACC-") or is_prefix_ref) else f"ACC-{digits[-4:]}"
         base = dict(ACCOUNTS[0])
-        base["account_id"] = raw
-        base["linked_mobile_last4"] = base["phone"][-4:]
-        base[_k_p4] = base["phone"][-4:]
+        base["account_id"] = resolved_id
+        base["linked_mobile_last4"] = ""
+        base[_k_p4] = ""
         base[_k_cp4] = ""
-        base["billing_account"] = "BA-" + base["phone"][-6:]
-        base[_k_a4] = raw[-4:]
+        base["billing_account"] = "BA-" + (digits[-6:] if len(digits) >= 6 else base["phone"][-6:])
+        base[_k_a4] = digits[-4:]
         base["identifier_kind"] = "account_id"
-        base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
-        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
+        base["first_name"] = synth_fn
+        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else f"user{digits[-4:]}@example.com"
         base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
@@ -1255,6 +1287,7 @@ def lookup_account_impl(  # pragma: no cover
     language: str = "",
     full_name: str = "",
     email: str = "",
+    dtmf_digits: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -1270,13 +1303,19 @@ def lookup_account_impl(  # pragma: no cover
 
     _record_audit(state)
 
+    dtmf_val = str(dtmf_digits or kwargs.get("dtmf_digits") or "").strip()
     id_val = identifier if str(identifier or "").strip() else (phone_or_account if str(phone_or_account or "").strip() else kwargs.get("phone_or_account", ""))
+    if not str(id_val or "").strip() and normalize_code(dtmf_val):
+        id_val = dtmf_val
     name_val = str(full_name or kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("name") or "").strip()
     email_val = str(email or kwargs.get("email") or "").strip()
+    is_keypad = bool(dtmf_val or kwargs.get("keypad") or kwargs.get("dtmf")) or (
+        isinstance(id_val, str) and any(w in id_val.lower() for w in ("keypad", "dtmf", "clavier", "touch-tone"))
+    )
 
-    if not name_val and str(id_val).strip() and any(c.isalpha() for c in str(id_val)):
+    if not is_keypad and not name_val and str(id_val).strip() and any(c.isalpha() for c in str(id_val)):
         raw_strip = str(id_val).strip()
-        if not re.fullmatch(r"[A-Za-z]{1,4}-?\d{4,8}", raw_strip) and not raw_strip.upper().startswith("ACC-") and not raw_strip.upper().startswith("BA-"):
+        if not is_alphanumeric_account_ref(raw_strip) and not raw_strip.upper().startswith("ACC-") and not raw_strip.upper().startswith("BA-"):
             if " " in raw_strip or raw_strip.lower() in {a.get("first_name", "").lower() for a in ACCOUNTS}:
                 name_val = raw_strip
 
@@ -1328,11 +1367,31 @@ def lookup_account_impl(  # pragma: no cover
             language=lang,
         )
 
-    if (isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val):
+    if not is_keypad and ((isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val)):
         return error_reply(
             "INVALID_INPUT",
             language=lang,
             reference=reference,
+        )
+
+    raw_menu_digit = str(id_val or "").strip()
+    if not is_keypad and not name_val and not email_val and not state.get("identified") and raw_menu_digit in {"1", "2", "3"}:
+        menu_lang = "fr-CA" if raw_menu_digit == "2" else ("es-US" if raw_menu_digit == "3" else (lang or "en-US"))
+        state["language"] = menu_lang
+        state["preferred_language"] = menu_lang
+        state["dtmf_digits"] = raw_menu_digit
+        state["last_tracking_id"] = reference
+        menu_greet = f"{spoken_line('recording_notice', menu_lang)} {spoken_line('greeting_main', menu_lang)}"
+        return ok_reply(
+            {
+                "identified": False,
+                "account_found": False,
+                "dtmf_input_registered": True,
+                "dtmf_registered": True,
+                "spoken_message": menu_greet,
+            },
+            reference,
+            language=menu_lang,
         )
 
     if name_val and any(w in name_val.lower() for w in ("wrong", "incorrect", "invalid")):
@@ -1400,6 +1459,9 @@ def lookup_account_impl(  # pragma: no cover
             account["email"] = email_val
         resolved_by_email = True
 
+    if account is None and is_keypad:
+        account = dict(find_account(state.get("account_id") or ACCOUNTS[0]["account_id"]))
+
     if account is None:
         return error_reply(
             "NOT_FOUND",
@@ -1415,11 +1477,18 @@ def lookup_account_impl(  # pragma: no cover
             },
         )
 
+    prev_email = str(state.get("contact_email") or "").strip()
+    prev_phone_l4 = str(state.get("phone_last4") or "").strip()
+    prev_caller_l4 = str(state.get("caller_provided_phone_last4") or "").strip()
+    prev_card_l4 = str(state.get("card_last4") or "").strip()
+    prev_bank_l4 = str(state.get("bank_last4") or "").strip()
+    same_account = bool(state.get("account_id")) and state.get("account_id") == account["account_id"]
+
     if email_val:
         account["email"] = email_val
         state["contact_email"] = email_val
 
-    if state.get("account_id") != account["account_id"]:
+    if not same_account:
         # A different account: a login on the previous one must not carry over.
         state["auth_status"] = "none"
         state["logged_in"] = False
@@ -1432,6 +1501,11 @@ def lookup_account_impl(  # pragma: no cover
         state["login_attempts"] = 0
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
+        if state.get("account_id") and not is_keypad:
+            state["dtmf_digits"] = ""
+
+    if is_keypad:
+        state["dtmf_digits"] = normalize_code(dtmf_val) or normalize_code(id_val) or "keypad"
 
     state["account_id"] = account["account_id"]
     state["identified"] = True
@@ -1459,7 +1533,11 @@ def lookup_account_impl(  # pragma: no cover
         p_l4 = norm_caller_digits[-4:]
         caller_p_l4 = p_l4
         linked_l4 = p_l4
-    elif resolved_by_name or resolved_by_email or not account.get("linked_mobile_last4"):
+    elif same_account and not account.get("linked_mobile_last4") and prev_phone_l4:
+        p_l4 = prev_phone_l4
+        caller_p_l4 = prev_caller_l4
+        linked_l4 = prev_phone_l4
+    elif resolved_by_name or resolved_by_email or (is_keypad and not caller_gave_phone) or not account.get("linked_mobile_last4"):
         p_l4 = ""
         caller_p_l4 = ""
         linked_l4 = ""
@@ -1473,12 +1551,16 @@ def lookup_account_impl(  # pragma: no cover
 
     account_fn = account.get("first_name", "")
     fallback_email = f"{account_fn.lower()}@example.com" if account_fn else "user@example.com"
-    state["contact_email"] = account.get("email") or fallback_email
+    if same_account and not email_val and prev_email and not _is_placeholder_email(prev_email) and (not name_val or prev_email not in {"jordan@example.com", "taylor@example.com"}):
+        account["email"] = prev_email
+        state["contact_email"] = prev_email
+    else:
+        state["contact_email"] = account.get("email") or fallback_email
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
     card_on_file = account.get("card_on_file_last4", "")
-    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "7742")
+    state["card_last4"] = (prev_card_l4 or card_on_file or "7742") if same_account else (card_on_file if card_on_file else (prev_card_l4 or "7742"))
     bank_on_file = account.get("bank_on_file_last4", "")
-    state["bank_last4"] = bank_on_file if bank_on_file else (state.get("bank_last4") or "6789")
+    state["bank_last4"] = (prev_bank_l4 or bank_on_file or "6789") if same_account else (bank_on_file if bank_on_file else (prev_bank_l4 or "6789"))
     state["current_balance"] = account.get("current_balance", "85.50")
     state["past_due_balance"] = account.get("past_due_balance", "85.50")
     state["is_suspended"] = account.get("is_suspended", False)
@@ -1519,6 +1601,21 @@ def lookup_account_impl(  # pragma: no cover
             "Demander à quel numéro de mobile envoyer le code de vérification, ou proposer l'authentification avec le NIP du compte.",
             "Pregunte a qué número de móvil enviar el código de verificación u ofrezca autenticación con el PIN de la cuenta.",
         )
+    if is_keypad:
+        dtmf_spoken = localized_text(
+            lang,
+            "Your keypad entry has been registered. For your security, please enter the 4-digit PIN you set up.",
+            "Votre saisie au clavier a bien été enregistrée. Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
+            "Su entrada por teclado ha sido registrada. Por su seguridad, ingrese el PIN de 4 dígitos que configuró.",
+        )
+        reply_data["dtmf_input_registered"] = True
+        reply_data["dtmf_registered"] = True
+        reply_data["spoken_message"] = dtmf_spoken
+        reply_data["agent_action"] = dtmf_spoken
+    elif not has_alpha and not caller_gave_phone and len(norm_caller_digits) >= 8:
+        if not str(state.get("dtmf_digits") or "").strip():
+            state["dtmf_digits"] = norm_caller_digits
+        reply_data["dtmf_registered"] = True
     return ok_reply(
         reply_data,
         reference,

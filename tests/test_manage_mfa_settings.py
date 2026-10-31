@@ -512,3 +512,30 @@ def test_manage_mfa_settings_enable_backup_codes_confirmation() -> None:
     assert r_es["data"]["backup_codes_generated"] is True
     assert "códigos de verificación de respaldo" in r_es["data"]["spoken_message"]
 
+
+def test_manage_mfa_settings_alternate_email_and_domain_mask(monkeypatch) -> None:
+    from lib.services import send_login_code_impl, verify_login_impl
+
+    session = SimpleNamespace(state={"account_id": "A1001", "identified": True, "auth_status": "pass", "logged_in": True, "mfa_enabled": True, "contact_email": "jordan@example.com"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    # First call sends to jordan@example.com; second call with explicit alternate email updates contact_email & masks non-example.com domain
+    r1 = tool.manage_mfa_settings(lost_authenticator=True)
+    assert r1["data"]["masked_backup_email"] == "j***@example.com"
+
+    r2 = tool.manage_mfa_settings(lost_authenticator=True, email="m.miller_work_backup@emailprovider.com")
+    assert session.state["contact_email"] == "m.miller_work_backup@emailprovider.com"
+    assert r2["data"]["masked_backup_email"] == "m***@emailprovider.com"
+    assert "emailprovider.com" in r2["data"]["spoken_message"]
+
+    # send_login_code(channel="email") works for step-up even when already logged in via PIN, without overwriting custom email on verify_login("A1001")
+    r_send = send_login_code_impl(identifier="A1001", channel="email", state=session.state)
+    assert r_send["status"] == "ok"
+    assert r_send["code_sent"] is True
+    assert session.state["contact_email"] == "m.miller_work_backup@emailprovider.com"
+    r_ver = verify_login_impl(identifier="A1001", code="384920", method="email", state=session.state)
+    assert r_ver["status"] == "ok"
+    assert session.state["mfa_email_verified"] is True
+    assert session.state["contact_email"] == "m.miller_work_backup@emailprovider.com"
+
+

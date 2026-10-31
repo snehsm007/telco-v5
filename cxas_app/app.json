@@ -244,6 +244,15 @@
       }
     },
     {
+      "name": "dtmf_digits",
+      "description": "Normalized DTMF keypad digits captured during identification, PIN login, or payment.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "preferred_language",
       "description": "Subscribers preferred language on file.",
       "schema": {

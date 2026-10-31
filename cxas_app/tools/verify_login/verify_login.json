@@ -4,7 +4,7 @@
   "executionType": "SYNCHRONOUS",
   "pythonFunction": {
     "name": "verify_login",
-    "description": "Validates the one-time login code or PIN entered by the caller to authenticate the session. Call this when the customer provides their verification code or PIN.",
+    "description": "Validates the one-time login code or PIN entered by the caller to authenticate the session. Call this when the customer provides their verification code or PIN verbally or via phone keypad (pass dtmf_digits='keypad' when keypad PIN entry has no spoken digits).",
     "pythonCode": "tools/verify_login/python_function/python_code.py"
   }
 }

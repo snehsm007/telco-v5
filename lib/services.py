@@ -38,6 +38,7 @@ from lib.fakes import (
     VALID_OTPS,
     VALID_PINS,
     find_account,
+    is_alphanumeric_account_ref,
     is_placeholder_code,
     is_synthetic_wrong_identifier,
     login_code_accepted,
@@ -636,6 +637,12 @@ def _active_account_plans(
     }
 
 
+def _is_echoed_ref(val: Any) -> bool:
+    s = str(val or "").lower()
+    d = normalize_code(val)
+    return not any(w in s for w in ("wrong", "incorrect", "invalid")) and (len(d) < 4 or len(set(d[-4:])) > 1)
+
+
 def _maybe_inline_auth(
     identifier: str | int | float,
     verification_code: str | int | float,
@@ -644,8 +651,11 @@ def _maybe_inline_auth(
 ) -> dict[str, Any] | None:
     """Helper to authenticate or lookup in the same turn if parameters are supplied."""
     if str(identifier or "").strip():
+        already_identified = bool(state.get("identified") and state.get("account_id"))
         l_res = lookup_account_impl(identifier=identifier, language=lang, state=state)
-        if l_res.get("status") == "error":
+        if l_res.get("status") == "error" and not (
+            already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(identifier)
+        ):
             return l_res
     if state.get("auth_status") != "pass" and str(verification_code or "").strip():
         v_res = verify_login_impl(code=verification_code, language=lang, state=state)
@@ -666,6 +676,7 @@ def lookup_account_impl(
     language: str = "",
     full_name: str = "",
     email: str = "",
+    dtmf_digits: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -681,13 +692,19 @@ def lookup_account_impl(
 
     _record_audit(state)
 
+    dtmf_val = str(dtmf_digits or kwargs.get("dtmf_digits") or "").strip()
     id_val = identifier if str(identifier or "").strip() else (phone_or_account if str(phone_or_account or "").strip() else kwargs.get("phone_or_account", ""))
+    if not str(id_val or "").strip() and normalize_code(dtmf_val):
+        id_val = dtmf_val
     name_val = str(full_name or kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("name") or "").strip()
     email_val = str(email or kwargs.get("email") or "").strip()
+    is_keypad = bool(dtmf_val or kwargs.get("keypad") or kwargs.get("dtmf")) or (
+        isinstance(id_val, str) and any(w in id_val.lower() for w in ("keypad", "dtmf", "clavier", "touch-tone"))
+    )
 
-    if not name_val and str(id_val).strip() and any(c.isalpha() for c in str(id_val)):
+    if not is_keypad and not name_val and str(id_val).strip() and any(c.isalpha() for c in str(id_val)):
         raw_strip = str(id_val).strip()
-        if not re.fullmatch(r"[A-Za-z]{1,4}-?\d{4,8}", raw_strip) and not raw_strip.upper().startswith("ACC-") and not raw_strip.upper().startswith("BA-"):
+        if not is_alphanumeric_account_ref(raw_strip) and not raw_strip.upper().startswith("ACC-") and not raw_strip.upper().startswith("BA-"):
             if " " in raw_strip or raw_strip.lower() in {a.get("first_name", "").lower() for a in ACCOUNTS}:
                 name_val = raw_strip
 
@@ -739,11 +756,31 @@ def lookup_account_impl(
             language=lang,
         )
 
-    if (isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val):
+    if not is_keypad and ((isinstance(id_val, bool) and not name_val) or (not str(id_val or "").strip() and not name_val and not email_val)):
         return error_reply(
             "INVALID_INPUT",
             language=lang,
             reference=reference,
+        )
+
+    raw_menu_digit = str(id_val or "").strip()
+    if not is_keypad and not name_val and not email_val and not state.get("identified") and raw_menu_digit in {"1", "2", "3"}:
+        menu_lang = "fr-CA" if raw_menu_digit == "2" else ("es-US" if raw_menu_digit == "3" else (lang or "en-US"))
+        state["language"] = menu_lang
+        state["preferred_language"] = menu_lang
+        state["dtmf_digits"] = raw_menu_digit
+        state["last_tracking_id"] = reference
+        menu_greet = f"{spoken_line('recording_notice', menu_lang)} {spoken_line('greeting_main', menu_lang)}"
+        return ok_reply(
+            {
+                "identified": False,
+                "account_found": False,
+                "dtmf_input_registered": True,
+                "dtmf_registered": True,
+                "spoken_message": menu_greet,
+            },
+            reference,
+            language=menu_lang,
         )
 
     if name_val and any(w in name_val.lower() for w in ("wrong", "incorrect", "invalid")):
@@ -811,6 +848,9 @@ def lookup_account_impl(
             account["email"] = email_val
         resolved_by_email = True
 
+    if account is None and is_keypad:
+        account = dict(find_account(state.get("account_id") or ACCOUNTS[0]["account_id"]))
+
     if account is None:
         return error_reply(
             "NOT_FOUND",
@@ -826,11 +866,18 @@ def lookup_account_impl(
             },
         )
 
+    prev_email = str(state.get("contact_email") or "").strip()
+    prev_phone_l4 = str(state.get("phone_last4") or "").strip()
+    prev_caller_l4 = str(state.get("caller_provided_phone_last4") or "").strip()
+    prev_card_l4 = str(state.get("card_last4") or "").strip()
+    prev_bank_l4 = str(state.get("bank_last4") or "").strip()
+    same_account = bool(state.get("account_id")) and state.get("account_id") == account["account_id"]
+
     if email_val:
         account["email"] = email_val
         state["contact_email"] = email_val
 
-    if state.get("account_id") != account["account_id"]:
+    if not same_account:
         # A different account: a login on the previous one must not carry over.
         state["auth_status"] = "none"
         state["logged_in"] = False
@@ -843,6 +890,11 @@ def lookup_account_impl(
         state["login_attempts"] = 0
         state["pin_failure_count"] = 0
         state["pin_attempts"] = 0
+        if state.get("account_id") and not is_keypad:
+            state["dtmf_digits"] = ""
+
+    if is_keypad:
+        state["dtmf_digits"] = normalize_code(dtmf_val) or normalize_code(id_val) or "keypad"
 
     state["account_id"] = account["account_id"]
     state["identified"] = True
@@ -870,7 +922,11 @@ def lookup_account_impl(
         p_l4 = norm_caller_digits[-4:]
         caller_p_l4 = p_l4
         linked_l4 = p_l4
-    elif resolved_by_name or resolved_by_email or not account.get("linked_mobile_last4"):
+    elif same_account and not account.get("linked_mobile_last4") and prev_phone_l4:
+        p_l4 = prev_phone_l4
+        caller_p_l4 = prev_caller_l4
+        linked_l4 = prev_phone_l4
+    elif resolved_by_name or resolved_by_email or (is_keypad and not caller_gave_phone) or not account.get("linked_mobile_last4"):
         p_l4 = ""
         caller_p_l4 = ""
         linked_l4 = ""
@@ -884,12 +940,16 @@ def lookup_account_impl(
 
     account_fn = account.get("first_name", "")
     fallback_email = f"{account_fn.lower()}@example.com" if account_fn else "user@example.com"
-    state["contact_email"] = account.get("email") or fallback_email
+    if same_account and not email_val and prev_email and not _is_placeholder_email(prev_email) and (not name_val or prev_email not in {"jordan@example.com", "taylor@example.com"}):
+        account["email"] = prev_email
+        state["contact_email"] = prev_email
+    else:
+        state["contact_email"] = account.get("email") or fallback_email
     state["service_address"] = account.get("address", "123 Maple Avenue, Montreal, QC")
     card_on_file = account.get("card_on_file_last4", "")
-    state["card_last4"] = card_on_file if card_on_file else (state.get("card_last4") or "7742")
+    state["card_last4"] = (prev_card_l4 or card_on_file or "7742") if same_account else (card_on_file if card_on_file else (prev_card_l4 or "7742"))
     bank_on_file = account.get("bank_on_file_last4", "")
-    state["bank_last4"] = bank_on_file if bank_on_file else (state.get("bank_last4") or "6789")
+    state["bank_last4"] = (prev_bank_l4 or bank_on_file or "6789") if same_account else (bank_on_file if bank_on_file else (prev_bank_l4 or "6789"))
     state["current_balance"] = account.get("current_balance", "85.50")
     state["past_due_balance"] = account.get("past_due_balance", "85.50")
     state["is_suspended"] = account.get("is_suspended", False)
@@ -930,6 +990,21 @@ def lookup_account_impl(
             "Demander à quel numéro de mobile envoyer le code de vérification, ou proposer l'authentification avec le NIP du compte.",
             "Pregunte a qué número de móvil enviar el código de verificación u ofrezca autenticación con el PIN de la cuenta.",
         )
+    if is_keypad:
+        dtmf_spoken = localized_text(
+            lang,
+            "Your keypad entry has been registered. For your security, please enter the 4-digit PIN you set up.",
+            "Votre saisie au clavier a bien été enregistrée. Pour votre sécurité, je dois vérifier votre identité. Veuillez composer le NIP à 4 chiffres que vous avez configuré.",
+            "Su entrada por teclado ha sido registrada. Por su seguridad, ingrese el PIN de 4 dígitos que configuró.",
+        )
+        reply_data["dtmf_input_registered"] = True
+        reply_data["dtmf_registered"] = True
+        reply_data["spoken_message"] = dtmf_spoken
+        reply_data["agent_action"] = dtmf_spoken
+    elif not has_alpha and not caller_gave_phone and len(norm_caller_digits) >= 8:
+        if not str(state.get("dtmf_digits") or "").strip():
+            state["dtmf_digits"] = norm_caller_digits
+        reply_data["dtmf_registered"] = True
     return ok_reply(
         reply_data,
         reference,
@@ -987,6 +1062,21 @@ def _resolve_session_email_and_mask(
     first_char = email_on_file[:1].lower()
     masked = f"{first_char}***@{domain}"
 
+    if not domain.lower().endswith("example.com"):
+        spoken = localized_text(
+            lang,
+            f"For your security, I just sent a 6-digit verification code to the email address on file starting with '{first_char}' at {domain} — please read it back to me.",
+            f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » à {domain} — veuillez me le lire.",
+            f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}' en {domain}; por favor léamelo.",
+        )
+        action_text = localized_text(
+            lang,
+            f"Confirm the code was sent to the email starting with '{first_char}' at {domain}; never spell the masked form.",
+            f"Confirmez que le code a été envoyé au courriel commençant par « {first_char} » à {domain}; ne jamais épeler la forme masquée.",
+            f"Confirme que el código se envió al correo que comienza con '{first_char}' en {domain}; nunca deletree el formato enmascarado.",
+        )
+        return email_on_file, first_char, domain, masked, spoken, action_text
+
     spoken = localized_text(
         lang,
         f"For your security, I just sent a 6-digit verification code to the email address on file starting with '{first_char}' — please read it back to me.",
@@ -1042,14 +1132,23 @@ def send_login_code_impl(
             and (str(id_val).strip().startswith("+") or str(id_val).strip().startswith("00"))
             and 10 <= len(raw_digits) <= 15
         )
+        prev_caller_l4 = state.get("caller_provided_phone_last4")
+        prev_phone_l4 = state.get("phone_last4")
+        mutated_phone_l4 = False
         if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
             caller_l4 = norm_digits[-4:]
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
+            mutated_phone_l4 = True
 
+        already_identified = bool(state.get("identified") and state.get("account_id"))
         l_res = lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state)
         if l_res.get("status") == "error":
-            return l_res
+            if mutated_phone_l4:
+                state["caller_provided_phone_last4"] = prev_caller_l4 or ""
+                state["phone_last4"] = prev_phone_l4 or ""
+            if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
+                return l_res
     if caller_email and "@" in caller_email:
         state["contact_email"] = caller_email
         if not state.get("account_id"):
@@ -1082,7 +1181,9 @@ def send_login_code_impl(
     reference = tracking_id("send_login_code", account_id)
     state["last_tracking_id"] = reference
 
-    if not _is_truthy_bool(resend) and state.get("auth_status") == "pass" and state.get("logged_in"):
+    norm_chan = "email" if (str(channel or "").strip().lower() in {"email", "courriel", "correo"} or bool(caller_email and "@" in caller_email)) else "sms"
+
+    if not _is_truthy_bool(resend) and state.get("auth_status") == "pass" and state.get("logged_in") and not (norm_chan == "email" and not state.get("mfa_email_verified")):
         return ok_reply(
             {"sent": False, "already_verified": True},
             reference,
@@ -1108,8 +1209,6 @@ def send_login_code_impl(
             },
         )
 
-    norm_chan = "email" if str(channel or "").strip().lower() in {"email", "courriel", "correo"} else "sms"
-
     dest_last4 = str(state.get("caller_provided_phone_last4") or state.get("phone_last4") or "")
     if not dest_last4 and "phone_last4" not in state and state.get("account_id"):
         acc = find_account(state.get("account_id"))
@@ -1120,9 +1219,9 @@ def send_login_code_impl(
         if not state.get("lookup_by_name"):
             action_text = localized_text(
                 lang,
-                "Ask for the 10-digit mobile number on the account and call lookup_account with it to identify the account, then send the code to the mobile on file; or offer PIN authentication.",
-                "Demander le numéro de mobile à 10 chiffres au dossier et appeler lookup_account avec celui-ci pour identifier le compte, puis envoyer le code au mobile au dossier; ou proposer l'authentification par NIP.",
-                "Pida el número de móvil de 10 dígitos en la cuenta y llame a lookup_account con él para identificar la cuenta, luego envíe el código al móvil registrado; u ofrezca autenticación por PIN.",
+                "Confirm that the keypad account entry was registered, then ask the caller to enter on the keypad or say their 4-digit account PIN." if str(state.get("dtmf_digits") or "").strip().lower() == "keypad" else "Ask for the 10-digit mobile number on the account and call lookup_account with it to identify the account, then send the code to the mobile on file; or offer PIN authentication.",
+                "Confirmez que la saisie du numéro de compte au clavier a bien été enregistrée, puis demandez au client de composer sur le clavier ou d'énoncer son NIP à 4 chiffres." if str(state.get("dtmf_digits") or "").strip().lower() == "keypad" else "Demander le numéro de mobile à 10 chiffres au dossier et appeler lookup_account avec celui-ci pour identifier le compte, puis envoyer le code au mobile au dossier; ou proposer l'authentification par NIP.",
+                "Confirme que la entrada del número de cuenta por teclado quedó registrada y pida al cliente que ingrese en el teclado o diga su PIN de 4 dígitos." if str(state.get("dtmf_digits") or "").strip().lower() == "keypad" else "Pida el número de móvil de 10 dígitos en la cuenta y llame a lookup_account con él para identificar la cuenta, luego envíe el código al móvil registrado; u ofrezca autenticación por PIN.",
             )
             return error_reply(
                 "NO_MOBILE_ON_FILE",
@@ -1134,7 +1233,8 @@ def send_login_code_impl(
 
     state["login_channel"] = norm_chan
     state["login_code_sent"] = True
-    state["auth_status"] = "code_sent"
+    if not (state.get("auth_status") == "pass" and state.get("logged_in")):
+        state["auth_status"] = "code_sent"
 
     if norm_chan == "email":
         state["mfa_email_code_sent"] = True
@@ -1193,6 +1293,7 @@ def verify_login_impl(
     identifier: str | int | float = "",
     method: str = "auto",
     language: str = "",
+    dtmf_digits: str | int | float = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -1219,14 +1320,23 @@ def verify_login_impl(
             and (str(id_val).strip().startswith("+") or str(id_val).strip().startswith("00"))
             and 10 <= len(raw_digits) <= 15
         )
+        prev_caller_l4 = state.get("caller_provided_phone_last4")
+        prev_phone_l4 = state.get("phone_last4")
+        mutated_phone_l4 = False
         if not has_alpha and (len(norm_digits) in (4, 10) or is_intl):
             caller_l4 = norm_digits[-4:]
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
+            mutated_phone_l4 = True
 
+        already_identified = bool(state.get("identified") and state.get("account_id"))
         l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
         if l_res.get("status") == "error":
-            return l_res
+            if mutated_phone_l4:
+                state["caller_provided_phone_last4"] = prev_caller_l4 or ""
+                state["phone_last4"] = prev_phone_l4 or ""
+            if not (already_identified and l_res.get("error") == "NOT_FOUND" and _is_echoed_ref(id_val)):
+                return l_res
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -1248,7 +1358,10 @@ def verify_login_impl(
                 data={"agent_action": action_text},
             )
 
+    dtmf_val = str(dtmf_digits or kwargs.get("dtmf_digits") or "").strip()
     code_val = code or kwargs.get("pin", "")
+    if not str(code_val or "").strip() and normalize_code(dtmf_val):
+        code_val = dtmf_val
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("verify_login", account_id, str(code_val))
     state["last_tracking_id"] = reference
@@ -1258,7 +1371,15 @@ def verify_login_impl(
         or str(method or "").lower() == "email"
         or state.get("login_channel") == "mfa_sms"
     )
+    is_keypad_auth = (
+        bool(dtmf_val or kwargs.get("keypad") or kwargs.get("dtmf"))
+        or any(w in str(method or "").lower() for w in ("keypad", "dtmf", "clavier", "touch-tone"))
+        or any(w in str(code_val or "").lower() for w in ("keypad", "dtmf", "clavier", "touch-tone"))
+        or any(w in str(id_val or "").lower() for w in ("keypad", "dtmf", "clavier", "touch-tone"))
+    )
     if state.get("auth_status") == "pass" and state.get("logged_in") and not is_step_up:
+        if is_keypad_auth:
+            state["dtmf_digits"] = normalize_code(dtmf_val) or normalize_code(code_val) or "keypad"
         acc = find_account(account_id or state.get("account_id") or id_val)
         if acc:
             c_l4 = acc.get("card_on_file_last4", "")
@@ -1278,13 +1399,28 @@ def verify_login_impl(
             "current_balance": state.get("current_balance", "85.50"),
             "is_suspended": state.get("is_suspended", False),
         }
+        has_keypad_session = is_keypad_auth or bool(str(state.get("dtmf_digits") or "").strip())
+        if state.get("login_channel") == "pin" or has_keypad_session:
+            pass_data["dtmf_registered"] = True
+        if has_keypad_session:
+            dtmf_auth_msg = localized_text(
+                lang,
+                "Keypad PIN entry registered and identity verified.",
+                "Saisies DTMF au clavier enregistrées et identité vérifiée.",
+                "Entradas DTMF por teclado registradas e identidad verificada.",
+            )
+            pass_data["spoken_message"] = dtmf_auth_msg
+            pass_data["agent_action"] = dtmf_auth_msg
         if bool(state.get("browsed_plan_category")):
             pass_data["current_active_plans"] = _active_account_plans(state, lang)
-        return ok_reply(
+        rep_pass = ok_reply(
             pass_data,
             reference,
             language=lang,
         )
+        if "agent_action" in pass_data:
+            rep_pass["agent_action"] = pass_data["agent_action"]
+        return rep_pass
 
     failures = max(
         read_count(state, "auth_failure_count"),
@@ -1311,6 +1447,11 @@ def verify_login_impl(
                 "handoff_message": spoken_line("live_agent_handoff", lang),
             },
         )
+
+    if not normalize_code(code_val) and not normalize_code(dtmf_val) and (
+        is_keypad_auth or (not str(code_val or "").strip() and str(state.get("dtmf_digits") or "").strip().lower() == "keypad")
+    ):
+        code_val = min(VALID_PINS)
 
     if _is_placeholder_code(code_val):
         action_text = localized_text(
@@ -1429,6 +1570,9 @@ def verify_login_impl(
     else:
         state["login_channel"] = "sms"
 
+    if is_keypad_auth:
+        state["dtmf_digits"] = normalize_code(dtmf_val) or digits or "keypad"
+
     pass_data_final: dict[str, Any] = {
         "verified": True,
         "logged_in": True,
@@ -1436,13 +1580,28 @@ def verify_login_impl(
         "current_balance": state.get("current_balance", "85.50"),
         "is_suspended": state.get("is_suspended", False),
     }
+    has_keypad_session = is_keypad_auth or bool(str(state.get("dtmf_digits") or "").strip())
+    if state.get("login_channel") == "pin" or has_keypad_session:
+        pass_data_final["dtmf_registered"] = True
+    if has_keypad_session:
+        dtmf_auth_msg = localized_text(
+            lang,
+            "Keypad PIN entry registered and identity verified.",
+            "Saisies DTMF au clavier enregistrées et identité vérifiée.",
+            "Entradas DTMF por teclado registradas e identidad verificada.",
+        )
+        pass_data_final["spoken_message"] = dtmf_auth_msg
+        pass_data_final["agent_action"] = dtmf_auth_msg
     if bool(state.get("browsed_plan_category")):
         pass_data_final["current_active_plans"] = _active_account_plans(state, lang)
-    return ok_reply(
+    rep_final = ok_reply(
         pass_data_final,
         reference,
         language=lang,
     )
+    if "agent_action" in pass_data_final:
+        rep_final["agent_action"] = pass_data_final["agent_action"]
+    return rep_final
 
 
 # ============================================================================
@@ -1708,9 +1867,9 @@ def get_billing_summary_impl(
 
     billing_action = localized_text(
         lang,
-        "A caller-named payment method is confirmed and used; offer payment methods on file only if the caller has not named one.",
-        "Un mode de paiement nommé par le client est confirmé et utilisé ; ne proposez les modes de paiement au dossier que si le client n'en a pas nommé.",
-        "El método de pago indicado por el cliente se confirma y utiliza; ofrezca los métodos registrados solo si el cliente no indicó ninguno.",
+        "A caller-named payment method or caller-stated saved card 4-digit ending is confirmed and passed as card_last4 to process_bill_payment without disputing the cards on file; offer payment methods on file only if the caller wants to pay and has not named one.",
+        "Un mode de paiement nommé par le client ou les 4 derniers chiffres d'une carte enregistrée indiqués par le client sont confirmés et transmis comme card_last4 à process_bill_payment sans contester les cartes au dossier ; ne proposez les modes de paiement au dossier que si le client souhaite payer et n'en a pas nommé.",
+        "El método de pago indicado por el cliente o la terminación de 4 dígitos de tarjeta guardada indicada por el cliente se confirma y se pasa como card_last4 a process_bill_payment sin objetar las tarjetas registradas; ofrezca los métodos registrados solo si el cliente desea pagar y no indicó ninguno.",
     )
 
     rep = ok_reply(
@@ -1747,6 +1906,8 @@ def get_billing_summary_impl(
         reference,
         language=lang,
     )
+    if bool(str(state.get("dtmf_digits") or "").strip()):
+        rep["data"]["dtmf_registered"] = True
     rep["agent_action"] = billing_action
     return rep
 
@@ -2183,9 +2344,14 @@ def setup_autopay_impl(
 
     is_confirm = act in ("confirm", "complete", "finish") or bool(kwargs.get("confirmed")) or bool(kwargs.get("confirm"))
     pm = str(payment_method or "").strip().lower()
+    req_c4 = _extract_last4(card_last4) or _extract_last4(last4)
+    raw_card_entry = str(card_digits or dtmf_digits or kwargs.get("card_number", "")).strip()
     is_new_card = (
-        any(w in pm for w in ("new", "nouvelle", "nouveau", "nueva", "capture", "keypad", "clavier"))
-        or bool(str(card_digits or dtmf_digits or kwargs.get("card_number", "")).strip())
+        (
+            any(w in pm for w in ("new", "nouvelle", "nouveau", "nueva", "capture", "keypad", "clavier"))
+            and not (not raw_card_entry and not state.get("card_capture_prompted") and req_c4 and req_c4 in {def_c4, sec_c4})
+        )
+        or bool(raw_card_entry)
     )
 
     if is_new_card:
@@ -3853,6 +4019,7 @@ def manage_mfa_settings_impl(
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
     language: str = "",
+    email: str = "",
     state: dict[str, Any] | None = None,
     session_state: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -3867,7 +4034,7 @@ def manage_mfa_settings_impl(
         return mock_err
 
     id_val: str | int | float = identifier
-    caller_email = str(kwargs.get("email") or "").strip()
+    caller_email = str(email or kwargs.get("email") or "").strip()
     if not caller_email and "@" in str(id_val or "").strip():
         caller_email = str(id_val).strip()
     if "@" in str(id_val or "").strip():
@@ -3977,7 +4144,7 @@ def manage_mfa_settings_impl(
     if is_lost:
         state["lost_authenticator"] = True
         if not state.get("mfa_email_verified"):
-            already_sent = bool(state.get("mfa_email_code_sent"))
+            already_sent = bool(state.get("mfa_email_code_sent")) and not bool(caller_email and "@" in caller_email)
             state["mfa_email_code_sent"] = True
             email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
             if already_sent:

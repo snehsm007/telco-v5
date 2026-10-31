@@ -372,4 +372,20 @@ def test_setup_autopay_action_confirm_completes_enrollment() -> None:
     assert rep["card_last4"] == "4321"
 
 
+def test_process_bill_payment_saved_card_then_setup_autopay_succeeds() -> None:
+    from lib.services import process_bill_payment_impl
+
+    for pm in ("card_on_file", "card", "new_card"):
+        st = {"account_id": "A1001", "identified": True, "auth_status": "pass", "card_last4": "7742", "current_balance": "85.50"}
+        pay_rep = process_bill_payment_impl(card_last4="4242", state=st)
+        assert pay_rep["status"] == "ok"
+        assert st["card_last4"] == "4242"
+
+        ap_rep = setup_autopay_impl(payment_method=pm, card_last4="4242", identifier="A1001", state=st)
+        assert ap_rep["status"] == "ok"
+        assert ap_rep["data"]["autopay_enrolled"] is True
+        assert ap_rep["data"]["card_last4"] == "4242"
+
+
+
 

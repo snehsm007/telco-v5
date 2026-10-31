@@ -4,7 +4,7 @@
   "executionType": "SYNCHRONOUS",
   "pythonFunction": {
     "name": "manage_mfa_settings",
-    "description": "Configures two-factor authentication (MFA) settings for an authenticated account, including disabling, enabling, and lost authenticator backup email step-up.",
+    "description": "Configures two-factor authentication (MFA) settings for an authenticated account, including disabling, enabling, and lost authenticator backup email step-up (pass email if the caller provides an alternate backup email address).",
     "pythonCode": "tools/manage_mfa_settings/python_function/python_code.py"
   }
 }

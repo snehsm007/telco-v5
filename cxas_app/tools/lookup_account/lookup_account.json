@@ -4,7 +4,7 @@
   "executionType": "SYNCHRONOUS",
   "pythonFunction": {
     "name": "lookup_account",
-    "description": "Finds the caller's account from the phone number, account number, or full name they gave. Call this as soon as the caller gives a phone number, account number, or full name.",
+    "description": "Finds the caller's account from the phone number, account number, full name, or phone keypad (DTMF) entry. Call this as soon as the caller gives a phone number, account number, full name, or indicates they entered their account number on their phone keypad (pass dtmf_digits='keypad' when keypad entry has no spoken digits).",
     "pythonCode": "tools/lookup_account/python_function/python_code.py"
   }
 }

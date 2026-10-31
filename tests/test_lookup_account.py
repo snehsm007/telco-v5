@@ -280,4 +280,47 @@ def test_lookup_account_12_digit_billing_account(monkeypatch) -> None:
     assert reply_9999["error"] == "NOT_FOUND"
 
 
+def test_lookup_account_keypad_and_same_account_state_preservation(monkeypatch) -> None:
+    from lib.services import get_billing_summary_impl, send_login_code_impl, verify_login_impl
+
+    # Menu digit + keypad account + keypad PIN login + billing summary dtmf_registered
+    st_menu: dict = {}
+    rep_menu = lookup_account_impl(identifier="2", state=st_menu)
+    assert rep_menu["data"]["dtmf_input_registered"] is True
+    assert st_menu["language"] == "fr-CA"
+
+    session_kp = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_kp, raising=False)
+    rep_kp = tool.lookup_account(dtmf_digits="keypad", language="fr-CA")
+    assert rep_kp["status"] == "ok"
+    assert rep_kp["data"]["dtmf_registered"] is True
+    assert send_login_code_impl(language="fr-CA", state=session_kp.state)["error"] == "NO_MOBILE_ON_FILE"
+
+    rep_v = verify_login_impl(dtmf_digits="keypad", language="fr-CA", state=session_kp.state)
+    assert rep_v["status"] == "ok"
+    assert rep_v["data"]["dtmf_registered"] is True
+    rep_v2 = verify_login_impl(dtmf_digits="keypad", language="fr-CA", state=session_kp.state)
+    assert rep_v2["status"] == "ok"
+    assert rep_v2["data"]["dtmf_registered"] is True
+    rep_sum = get_billing_summary_impl(language="fr-CA", state=session_kp.state)
+    assert rep_sum["data"]["dtmf_registered"] is True
+
+    # Phone + custom email preservation across same-account relookups & echoed non-matching refs
+    st_same: dict = {}
+    assert lookup_account_impl(identifier="555-012-3456", email="j.miller82@emailprovider.com", state=st_same)["status"] == "ok"
+    assert st_same["phone_last4"] == "3456"
+    assert send_login_code_impl(identifier="ACC-3456", channel="sms", state=st_same)["status"] == "ok"
+    assert st_same["phone_last4"] == "3456"
+    assert st_same["contact_email"] == "j.miller82@emailprovider.com"
+    assert verify_login_impl(identifier="echo-nonmatch", code="7734", state=st_same)["status"] == "ok"
+    assert st_same["account_id"] == "ACC-3456"
+    assert st_same["contact_email"] == "j.miller82@emailprovider.com"
+
+    # Suffix/hyphenated alphanumeric customer references & bare numeric DTMF account
+    for ref in ("AM-99283-X", "992834-DM", "987654321"):
+        st_r: dict = {}
+        assert lookup_account_impl(identifier=ref, state=st_r)["status"] == "ok"
+
+
+
 

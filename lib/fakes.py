@@ -94,14 +94,32 @@ def read_count(state: dict[str, Any] | None, key: str) -> int:
         return 0
 
 
+_NON_ACCOUNT_REF_KEYWORDS: frozenset[str] = frozenset(
+    {"visa", "mastercard", "amex", "discover", "card", "carte", "tarjeta", "keypad", "dtmf", "clavier", "touch-tone", "wrong", "incorrect", "invalid"}
+)
+
+
+def is_alphanumeric_account_ref(raw_str: Any) -> bool:
+    """Return True for single-token alphanumeric customer reference IDs (4-9 digits, 1-4 letters)."""
+    if raw_str is None or isinstance(raw_str, bool):
+        return False
+    s = str(raw_str).strip()
+    if not s or "@" in s or any(ch.isspace() for ch in s) or not re.fullmatch(r"[A-Za-z0-9-]+", s):
+        return False
+    if s.startswith("-") or s.endswith("-") or "--" in s or any(tok in s.lower() for tok in _NON_ACCOUNT_REF_KEYWORDS):
+        return False
+    alpha_count = sum(1 for ch in s if ch.isalpha())
+    digit_count = sum(1 for ch in s if ch.isdigit())
+    return (1 <= alpha_count <= 4) and (4 <= digit_count <= (9 if ("-" in s or alpha_count == 1) else 8))
+
+
 def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:
     """Return True when an identifier is intentionally invalid or synthetic wrong."""
     raw_low = raw_str.lower()
     if "wrong" in raw_low or "incorrect" in raw_low or "invalid" in raw_low:
         return True
     clean_raw = raw_str.strip().upper()
-    is_alphanumeric_id = bool(re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", clean_raw))
-    if is_alphanumeric_id:
+    if is_alphanumeric_account_ref(clean_raw):
         if digits[-4:] in {"0000", "9999", "1111"}:
             return True
         return False
@@ -151,7 +169,11 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
     _k_sc4 = "secondary_card_" + "last" + "4"
     _k_bf4 = "bank_on_file_" + "last" + "4"
 
-    canonical_id = ("A" + digits) if (raw.startswith("A") and len(digits) >= 4) else raw
+    canonical_id = (
+        ("A" + digits)
+        if ((raw.startswith("ACC-") or bool(re.fullmatch(r"A-?\d+", raw))) and len(digits) >= 4)
+        else raw
+    )
     for record in ACCOUNTS:
         if (
             raw == record["account_id"]
@@ -259,17 +281,19 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
             "duplicate_payment_amount": "85.50",
         }
 
-    if has_alpha and not raw.startswith("ACC-") and re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw):
+    if has_alpha and is_alphanumeric_account_ref(raw):
+        is_prefix_ref = not raw.startswith("ACC-") and bool(re.fullmatch(r"[A-Z]{2,4}-\d{4,8}", raw))
+        resolved_id = raw if (raw.startswith("ACC-") or is_prefix_ref) else f"ACC-{digits[-4:]}"
         base = dict(ACCOUNTS[0])
-        base["account_id"] = raw
-        base["linked_mobile_last4"] = base["phone"][-4:]
-        base[_k_p4] = base["phone"][-4:]
+        base["account_id"] = resolved_id
+        base["linked_mobile_last4"] = ""
+        base[_k_p4] = ""
         base[_k_cp4] = ""
-        base["billing_account"] = "BA-" + base["phone"][-6:]
-        base[_k_a4] = raw[-4:]
+        base["billing_account"] = "BA-" + (digits[-6:] if len(digits) >= 6 else base["phone"][-6:])
+        base[_k_a4] = digits[-4:]
         base["identifier_kind"] = "account_id"
-        base["first_name"] = synth_fn if synth_fn else base.get("first_name", "")
-        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else "user@example.com"
+        base["first_name"] = synth_fn
+        base["email"] = f"{clean_fn.lower()}@example.com" if clean_fn else f"user{digits[-4:]}@example.com"
         base[_k_cf4] = "7742"
         base[_k_sc4] = "8844"
         base[_k_bf4] = "6789"
