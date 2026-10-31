@@ -265,7 +265,7 @@ def test_send_login_code_email_spoken_phrases_locales(monkeypatch) -> None:
     assert session_caller_email.state["contact_email"] == "jl.dubois@example.fr"
     assert res_dubois["data"]["masked_email"] == "j***@example.fr"
     assert res_dubois["data"]["email_domain"] == "example.fr"
-    assert "commençant par « j »" in res_dubois["data"]["spoken_message"]
+    assert "jl.dubois@example.fr" in res_dubois["data"]["spoken_message"]
 
     # Caller-provided email in identifier also resolves account when session has no account_id yet
     session_unidentified_email = SimpleNamespace(state={"auth_status": "none"})
@@ -280,15 +280,30 @@ def test_send_login_code_email_spoken_phrases_locales(monkeypatch) -> None:
     assert res_unid["data"]["masked_email"] == "j***@example.fr"
 
 
-def test_caller_provided_email_allows_direct_typo_confirmation_without_changing_spoken_or_mask(
+def test_caller_provided_email_confirms_directly_and_handles_same_email_resend(
     monkeypatch,
 ) -> None:
     from lib.services import manage_mfa_settings_impl, update_contact_profile_impl
 
-    for locale, expected_phrase in (
-        ("en-US", "confirm directly that it was sent to pat.sample@customdomain.org"),
-        ("fr-CA", "confirmez directement l'envoi à pat.sample@customdomain.org"),
-        ("es-US", "confirme directamente el envío a pat.sample@customdomain.org"),
+    for locale, expected_spoken, expected_action, expected_resend_spoken in (
+        (
+            "en-US",
+            "sent a 6-digit verification code to pat.sample@customdomain.org",
+            "Confirm directly that the 6-digit verification code was sent to pat.sample@customdomain.org without spelling asterisks",
+            "I have resent the 6-digit verification code to pat.sample@customdomain.org",
+        ),
+        (
+            "fr-CA",
+            "envoyer un code de vérification à 6 chiffres à pat.sample@customdomain.org",
+            "Confirmez directement que le code de vérification à 6 chiffres a été envoyé à pat.sample@customdomain.org sans épeler d'astérisques",
+            "J'ai renvoyé le code de vérification à 6 chiffres à pat.sample@customdomain.org",
+        ),
+        (
+            "es-US",
+            "enviar un código de verificación de 6 dígitos a pat.sample@customdomain.org",
+            "Confirme directamente que el código de verificación de 6 dígitos se envió a pat.sample@customdomain.org sin deletrear asteriscos",
+            "He reenviado el código de verificación de 6 dígitos a pat.sample@customdomain.org",
+        ),
     ):
         session_c = SimpleNamespace(
             state={
@@ -305,8 +320,19 @@ def test_caller_provided_email_allows_direct_typo_confirmation_without_changing_
         )
         assert res["status"] == "ok"
         assert res["data"]["masked_email"] == "p***@customdomain.org"
-        assert "pat.sample@customdomain.org" not in res["data"]["spoken_message"]
-        assert expected_phrase in res["data"]["agent_action"]
+        assert expected_spoken in res["data"]["spoken_message"]
+        assert expected_action in res["data"]["agent_action"]
+
+        # Same-email resend in send_login_code sets code_resent and confirms direct resend
+        res_resend = tool.send_login_code(
+            identifier="pat.sample@customdomain.org",
+            channel="email",
+            language=locale,
+        )
+        assert res_resend["status"] == "ok"
+        assert res_resend.get("code_resent") is True
+        assert res_resend["data"]["code_resent"] is True
+        assert expected_resend_spoken in res_resend["data"]["spoken_message"]
 
     # Also verify example.com caller-provided email and manage_mfa_settings already_sent branch
     st_mfa: dict = {
@@ -325,9 +351,10 @@ def test_caller_provided_email_allows_direct_typo_confirmation_without_changing_
         state=st_mfa,
     )
     assert mfa1["status"] == "ok"
-    assert "confirm directly that it was sent to pat.sample@customdomain.org" in mfa1["agent_action"]
+    assert "pat.sample@customdomain.org" in mfa1["spoken_message"]
+    assert "Confirm directly that the 6-digit verification code was sent to pat.sample@customdomain.org" in mfa1["agent_action"]
 
-    # Resend without passing email again preserves caller_provided_email action_text
+    # Resend without passing email again preserves caller_provided_email spoken & action_text
     mfa2 = manage_mfa_settings_impl(
         action="disable",
         lost_authenticator=True,
@@ -335,7 +362,8 @@ def test_caller_provided_email_allows_direct_typo_confirmation_without_changing_
     )
     assert mfa2["status"] == "ok"
     assert mfa2.get("code_resent") is True
-    assert "confirm directly that it was sent to pat.sample@customdomain.org" in mfa2["agent_action"]
+    assert "I have resent the 6-digit verification code to pat.sample@customdomain.org" in mfa2["spoken_message"]
+    assert "Confirm directly that the 6-digit verification code was resent to pat.sample@customdomain.org" in mfa2["agent_action"]
 
 
 def test_send_login_code_post_auth_sms_stepup_and_new_phone_verification(monkeypatch) -> None:

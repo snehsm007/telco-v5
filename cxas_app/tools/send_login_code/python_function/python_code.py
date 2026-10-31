@@ -1243,6 +1243,21 @@ def _resolve_session_email_and_mask(  # pragma: no cover
         and str(state.get("caller_provided_email") or "").strip().lower() == email_on_file.lower()
     )
 
+    if is_caller_email:
+        spoken = localized_text(
+            lang,
+            f"For your security, I just sent a 6-digit verification code to {email_on_file} — please read it back to me.",
+            f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à {email_on_file} — veuillez me le lire.",
+            f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos a {email_on_file}; por favor léamelo.",
+        )
+        action_text = localized_text(
+            lang,
+            f"Confirm directly that the 6-digit verification code was sent to {email_on_file} without spelling asterisks, and ask the caller to read back the 6-digit code without volunteering a transfer.",
+            f"Confirmez directement que le code de vérification à 6 chiffres a été envoyé à {email_on_file} sans épeler d'astérisques, et demandez au client de lire le code à 6 chiffres sans proposer de transfert.",
+            f"Confirme directamente que el código de verificación de 6 dígitos se envió a {email_on_file} sin deletrear asteriscos, y pida al cliente que lea el código de 6 dígitos sin ofrecer transferencia.",
+        )
+        return email_on_file, first_char, domain, masked, spoken, action_text
+
     if not domain.lower().endswith("example.com"):
         spoken = localized_text(
             lang,
@@ -1250,20 +1265,12 @@ def _resolve_session_email_and_mask(  # pragma: no cover
             f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » à {domain} — veuillez me le lire.",
             f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}' en {domain}; por favor léamelo.",
         )
-        if is_caller_email:
-            action_text = localized_text(
-                lang,
-                f"Confirm the 6-digit verification code was sent to the email starting with '{first_char}' at {domain} (if the caller asks to confirm the full email address they provided to check for typos, confirm directly that it was sent to {email_on_file} without spelling asterisks), and ask the caller to read back the 6-digit code without volunteering a transfer.",
-                f"Confirmez que le code de vérification à 6 chiffres a été envoyé au courriel commençant par « {first_char} » à {domain} (si le client demande de confirmer l'adresse complète qu'il a fournie, confirmez directement l'envoi à {email_on_file} sans épeler d'astérisques), et demandez au client de lire le code à 6 chiffres sans proposer de transfert.",
-                f"Confirme que el código de verificación de 6 dígitos se envió al correo que comienza con '{first_char}' en {domain} (si el cliente pide confirmar la dirección completa que proporcionó, confirme directamente el envío a {email_on_file} sin deletrear asteriscos), y pida al cliente que lea el código de 6 dígitos sin ofrecer transferencia.",
-            )
-        else:
-            action_text = localized_text(
-                lang,
-                f"Confirm the code was sent to the email starting with '{first_char}' at {domain}; never spell the masked form.",
-                f"Confirmez que le code a été envoyé au courriel commençant par « {first_char} » à {domain}; ne jamais épeler la forme masquée.",
-                f"Confirme que el código se envió al correo que comienza con '{first_char}' en {domain}; nunca deletree el formato enmascarado.",
-            )
+        action_text = localized_text(
+            lang,
+            f"Confirm the code was sent to the email starting with '{first_char}' at {domain}; never spell the masked form.",
+            f"Confirmez que le code a été envoyé au courriel commençant par « {first_char} » à {domain}; ne jamais épeler la forme masquée.",
+            f"Confirme que el código se envió al correo que comienza con '{first_char}' en {domain}; nunca deletree el formato enmascarado.",
+        )
         return email_on_file, first_char, domain, masked, spoken, action_text
 
     spoken = localized_text(
@@ -1272,20 +1279,12 @@ def _resolve_session_email_and_mask(  # pragma: no cover
         f"Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez me le lire.",
         f"Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor léamelo.",
     )
-    if is_caller_email:
-        action_text = localized_text(
-            lang,
-            f"Confirm the 6-digit verification code was sent to the email starting with '{first_char}' at {domain} (if the caller asks to confirm the full email address they provided to check for typos, confirm directly that it was sent to {email_on_file} without spelling asterisks), and ask the caller to read back the 6-digit code without volunteering a transfer.",
-            f"Confirmez que le code de vérification à 6 chiffres a été envoyé au courriel commençant par « {first_char} » à {domain} (si le client demande de confirmer l'adresse complète qu'il a fournie, confirmez directement l'envoi à {email_on_file} sans épeler d'astérisques), et demandez au client de lire le code à 6 chiffres sans proposer de transfert.",
-            f"Confirme que el código de verificación de 6 dígitos se envió al correo que comienza con '{first_char}' en {domain} (si el cliente pide confirmar la dirección completa que proporcionó, confirme directamente el envío a {email_on_file} sin deletrear asteriscos), y pida al cliente que lea el código de 6 dígitos sin ofrecer transferencia.",
-        )
-    else:
-        action_text = localized_text(
-            lang,
-            f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
-            f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
-            f"Mencione la dirección únicamente comme 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
-        )
+    action_text = localized_text(
+        lang,
+        f"Say the address only as 'starting with {first_char}'; never spell the masked form.",
+        f"Nommez l'adresse uniquement comme « commençant par {first_char} »; ne jamais épeler la forme masquée.",
+        f"Mencione la dirección únicamente comme 'comenzando con {first_char}'; nunca deletree el formato enmascarado.",
+    )
     return email_on_file, first_char, domain, masked, spoken, action_text
 
 def _session_language(state: dict[str, Any] | None, language: Any = "") -> str:  # pragma: no cover
@@ -1801,6 +1800,7 @@ def send_login_code_impl(  # pragma: no cover
         caller_email = str(id_val).strip()
     if "@" in str(id_val or "").strip():
         id_val = ""
+    prev_contact_email = str(state.get("contact_email") or "").strip()
     caller_gave_phone_to_send = bool(id_val and is_phone_number(id_val))
     already_logged_in_before = bool(
         state.get("account_id")
@@ -1962,7 +1962,33 @@ def send_login_code_impl(  # pragma: no cover
     if norm_chan == "email":
         state["mfa_email_code_sent"] = True
         email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
-        if prior_code_sent and not pending_lost_stepup and _is_placeholder_email(email_on_file):
+        is_caller_email = bool(
+            email_on_file
+            and str(state.get("caller_provided_email") or "").strip().lower() == email_on_file.lower()
+        )
+        same_or_no_email = not bool(caller_email and "@" in caller_email) or (
+            bool(prev_contact_email)
+            and caller_email.strip().lower() == prev_contact_email.lower()
+        )
+        caller_email_resent = bool(
+            (prior_code_sent or prior_mfa_email_sent or _is_truthy_bool(resend))
+            and same_or_no_email
+            and is_caller_email
+        )
+        if caller_email_resent:
+            spoken = localized_text(
+                lang,
+                f"I have resent the 6-digit verification code to {email_on_file} — please check your inbox and read it back to me.",
+                f"J'ai renvoyé le code de vérification à 6 chiffres à {email_on_file} — veuillez vérifier votre boîte de réception et me le lire.",
+                f"He reenviado el código de verificación de 6 dígitos a {email_on_file}; por favor revise su bandeja de entrada y léamelo.",
+            )
+            action_text = localized_text(
+                lang,
+                f"Confirm directly that the 6-digit verification code was resent to {email_on_file} without spelling asterisks, and ask the caller to read back the 6-digit code.",
+                f"Confirmez directement que le code de vérification à 6 chiffres a été renvoyé à {email_on_file} sans épeler d'astérisques, et demandez au client de lire le code à 6 chiffres.",
+                f"Confirme directamente que el código de verificación de 6 dígitos se reenvió a {email_on_file} sin deletrear asteriscos, y pídale a quien llama que lea el código de 6 dígitos.",
+            )
+        elif prior_code_sent and not pending_lost_stepup and _is_placeholder_email(email_on_file):
             spoken = localized_text(
                 lang,
                 "For your security, I just sent a 6-digit verification code to the email address on file — please read it back to me, or share your email address if you need me to send it directly there.",
@@ -1990,6 +2016,8 @@ def send_login_code_impl(  # pragma: no cover
         }
         if masked:
             email_data["masked_email"] = masked
+        if caller_email_resent:
+            email_data["code_resent"] = True
         reply = ok_reply(
             email_data,
             reference,
@@ -1999,6 +2027,8 @@ def send_login_code_impl(  # pragma: no cover
         reply["channel"] = "email"
         reply["spoken_message"] = spoken
         reply["agent_action"] = action_text
+        if caller_email_resent:
+            reply["code_resent"] = True
         return reply
 
     spoken = spoken_line("id_verification_otp", lang)

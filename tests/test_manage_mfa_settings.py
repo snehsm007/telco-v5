@@ -596,4 +596,77 @@ def test_manage_mfa_settings_phone_number_sms_enrollment_and_delayed_stepup_guid
     assert done["data"]["mfa_enabled"] is False
 
 
+def test_manage_mfa_settings_caller_provided_email_lookup_and_same_email_resend(
+    monkeypatch,
+) -> None:
+    from lib.services import lookup_account_impl, verify_login_impl
+
+    # 1. Caller-provided email in lookup_account -> first manage_mfa_settings directly names email
+    session_sam = SimpleNamespace(state={})
+    monkeypatch.setattr(tool, "context", session_sam, raising=False)
+    l_res = lookup_account_impl(
+        full_name="Sam Richards",
+        email="s.richards_backup@provider.net",
+        language="en-US",
+        state=session_sam.state,
+    )
+    assert l_res["status"] == "ok"
+    v_res = verify_login_impl(code="8821", method="pin", language="en-US", state=session_sam.state)
+    assert v_res["status"] == "ok"
+
+    mfa1 = tool.manage_mfa_settings(action="disable", lost_authenticator=True, language="en-US")
+    assert mfa1["status"] == "ok"
+    assert "code_resent" not in mfa1
+    assert "s.richards_backup@provider.net" in mfa1["spoken_message"]
+    assert (
+        "Confirm directly that the 6-digit verification code was sent to s.richards_backup@provider.net"
+        in mfa1["agent_action"]
+    )
+
+    # 2. Second manage_mfa_settings passing the SAME email sets code_resent, names email directly, and appends delayed-email guidance
+    mfa2 = tool.manage_mfa_settings(
+        action="disable",
+        email="s.richards_backup@provider.net",
+        lost_authenticator=True,
+        language="en-US",
+    )
+    assert mfa2["status"] == "ok"
+    assert mfa2.get("code_resent") is True
+    assert mfa2["data"]["code_resent"] is True
+    assert (
+        "I have resent the 6-digit verification code to s.richards_backup@provider.net"
+        in mfa2["spoken_message"]
+    )
+    assert (
+        "Confirm directly that the 6-digit verification code was resent to s.richards_backup@provider.net"
+        in mfa2["agent_action"]
+    )
+    assert "send_login_code" in mfa2["agent_action"]
+    assert "channel='sms'" in mfa2["agent_action"]
+
+    # 3. Non-caller profile emails (jordan@example.com, user@example.com) still mask / omit 'u' identically
+    st_profile = {
+        "account_id": "A1001",
+        "auth_status": "pass",
+        "logged_in": True,
+        "contact_email": "jordan@example.com",
+    }
+    monkeypatch.setattr(tool, "context", SimpleNamespace(state=st_profile), raising=False)
+    prof_res = tool.manage_mfa_settings(action="disable", lost_authenticator=True, language="en-US")
+    assert "starting with 'j'" in prof_res["spoken_message"]
+    assert "jordan@example.com" not in prof_res["spoken_message"]
+
+    st_placeholder = {
+        "account_id": "ACC-9999",
+        "auth_status": "pass",
+        "logged_in": True,
+        "contact_email": "user@example.com",
+    }
+    monkeypatch.setattr(tool, "context", SimpleNamespace(state=st_placeholder), raising=False)
+    ph_res = tool.manage_mfa_settings(action="disable", lost_authenticator=True, language="en-US")
+    assert "starting with" not in ph_res["spoken_message"]
+    assert "user@example.com" not in ph_res["spoken_message"]
+
+
+
 
