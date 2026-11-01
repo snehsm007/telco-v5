@@ -9,11 +9,14 @@
     "rubrics": [],
     "scenarioExpectations": [],
     "userFacts": [],
-    "variableOverrides": {}
+    "variableOverrides": {
+      "after_hours": true
+    }
   },
   "tags": [
     "prod-holdout",
     "BR-TV-014",
-    "P0"
+    "P0",
+    "needs-hook:after_hours"
   ]
 }

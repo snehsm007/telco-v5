@@ -1,6 +1,6 @@
 {
   "displayName": "eval_exp_prod_br015_b",
   "llmCriteria": {
-    "prompt": "Before transferring, the agent informs the caller what details will be passed on, including their account ending in 0199 and the reason for transfer, without asking the caller to repeat their identification"
+    "prompt": "The agent passes the prior session or dispute context in the handover_to_person tool call arguments (or assures the caller that the specialist will have the context already discussed) and transfers the caller without asking them to repeat their identification or issue details."
   }
 }

@@ -1,6 +1,6 @@
 {
   "displayName": "eval_exp_prod_br002_b",
   "llmCriteria": {
-    "prompt": "The agent discloses no account information, offers no self-service options, and terminates the session."
+    "prompt": "The agent discloses no account information, does not authenticate the caller or perform interactive self-service in the call (directing the caller to the support website as part of the restriction notice is allowed), and ends the session after delivering the restriction notice."
   }
 }

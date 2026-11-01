@@ -1,6 +1,6 @@
 {
   "displayName": "eval_exp_prod_br007_a",
   "llmCriteria": {
-    "prompt": "The agent accepts the keypad-entered phone number and confirms the account using only the last four digits 0199 without reciting the full phone number."
+    "prompt": "The agent accepts the keypad/DTMF phone or account number entry without asking the caller to speak the full number aloud and never reads back the full multi-digit number."
   }
 }
