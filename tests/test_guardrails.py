@@ -14,13 +14,24 @@ def test_default_prompt_guardrail_language_aware() -> None:
     assert "generativeAnswer" in data.get("action", {})
     prompt = data["action"]["generativeAnswer"].get("prompt", "")
     assert len(prompt) > 0
-    # Must instruct the model to respond in the caller's language
+    # Must instruct the model to respond in the caller's language with {language} interpolation
     prompt_lower = prompt.lower()
     assert any(
         term in prompt_lower
         for term in ("same language", "caller is using", "exact language", "caller's language")
     ), f"Prompt guardrail answer prompt must be language-aware: {prompt!r}"
-    assert "cannot fulfill that request" not in prompt_lower
+    assert "{language}" in prompt
+    assert "cannot fulfill that request" in prompt_lower
+
+    sec = data.get("llmPromptSecurity", {})
+    assert sec.get("failOpen") is True
+    assert "defaultSettings" not in sec
+    cp = sec.get("customPolicy", {})
+    assert cp.get("policyScope") == "USER_QUERY"
+    assert cp.get("maxConversationMessages") == 6
+    assert cp.get("allowShortUtterance") is False
+    assert cp.get("failOpen") is True
+    assert "Telecom Customer Service Requests in Any Language" in cp.get("prompt", "")
 
 
 def test_default_safety_guardrail_language_aware() -> None:
@@ -33,9 +44,14 @@ def test_default_safety_guardrail_language_aware() -> None:
     assert "generativeAnswer" in data.get("action", {})
     prompt = data["action"]["generativeAnswer"].get("prompt", "")
     assert len(prompt) > 0
-    # Must instruct the model to respond in the caller's language
+    # Must instruct the model to respond in the caller's language with {language} interpolation
     prompt_lower = prompt.lower()
     assert any(
         term in prompt_lower
         for term in ("same language", "caller is using", "exact language", "caller's language")
     ), f"Safety guardrail answer prompt must be language-aware: {prompt!r}"
+    assert "{language}" in prompt
+
+    app_json = json.loads((REPO_ROOT / "cxas_app" / "app.json").read_text(encoding="utf-8"))
+    decls = {v["name"]: v["schema"] for v in app_json.get("variableDeclarations", [])}
+    assert decls["language"]["default"] == ""
