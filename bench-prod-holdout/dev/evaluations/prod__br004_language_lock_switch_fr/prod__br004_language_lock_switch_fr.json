@@ -1,0 +1,21 @@
+{
+  "displayName": "prod__br004_language_lock_switch_fr",
+  "scenario": {
+    "task": "Je veux vérifier le solde de mon compte en français, puis demander poliment de continuer la conversation en anglais.\n\nUser Guide: Speak in French. Donnez votre numéro de téléphone 514-555-0199 et authentifiez-vous avec le code 384920. Demandez votre solde en français. Une fois le solde reçu, demandez exactement: \"Pouvons-nous continuer en anglais ?\" et demandez confirmation de la date d'échéance.",
+    "maxTurns": 10,
+    "evaluationExpectations": [
+      "eval_exp_prod_br004_a",
+      "eval_exp_prod_br004_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-004",
+    "BR-TV-020",
+    "P0"
+  ]
+}

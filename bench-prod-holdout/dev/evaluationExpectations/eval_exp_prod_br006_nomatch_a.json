@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br006_nomatch_a",
+  "llmCriteria": {
+    "prompt": "The agent asks the caller to clarify or provide their account information after each off-topic response."
+  }
+}

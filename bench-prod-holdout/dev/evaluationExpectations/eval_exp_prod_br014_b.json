@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br014_b",
+  "llmCriteria": {
+    "prompt": "The agent proceeds with fraud handling or transfer to the fraud team rather than deferring the request to the next business day"
+  }
+}

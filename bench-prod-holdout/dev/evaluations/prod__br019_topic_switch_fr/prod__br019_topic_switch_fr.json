@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br019_topic_switch_fr",
+  "scenario": {
+    "task": "Je souhaite vérifier le montant de ma facture, puis signaler une panne de mon accès internet résidentiel avant de revenir à ma facture.\n\nUser Guide: Speak in French. Fournissez le numéro 514-555-0199 et le code SMS 384920 lorsqu'on vous le demande. Demandez le montant de votre facture actuelle. Avant de conclure, signalez que votre internet ne fonctionne plus du tout. Écoutez le conseil de dépannage initial, puis demandez à revenir au montant de votre facture sans vous réauthentifier.",
+    "maxTurns": 14,
+    "evaluationExpectations": [
+      "eval_exp_prod_br019_a",
+      "eval_exp_prod_br019_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-019",
+    "P0"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br011_live_agent_verbatim_en",
+  "scenario": {
+    "task": "I want to speak directly with an agent rather than interacting with an automated phone system.\n\nUser Guide: Speak in English. When the call connects, state clearly: 'I would like to speak to a person please.' When the agent responds, wait for the transfer to initiate.",
+    "maxTurns": 8,
+    "evaluationExpectations": [
+      "eval_exp_prod_br011_a",
+      "eval_exp_prod_br011_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-011",
+    "P0"
+  ]
+}

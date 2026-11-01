@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br003_regional_alert_banner_en",
+  "scenario": {
+    "task": "I live in Montreal in postal area H3Z 1A1 and want to ask about my recent billing balance.\n\nUser Guide: Speak in English. When the agent greets you, say you have a billing question, provide your phone number 514-555-0199 and postal code H3Z 1A1. When prompted for authentication, provide login code 384920 and ask for your current balance.",
+    "maxTurns": 10,
+    "evaluationExpectations": [
+      "eval_exp_prod_br003_a",
+      "eval_exp_prod_br003_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-003",
+    "P0"
+  ]
+}

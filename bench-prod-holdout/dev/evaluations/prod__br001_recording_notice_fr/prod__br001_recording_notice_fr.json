@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br001_recording_notice_fr",
+  "scenario": {
+    "task": "Je veux m'assurer que cet appel est bien enregistré pour la formation, puis poser une question sur mon compte.\n\nUser Guide: Speak in French. Au début de l'appel, demandez explicitement à l'agent si la conversation est enregistrée. Écoutez sa réponse, puis fournissez votre numéro de téléphone 514-555-0199 lorsque demandé et demandez si votre compte est actif.",
+    "maxTurns": 10,
+    "evaluationExpectations": [
+      "eval_exp_prod_br001_a",
+      "eval_exp_prod_br001_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-001",
+    "P0"
+  ]
+}

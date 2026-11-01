@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br005_cross_module_warranty_cancel_en",
+  "scenario": {
+    "task": "I have two separate requests today: submit a warranty claim for a malfunctioning device, and cancel my home phone line.\n\nUser Guide: Speak in English. Provide phone number 514-555-0199 and login code 384920. First, report your phone stopped charging with no screen or liquid damage for a warranty claim. Once that is processed, ask to cancel your home phone line, listen to the cancellation terms, and confirm the cancellation.",
+    "maxTurns": 12,
+    "evaluationExpectations": [
+      "eval_exp_prod_br005_a",
+      "eval_exp_prod_br005_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-005",
+    "P0"
+  ]
+}

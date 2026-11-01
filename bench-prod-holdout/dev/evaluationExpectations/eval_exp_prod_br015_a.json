@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br015_a",
+  "llmCriteria": {
+    "prompt": "The handover_to_person tool call in the transcript carries a reason and summary for the transfer"
+  }
+}

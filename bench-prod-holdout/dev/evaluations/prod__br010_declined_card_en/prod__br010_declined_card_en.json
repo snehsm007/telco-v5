@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br010_declined_card_en",
+  "scenario": {
+    "task": "I want to pay my balance with a new card I have on hand.\n\nUser Guide: Speak in English. Identify with phone 514-555-0199 and authenticate with SMS code 384920. Ask to pay your balance with a new card. When prompted, provide card 4500123456780000, expiry 12/28, CVV 123. When told the card is declined, ask what other payment methods can be used without requesting a transfer.",
+    "maxTurns": 12,
+    "evaluationExpectations": [
+      "eval_exp_prod_br010_card_a",
+      "eval_exp_prod_br010_card_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-010",
+    "P0"
+  ]
+}

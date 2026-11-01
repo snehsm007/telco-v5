@@ -24,7 +24,7 @@
 .PHONY: help install kickstart bootstrap bootstrap-dry bundle bundle-check overfit-check format lint llm-lint test selftest ci voice-audit \
         preflight auth-check impact smoke-impact eval-contract setup-dlp skill-assets skill-assets-check \
         push push-evals pull preview-up preview-down eval gate gate3 smoke chat inspect versions-compare \
-        bench bench-dry bench-smoke bench-unstable bench-full bench-holdout bench-record bench-compare bench-fetch \
+        bench bench-dry bench-smoke bench-unstable bench-full bench-holdout bench-prod-holdout bench-record bench-compare bench-fetch \
         trace-triage trace-replay dashboard publish-dashboard need-app need-cxas need-deps
 
 ENV ?= staging
@@ -51,6 +51,7 @@ EVALS_DIR    ?= evals
 COVERAGE_MIN ?= 80
 BENCH_DIR    ?= bench
 HOLDOUT_DIR  ?= bench-holdout
+PROD_HOLDOUT_DIR ?= bench-prod-holdout
 UNSTABLE_SET ?= $(EVALS_DIR)/unstable_set.txt
 HISTORY      ?= history/runs.jsonl
 THRESHOLDS   ?= gate_thresholds.json
@@ -333,6 +334,13 @@ bench-holdout: need-app preflight ## Gate 4 holdout: $(HOLDOUT_DIR) x 3 on the p
 		--evals all --runs $(if $(RUNS),$(RUNS),3) --is-holdout $(PARALLEL_FLAG) --report-name holdout-$(SHA7)
 	@mkdir -p history/bench
 	$(PYTHON) scripts/bench_summary.py "$(HOLDOUT_DIR)/runs/holdout-$(SHA7).json" --bench-dir $(HOLDOUT_DIR) --out-dir history/bench
+
+bench-prod-holdout: need-app preflight ## Production holdout: $(PROD_HOLDOUT_DIR) x 3 on the pushed commit whose full run passed Gate 3 (HOLDOUT_REASON="..." for a re-run or a Gate 3 miss; logged)
+	@$(IMPACT) --app "$(APP)" --check-holdout --holdout-dir "$(PROD_HOLDOUT_DIR)" --reason "$(HOLDOUT_REASON)" --thresholds $(THRESHOLDS)
+	$(RUN_BENCH) --app $(APP) --bench-dir $(PROD_HOLDOUT_DIR) --modality $(MODALITY) \
+		--evals all --runs $(if $(RUNS),$(RUNS),3) --is-holdout --judge-metrics all $(PARALLEL_FLAG) --report-name prod-$(SHA7)
+	@mkdir -p history/bench
+	$(PYTHON) scripts/bench_summary.py "$(PROD_HOLDOUT_DIR)/runs/prod-$(SHA7).json" --bench-dir $(PROD_HOLDOUT_DIR) --out-dir history/bench
 
 bench-record: ## Summarise a report into history/bench/: REPORT=$(BENCH_DIR)/runs/full-<sha7>.json
 	@test -n "$(REPORT)" || (echo "Usage: make bench-record REPORT=$(BENCH_DIR)/runs/<label>.json" >&2; exit 1)

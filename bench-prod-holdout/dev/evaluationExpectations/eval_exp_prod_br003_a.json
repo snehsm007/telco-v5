@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br003_a",
+  "llmCriteria": {
+    "prompt": "The agent speaks the regional service alert banner verbatim: \"Please note: there is an active regional service advisory in parts of Montreal today.\" before confirming the billing balance."
+  }
+}

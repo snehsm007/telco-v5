@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br007_dtmf_capture_en",
+  "scenario": {
+    "task": "I want to check my balance by entering my phone number and security PIN using my telephone keypad.\n\nUser Guide: Speak in English. When the agent asks for your phone number, say: \"I'm typing it on the keypad: 5 1 4 5 5 5 0 1 9 9\". When the agent requests identity verification, enter your PIN on the keypad: \"I'm entering my PIN on the keypad: 4 8 2 9\". Ask for your current account balance.",
+    "maxTurns": 10,
+    "evaluationExpectations": [
+      "eval_exp_prod_br007_a",
+      "eval_exp_prod_br007_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-007",
+    "P0"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br005_a",
+  "llmCriteria": {
+    "prompt": "The agent processes the hardware warranty claim by invoking the manage_warranty_claim tool and providing the claim reference or replacement details."
+  }
+}

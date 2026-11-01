@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br016_d",
+  "llmCriteria": {
+    "prompt": "The agent ends the call with the verbatim closing line \"Je peux uniquement vous aider avec les services de télécommunications et les demandes de compte Telco. Merci de votre appel, au revoir.\""
+  }
+}

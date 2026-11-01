@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br012_business_handoff_en",
+  "scenario": {
+    "task": "I need assistance managing services for my corporate enterprise account.\n\nUser Guide: Speak in English. On the first turn, state: 'Hello, this is for my company account.' Listen to the agent's response and transfer instructions.",
+    "maxTurns": 8,
+    "evaluationExpectations": [
+      "eval_exp_prod_br012_a",
+      "eval_exp_prod_br012_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-012",
+    "P0"
+  ]
+}

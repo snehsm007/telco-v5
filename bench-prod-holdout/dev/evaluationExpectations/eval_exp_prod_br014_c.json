@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br014_c",
+  "llmCriteria": {
+    "prompt": "The agent speaks the empathy protocol before or during the transfer to the fraud team"
+  }
+}

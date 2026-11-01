@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br010_card_a",
+  "llmCriteria": {
+    "prompt": "The agent explains that the payment card was declined and offers to try another payment method."
+  }
+}

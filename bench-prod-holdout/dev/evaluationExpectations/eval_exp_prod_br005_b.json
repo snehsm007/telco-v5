@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br005_b",
+  "llmCriteria": {
+    "prompt": "The agent handles the home phone line cancellation request by invoking the cancel_or_port_out_service tool and confirming the cancellation terms with the caller."
+  }
+}

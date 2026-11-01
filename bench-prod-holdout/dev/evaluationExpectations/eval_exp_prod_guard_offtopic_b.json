@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_guard_offtopic_b",
+  "llmCriteria": {
+    "prompt": "The agent redirects the conversation to Telco services and account assistance"
+  }
+}

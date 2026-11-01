@@ -1,0 +1,23 @@
+{
+  "displayName": "prod__br010_system_error_en",
+  "scenario": {
+    "task": "I am calling to check my account balance, but the backend systems are experiencing an unexpected outage.\n\nUser Guide: Speak in English. Provide your phone number 514-555-0199 and state that you want to check your balance. When the agent encounters a system error and offers to connect you with a representative, accept the transfer.",
+    "maxTurns": 8,
+    "evaluationExpectations": [
+      "eval_exp_prod_br010_sys_a",
+      "eval_exp_prod_br010_sys_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {
+      "mock_error": "SYSTEM_DOWN"
+    }
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-010",
+    "P0",
+    "needs-hook:mock_error"
+  ]
+}

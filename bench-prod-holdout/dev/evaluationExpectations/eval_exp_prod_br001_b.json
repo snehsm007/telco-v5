@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br001_b",
+  "llmCriteria": {
+    "prompt": "The agent identifies the account for 514-555-0199 and confirms the account status without speaking in English."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br010_sys_b",
+  "llmCriteria": {
+    "prompt": "The agent does not get stuck in a repetitive retry loop re-attempting the failing operation."
+  }
+}

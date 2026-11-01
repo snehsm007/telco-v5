@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br013_fr_b",
+  "llmCriteria": {
+    "prompt": "The agent transfers the caller to the fraud queue before asking any identification or login question in the conversation."
+  }
+}

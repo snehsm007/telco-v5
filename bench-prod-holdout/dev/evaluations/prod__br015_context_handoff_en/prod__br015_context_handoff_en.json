@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br015_context_handoff_en",
+  "scenario": {
+    "task": "I want to dispute an unexplained $150 roaming charge on my bill, which requires speaking with a human specialist.\n\nUser Guide: Speak in English. When prompted, provide your phone number 514-555-0199 and SMS verification code 384920. State that you have an incorrect $150 charge on your latest bill and ask to speak with a billing representative to resolve the dispute. Confirm you are ready for the transfer.",
+    "maxTurns": 10,
+    "evaluationExpectations": [
+      "eval_exp_prod_br015_a",
+      "eval_exp_prod_br015_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-015",
+    "P0"
+  ]
+}

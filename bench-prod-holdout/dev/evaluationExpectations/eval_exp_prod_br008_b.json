@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br008_b",
+  "llmCriteria": {
+    "prompt": "The agent refuses to disclose the account balance after the phone number is provided until identity verification with a security code is complete."
+  }
+}

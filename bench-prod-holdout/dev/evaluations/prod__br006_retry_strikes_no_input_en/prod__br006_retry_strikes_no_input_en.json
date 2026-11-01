@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br006_retry_strikes_no_input_en",
+  "scenario": {
+    "task": "I am having trouble with my audio and cannot speak right now, so I remain silent until the system transfers me to a person.\n\nUser Guide: Speak in English. When the agent greets you and asks for your account information, reply with exactly `...` and nothing else. For your next two turns, continue to reply with exactly `...` each time the agent prompts you. Listen to the escalation response.",
+    "maxTurns": 8,
+    "evaluationExpectations": [
+      "eval_exp_prod_br006_noinput_a",
+      "eval_exp_prod_br006_noinput_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-006",
+    "P0"
+  ]
+}

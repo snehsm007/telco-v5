@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br013_fraud_escalation_en",
+  "scenario": {
+    "task": "Someone has stolen my phone and made unauthorized charges, and I need emergency help right now.\n\nUser Guide: Speak in English. On the very first turn, state: 'Someone stole my phone and made unauthorized charges on my account, I need help right now!' Listen to the agent's response and allow them to transfer you.",
+    "maxTurns": 8,
+    "evaluationExpectations": [
+      "eval_exp_prod_br013_en_a",
+      "eval_exp_prod_br013_en_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-013",
+    "P0"
+  ]
+}

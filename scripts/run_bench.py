@@ -508,7 +508,7 @@ def build_evals_map(evals) -> dict[str, dict[str, str]]:
 
 
 def sync_bench(cloud: Cloud, app_name: str, expectations: list[dict], evaluations: list[dict],
-               index: dict[str, dict], types_mod=None, parse_dict=None):
+               index: dict[str, dict], types_mod=None, parse_dict=None, judge_metrics: str = "expectations"):
     """Make sure every bundle expectation/evaluation exists on the app; return name -> Evaluation.
 
     With an empty bundle this only lists the app's evaluations (one logged listing).
@@ -568,10 +568,34 @@ def sync_bench(cloud: Cloud, app_name: str, expectations: list[dict], evaluation
                 if ref in exp_map:
                     step["expectation"]["expectation"] = exp_map[ref]
 
+        if judge_metrics == "all":
+            data.setdefault("evaluationMetricsConfigOverride", {})
+            data["evaluationMetricsConfigOverride"].setdefault("scenarioMetricsConfig", {})
+            data["evaluationMetricsConfigOverride"]["scenarioMetricsConfig"]["userGoalMetMetricsConfig"] = {
+                "enableUserGoalMetMetrics": True
+            }
+            data["evaluationMetricsConfigOverride"]["scenarioMetricsConfig"]["expectationsMetMetricsConfig"] = {
+                "enableExpectationsMetMetrics": True
+            }
+            data.setdefault("evaluationMetricsThresholdOverride", {})
+            data["evaluationMetricsThresholdOverride"]["scenarioHallucinationMetricBehavior"] = "ENABLED"
+
         if dname in existing:
             ex_ev = existing[dname]
             ex_refs = list(getattr(ex_ev.scenario, "evaluation_expectations", []) or [])
-            if all(r.startswith("projects/") for r in ex_refs):
+            needs_update = not all(r.startswith("projects/") for r in ex_refs)
+            if judge_metrics == "all":
+                mc = getattr(ex_ev, "evaluation_metrics_config_override", None)
+                smc = getattr(mc, "scenario_metrics_config", None) if mc else None
+                ug = getattr(smc, "user_goal_met_metrics_config", None) if smc else None
+                ug_enabled = bool(getattr(ug, "enable_user_goal_met_metrics", False)) if ug else False
+
+                mt = getattr(ex_ev, "evaluation_metrics_threshold_override", None)
+                halluc_behavior = getattr(mt, "scenario_hallucination_metric_behavior", 0) if mt else 0
+                if not ug_enabled or int(halluc_behavior) != 2:
+                    needs_update = True
+
+            if not needs_update:
                 eval_by_name[dname] = ex_ev
                 continue
             data["name"] = ex_ev.name
@@ -581,7 +605,7 @@ def sync_bench(cloud: Cloud, app_name: str, expectations: list[dict], evaluation
                 "WRITE",
                 "Evaluations.update_evaluation",
                 ex_ev.name,
-                f"bench: relink expectation resource names on {ve_id}",
+                f"bench: update evaluation / metrics on {ve_id}",
                 lambda proto=proto: cloud.evals.update_evaluation(evaluation=proto, app_name=app_name),
                 describe=lambda u: f"updated {u.name}",
                 write=True,
@@ -971,7 +995,8 @@ def slots_needed(records: list[dict], eval_names: list[str], runs: int) -> dict[
     return need
 
 
-def eval_outcome(dname: str, eval_res: str, records: list[dict], index: dict[str, dict], runs: int) -> dict:
+def eval_outcome(dname: str, eval_res: str, records: list[dict], index: dict[str, dict], runs: int,
+                 judge_metrics: str = "expectations") -> dict:
     meta = index.get(dname, {})
     statuses = scored_statuses(records, runs)
     passes, fails = statuses.count("PASS"), statuses.count("FAIL")
@@ -984,7 +1009,55 @@ def eval_outcome(dname: str, eval_res: str, records: list[dict], index: dict[str
     pass_tools = [int(r.get("tool_call_count") or 0) for r in pass_recs]
     avg_pass_turns = round(sum(pass_turns) / len(pass_turns), 2) if pass_turns else None
     avg_pass_tool_calls = round(sum(pass_tools) / len(pass_tools), 2) if pass_tools else None
-    return {
+
+    goal_passes = 0
+    halluc_passes = 0
+    for r in scored_recs:
+        sc = (r.get("raw") or {}).get("scenario_result") or {}
+        g = sc.get("user_goal_satisfaction_result") or {}
+        if g.get("score") not in (0, -1, None):
+            goal_passes += 1
+        hallucs = sc.get("hallucination_result") or []
+        if isinstance(hallucs, dict):
+            hallucs = [hallucs]
+        if hallucs and not any(isinstance(h, dict) and h.get("score") == 0 for h in hallucs):
+            halluc_passes += 1
+
+    pattern = []
+    for r in ordered:
+        p_item = {
+            "run": r["evaluation_run"].rsplit("/", 1)[-1],
+            "round": r["round"],
+            "slot": r["slot"],
+            "classification": r["classification"],
+            "reason": r["classification_reason"],
+            "turns": int(r.get("turns") or 0),
+            "tool_call_count": int(r.get("tool_call_count") or 0),
+        }
+        sc = (r.get("raw") or {}).get("scenario_result") or {}
+        g = sc.get("user_goal_satisfaction_result") or {}
+        hallucs = sc.get("hallucination_result") or []
+        if isinstance(hallucs, dict):
+            hallucs = [hallucs]
+        if judge_metrics == "all" or g or hallucs:
+            p_item["user_goal"] = {
+                "passed": g.get("score") not in (0, -1, None),
+                "score": g.get("score"),
+                "label": g.get("label", ""),
+                "explanation": str(g.get("explanation", "")).strip(),
+            }
+            p_item["hallucination"] = [
+                {
+                    "turn": i + 1,
+                    "score": h.get("score"),
+                    "label": h.get("label", ""),
+                    "explanation": str(h.get("explanation", "")).strip(),
+                }
+                for i, h in enumerate(hallucs)
+            ]
+        pattern.append(p_item)
+
+    res = {
         "ve_id": meta.get("ve_id", "VE-??"),
         "display_name": dname,
         "evaluation_name": eval_res,
@@ -999,20 +1072,14 @@ def eval_outcome(dname: str, eval_res: str, records: list[dict], index: dict[str
         "avg_pass_turns": avg_pass_turns,
         "avg_pass_tool_calls": avg_pass_tool_calls,
         "per_run_statuses": statuses,
-        "pattern": [
-            {
-                "run": r["evaluation_run"].rsplit("/", 1)[-1],
-                "round": r["round"],
-                "slot": r["slot"],
-                "classification": r["classification"],
-                "reason": r["classification_reason"],
-                "turns": int(r.get("turns") or 0),
-                "tool_call_count": int(r.get("tool_call_count") or 0),
-            }
-            for r in ordered
-        ],
+        "pattern": pattern,
         "raw_runs": [r["raw"] for r in ordered],
     }
+    if judge_metrics == "all":
+        n_scored = len(scored_recs)
+        res["user_goal"] = f"{goal_passes}/{n_scored}" if n_scored else "—"
+        res["hallucination"] = f"{halluc_passes}/{n_scored}" if n_scored else "—"
+    return res
 
 
 def summarize(outcomes: list[dict]) -> tuple[dict, dict]:
@@ -1332,25 +1399,47 @@ def render_report_md(payload: dict) -> str:
     out.append("")
     out += _md_table("By language", payload["by_language"])
     out += _md_table("By topic", payload["by_topic"])
-    out += [
-        "## Per eval",
-        "",
-        "| Id | Eval | Topic | Lang | Scored runs | Passes | Avg pass turns | Avg pass tools | Infra re-runs | Verdict | Reference |",
-        "|---|---|---|---|---|---|---|---|---|---|---|",
-    ]
-    ref = {r["display_name"]: r for r in (payload.get("reference_results") or [])}
-    for o in payload["results"]:
-        old = ref.get(o["display_name"])
-        old_txt = (
-            f"{'PASS' if old.get('passed') else 'FAIL'} {old.get('pass_runs')}/{old.get('total_runs')}" if old else "—"
-        )
-        t_txt = f"{o['avg_pass_turns']:.2f}" if o.get("avg_pass_turns") is not None else "—"
-        tc_txt = f"{o['avg_pass_tool_calls']:.2f}" if o.get("avg_pass_tool_calls") is not None else "—"
-        out.append(
-            f"| {o['ve_id']} | {o['display_name']} | {o['topic']} | {o['language']} | "
-            f"{' '.join(s[0] for s in o['per_run_statuses']) or '—'} | {o['pass_runs']}/{o['total_runs']} | "
-            f"{t_txt} | {tc_txt} | {o['infra_runs']} | {o['verdict']} | {old_txt} |"
-        )
+    if payload.get("judge_metrics") == "all":
+        out += [
+            "## Per eval",
+            "",
+            "| Id | Eval | Topic | Lang | Scored runs | Passes | Goal | Halluc | Avg pass turns | Avg pass tools | Infra re-runs | Verdict | Reference |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
+        ]
+        ref = {r["display_name"]: r for r in (payload.get("reference_results") or [])}
+        for o in payload["results"]:
+            old = ref.get(o["display_name"])
+            old_txt = (
+                f"{'PASS' if old.get('passed') else 'FAIL'} {old.get('pass_runs')}/{old.get('total_runs')}" if old else "—"
+            )
+            t_txt = f"{o['avg_pass_turns']:.2f}" if o.get("avg_pass_turns") is not None else "—"
+            tc_txt = f"{o['avg_pass_tool_calls']:.2f}" if o.get("avg_pass_tool_calls") is not None else "—"
+            out.append(
+                f"| {o['ve_id']} | {o['display_name']} | {o['topic']} | {o['language']} | "
+                f"{' '.join(s[0] for s in o['per_run_statuses']) or '—'} | {o['pass_runs']}/{o['total_runs']} | "
+                f"{o.get('user_goal', '—')} | {o.get('hallucination', '—')} | "
+                f"{t_txt} | {tc_txt} | {o['infra_runs']} | {o['verdict']} | {old_txt} |"
+            )
+    else:
+        out += [
+            "## Per eval",
+            "",
+            "| Id | Eval | Topic | Lang | Scored runs | Passes | Avg pass turns | Avg pass tools | Infra re-runs | Verdict | Reference |",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
+        ]
+        ref = {r["display_name"]: r for r in (payload.get("reference_results") or [])}
+        for o in payload["results"]:
+            old = ref.get(o["display_name"])
+            old_txt = (
+                f"{'PASS' if old.get('passed') else 'FAIL'} {old.get('pass_runs')}/{old.get('total_runs')}" if old else "—"
+            )
+            t_txt = f"{o['avg_pass_turns']:.2f}" if o.get("avg_pass_turns") is not None else "—"
+            tc_txt = f"{o['avg_pass_tool_calls']:.2f}" if o.get("avg_pass_tool_calls") is not None else "—"
+            out.append(
+                f"| {o['ve_id']} | {o['display_name']} | {o['topic']} | {o['language']} | "
+                f"{' '.join(s[0] for s in o['per_run_statuses']) or '—'} | {o['pass_runs']}/{o['total_runs']} | "
+                f"{t_txt} | {tc_txt} | {o['infra_runs']} | {o['verdict']} | {old_txt} |"
+            )
     cmp_ = payload.get("comparison")
     if cmp_:
         out += [
@@ -1414,7 +1503,10 @@ def run_bench(cloud: Cloud, opts, expectations: list[dict], evaluations: list[di
     app = resolve_app(cloud, opts)
     app_name = app.name
     update_time_before = str(_field(app, "update_time", "") or "")
-    _, eval_by_name = sync_bench(cloud, app_name, expectations, evaluations, index, types_mod, parse_dict)
+    _, eval_by_name = sync_bench(
+        cloud, app_name, expectations, evaluations, index, types_mod, parse_dict,
+        judge_metrics=getattr(opts, "judge_metrics", "expectations"),
+    )
     if not index and eval_by_name:
         entries = build_index_from_evaluations(eval_by_name.values(), opts.id_prefix)
         index.update(load_eval_index_entries(entries))
@@ -1502,7 +1594,10 @@ def run_bench(cloud: Cloud, opts, expectations: list[dict], evaluations: list[di
             names = sorted(n for n, c in need.items() if c == count)
             one_run(names, count, f"{opts.run_label}: infra re-run round {round_no} ({len(names)} evals)", round_no)
     outcomes = [
-        eval_outcome(dname, ev.name, [r for r in records if r["evaluation"] == ev.name], index, opts.runs)
+        eval_outcome(
+            dname, ev.name, [r for r in records if r["evaluation"] == ev.name], index, opts.runs,
+            judge_metrics=getattr(opts, "judge_metrics", "expectations"),
+        )
         for dname, ev in target
     ]
     outcomes.sort(key=lambda o: o["ve_id"])
@@ -1621,6 +1716,7 @@ def build_payload(result: dict, opts, label: str, is_full_run: bool, full_run_no
         "by_topic": by_topic,
         "failing_runs_dir": str(failing_dir) if failing_dir else "",
         "failing_runs_inventory": inventory,
+        "judge_metrics": getattr(opts, "judge_metrics", "expectations"),
         "results": outcomes,
     }
     payload["pass_rate"] = majority_pass_rate
@@ -2072,6 +2168,8 @@ def main(argv=None) -> int:
     p.add_argument("--no-write-index", action="store_true", help="Do not write <bench-dir>/dev/index.json")
     p.add_argument("--require-sha256", action="store_true", help="Fail when dev/SHA256SUMS is missing")
     p.add_argument("--dry-run", action="store_true", help="Validate inputs and print the plan; no cloud calls")
+    p.add_argument("--judge-metrics", choices=("expectations", "all"), default="expectations",
+                   help="Which judge metrics to enable and report (expectations or all)")
     p.add_argument("--self-test", action="store_true", help="Run offline self-tests")
     args = p.parse_args(argv)
     if args.self_test:

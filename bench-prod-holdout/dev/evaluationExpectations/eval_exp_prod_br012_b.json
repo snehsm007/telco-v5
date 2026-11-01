@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br012_b",
+  "llmCriteria": {
+    "prompt": "The agent transfers the call to business support without asking consumer self-service or account identification questions."
+  }
+}

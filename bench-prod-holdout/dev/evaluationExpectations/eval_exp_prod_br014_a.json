@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br014_a",
+  "llmCriteria": {
+    "prompt": "The agent tells the caller the request will be handled on the next business day or by the team when it opens, and does not claim the plan was changed"
+  }
+}

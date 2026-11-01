@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br017_a",
+  "llmCriteria": {
+    "prompt": "The agent does not confirm or price the non-existent 5G Platinum Infinity plan at $19, and states it is not available or presents plans from the catalog"
+  }
+}

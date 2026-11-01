@@ -1,0 +1,137 @@
+[
+  {
+    "name": "prod__br001_recording_notice_fr",
+    "topic": "BR-TV-001 recording notice",
+    "language": "fr"
+  },
+  {
+    "name": "prod__br002_restricted_caller_en",
+    "topic": "BR-TV-002 restricted caller",
+    "language": "en"
+  },
+  {
+    "name": "prod__br003_regional_alert_banner_en",
+    "topic": "BR-TV-003 regional alert banner",
+    "language": "en"
+  },
+  {
+    "name": "prod__br004_language_lock_switch_fr",
+    "topic": "BR-TV-004 language lock",
+    "language": "fr"
+  },
+  {
+    "name": "prod__br005_cross_module_warranty_cancel_en",
+    "topic": "BR-TV-005 module coverage",
+    "language": "en"
+  },
+  {
+    "name": "prod__br006_retry_strikes_no_input_en",
+    "topic": "BR-TV-006 retry strikes no-input",
+    "language": "en"
+  },
+  {
+    "name": "prod__br006_retry_strikes_no_match_en",
+    "topic": "BR-TV-006 retry strikes no-match",
+    "language": "en"
+  },
+  {
+    "name": "prod__br007_dtmf_capture_en",
+    "topic": "BR-TV-007 DTMF capture",
+    "language": "en"
+  },
+  {
+    "name": "prod__br008_auth_ladder_en",
+    "topic": "auth_ladder",
+    "language": "en"
+  },
+  {
+    "name": "prod__br009_pii_redaction_fr",
+    "topic": "pii_redaction",
+    "language": "fr"
+  },
+  {
+    "name": "prod__br010_declined_card_en",
+    "topic": "tri_state_business_error",
+    "language": "en"
+  },
+  {
+    "name": "prod__br010_malformed_identifier_en",
+    "topic": "tri_state_validation_error",
+    "language": "en"
+  },
+  {
+    "name": "prod__br010_system_error_en",
+    "topic": "tri_state_system_error",
+    "language": "en"
+  },
+  {
+    "name": "prod__br011_live_agent_verbatim_en",
+    "topic": "verbatim_compliance",
+    "language": "en"
+  },
+  {
+    "name": "prod__br012_business_handoff_en",
+    "topic": "business_handoff",
+    "language": "en"
+  },
+  {
+    "name": "prod__br013_fraud_escalation_en",
+    "topic": "fraud_escalation",
+    "language": "en"
+  },
+  {
+    "name": "prod__br013_fraud_escalation_fr",
+    "topic": "fraud_escalation",
+    "language": "fr"
+  },
+  {
+    "name": "prod__br014_after_hours_fraud_en",
+    "topic": "after_hours_fraud",
+    "language": "en"
+  },
+  {
+    "name": "prod__br014_after_hours_plan_change_en",
+    "topic": "after_hours_plan_change",
+    "language": "en"
+  },
+  {
+    "name": "prod__br015_context_handoff_en",
+    "topic": "session_context_handoff",
+    "language": "en"
+  },
+  {
+    "name": "prod__br016_abusive_caller_fr",
+    "topic": "malicious_abusive_caller",
+    "language": "fr"
+  },
+  {
+    "name": "prod__br016_prompt_injection_en",
+    "topic": "malicious_prompt_injection",
+    "language": "en"
+  },
+  {
+    "name": "prod__br017_no_invented_data_en",
+    "topic": "no_invented_data",
+    "language": "en"
+  },
+  {
+    "name": "prod__br019_topic_switch_fr",
+    "topic": "topic_switch_multitask",
+    "language": "fr"
+  },
+  {
+    "name": "prod__guard_ai_disclosure_en",
+    "topic": "guardrail_ai_disclosure",
+    "language": "en"
+  },
+  {
+    "name": "prod__guard_off_topic_en",
+    "topic": "guardrail_off_topic",
+    "language": "en"
+  },
+  {
+    "name": "prod__guard_prompt_leak_en",
+    "topic": "guardrail_prompt_leak",
+    "language": "en"
+  }
+]

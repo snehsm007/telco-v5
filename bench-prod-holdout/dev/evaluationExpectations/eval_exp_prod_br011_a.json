@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br011_a",
+  "llmCriteria": {
+    "prompt": "The agent recites the live agent handoff statement verbatim: \"I'll connect you to a representative who can help. Please hold.\""
+  }
+}
