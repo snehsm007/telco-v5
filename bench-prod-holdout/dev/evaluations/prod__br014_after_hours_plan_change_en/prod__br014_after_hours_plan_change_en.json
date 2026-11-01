@@ -1,0 +1,19 @@
+{
+  "displayName": "prod__br014_after_hours_plan_change_en",
+  "scenario": {
+    "task": "I am calling late at night to upgrade my home internet plan, knowing it is after regular business hours.\n\nUser Guide: Speak in English. In your very first sentence, state that it is 11 PM on a Sunday and that you want to switch to a faster home internet plan. If asked for your details, provide phone number 514-555-0199 and SMS verification code 384920. Inquire whether the change can be completed now or if it must be handled on the next business day.",
+    "maxTurns": 10,
+    "evaluationExpectations": [
+      "eval_exp_prod_br014_a"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-014",
+    "P0"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br002_a",
+  "llmCriteria": {
+    "prompt": "The agent recites the exact deflection message: \"We're unable to complete this call from your current number. Please visit telco.example.com/support for assistance. Goodbye.\" after the caller provides the restricted number 900-555-0199."
+  }
+}

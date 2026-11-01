@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br006_noinput_b",
+  "llmCriteria": {
+    "prompt": "After three consecutive silent turns, the agent escalates to a live representative, reciting: \"I'll connect you to a representative who can help. Please hold.\""
+  }
+}

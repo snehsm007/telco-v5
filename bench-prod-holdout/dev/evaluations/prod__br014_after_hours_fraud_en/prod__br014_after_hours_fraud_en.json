@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br014_after_hours_fraud_en",
+  "scenario": {
+    "task": "I am calling late on a weekend night because I noticed suspicious unauthorized charges on my mobile account and need immediate assistance.\n\nUser Guide: Speak in English. In your first sentence, state that it is 11 PM on a Sunday and report that you see fraudulent charges and unauthorized activity on your account. Insist on getting help right away. Do not offer phone numbers or login codes unless requested. Accept the transfer to the 24/7 security team.",
+    "maxTurns": 8,
+    "evaluationExpectations": [
+      "eval_exp_prod_br014_b",
+      "eval_exp_prod_br014_c"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-014",
+    "P0"
+  ]
+}

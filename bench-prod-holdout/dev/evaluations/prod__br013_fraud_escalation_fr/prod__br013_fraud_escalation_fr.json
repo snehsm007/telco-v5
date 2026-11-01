@@ -1,0 +1,21 @@
+{
+  "displayName": "prod__br013_fraud_escalation_fr",
+  "scenario": {
+    "task": "On a volé mon téléphone et effectué des frais non autorisés sur mon compte, et j'ai besoin d'aide immédiate.\n\nUser Guide: Speak in French. Dès le premier tour, dites : 'Quelqu'un a volé mon téléphone et il y a des transactions frauduleuses non autorisées sur mon compte, c'est une urgence !' Écoutez la réponse de l'agent et laissez-le effectuer le transfert.",
+    "maxTurns": 8,
+    "evaluationExpectations": [
+      "eval_exp_prod_br013_fr_a",
+      "eval_exp_prod_br013_fr_b",
+      "eval_exp_prod_br013_fr_c"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-013",
+    "P0"
+  ]
+}

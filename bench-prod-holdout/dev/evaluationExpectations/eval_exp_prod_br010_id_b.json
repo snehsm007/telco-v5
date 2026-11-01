@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br010_id_b",
+  "llmCriteria": {
+    "prompt": "The agent successfully identifies the account and completes authentication once the valid 10-digit number and SMS verification code are provided."
+  }
+}

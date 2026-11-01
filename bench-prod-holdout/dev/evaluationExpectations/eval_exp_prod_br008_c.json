@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br008_c",
+  "llmCriteria": {
+    "prompt": "The agent provides the account balance once identity verification with the verification code is successfully completed."
+  }
+}

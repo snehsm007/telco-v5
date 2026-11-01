@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br007_a",
+  "llmCriteria": {
+    "prompt": "The agent accepts the keypad-entered phone number and confirms the account using only the last four digits 0199 without reciting the full phone number."
+  }
+}

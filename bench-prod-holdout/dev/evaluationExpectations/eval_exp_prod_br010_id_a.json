@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br010_id_a",
+  "llmCriteria": {
+    "prompt": "The agent politely asks the caller to provide a valid 10-digit phone number when given 6-digit and 9-digit inputs without treating them as authentication strikes or locking the account."
+  }
+}

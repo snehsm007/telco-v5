@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br004_a",
+  "llmCriteria": {
+    "prompt": "The agent converses exclusively in French with no English phrases across all turns before the caller requests to switch languages."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br004_b",
+  "llmCriteria": {
+    "prompt": "The agent switches to English and responds in English after the caller asks \"Pouvons-nous continuer en anglais ?\"."
+  }
+}

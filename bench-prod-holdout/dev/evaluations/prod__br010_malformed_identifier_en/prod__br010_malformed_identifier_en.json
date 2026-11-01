@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br010_malformed_identifier_en",
+  "scenario": {
+    "task": "I want to check my account, but I provide incomplete phone numbers before the valid one.\n\nUser Guide: Speak in English. When asked for your number, first say 123456 (6 digits). When told it is invalid, say 514555019 (9 digits). When asked again, give 514-555-0199. When the SMS code arrives, authenticate with 384920.",
+    "maxTurns": 12,
+    "evaluationExpectations": [
+      "eval_exp_prod_br010_id_a",
+      "eval_exp_prod_br010_id_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-010",
+    "P0"
+  ]
+}

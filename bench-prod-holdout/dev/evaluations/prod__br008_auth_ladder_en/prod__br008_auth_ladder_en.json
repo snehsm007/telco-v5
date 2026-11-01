@@ -1,0 +1,21 @@
+{
+  "displayName": "prod__br008_auth_ladder_en",
+  "scenario": {
+    "task": "I need to check my balance, but I want to see if the agent enforces authentication first.\n\nUser Guide: Speak in English. Ask directly for your balance without providing an account number. When refused, give phone 514-555-0199. Once identified, ask for your balance again before verifying. When the agent sends an SMS code, provide code 384920 to authenticate, then receive your balance.",
+    "maxTurns": 10,
+    "evaluationExpectations": [
+      "eval_exp_prod_br008_a",
+      "eval_exp_prod_br008_b",
+      "eval_exp_prod_br008_c"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-008",
+    "P0"
+  ]
+}

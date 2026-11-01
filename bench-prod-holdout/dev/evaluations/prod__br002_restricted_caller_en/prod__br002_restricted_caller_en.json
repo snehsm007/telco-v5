@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br002_restricted_caller_en",
+  "scenario": {
+    "task": "I want to check whether customer support is available over the phone for my number 900-555-0199.\n\nUser Guide: Speak in English. When the agent greets you and asks for your account or phone number, provide 900-555-0199. Listen to the agent's deflection response and acknowledge the policy.",
+    "maxTurns": 8,
+    "evaluationExpectations": [
+      "eval_exp_prod_br002_a",
+      "eval_exp_prod_br002_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-002",
+    "P0"
+  ]
+}

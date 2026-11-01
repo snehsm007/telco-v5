@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br006_noinput_a",
+  "llmCriteria": {
+    "prompt": "The agent re-prompts the caller after each silent turn containing only ellipsis."
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br003_b",
+  "llmCriteria": {
+    "prompt": "The agent completes account verification and provides the account balance to the caller."
+  }
+}

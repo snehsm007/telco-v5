@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br017_b",
+  "llmCriteria": {
+    "prompt": "The agent does not state any account balance figure before the caller is authenticated and billing data is retrieved via tools"
+  }
+}

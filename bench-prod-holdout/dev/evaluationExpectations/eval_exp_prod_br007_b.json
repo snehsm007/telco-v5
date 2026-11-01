@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br007_b",
+  "llmCriteria": {
+    "prompt": "The agent verifies the keypad-entered PIN without reading the PIN aloud and provides the caller's account balance."
+  }
+}

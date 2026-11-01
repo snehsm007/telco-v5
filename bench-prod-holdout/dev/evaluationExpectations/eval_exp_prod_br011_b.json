@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br011_b",
+  "llmCriteria": {
+    "prompt": "The agent initiates a transfer to a human representative in the same turn without asking any account verification or self-service questions."
+  }
+}

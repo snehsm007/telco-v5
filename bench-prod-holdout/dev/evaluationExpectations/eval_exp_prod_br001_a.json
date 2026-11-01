@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br001_a",
+  "llmCriteria": {
+    "prompt": "The agent recites the exact recording notice in French: \"Cet appel peut être enregistré à des fins de qualité et de formation.\" when the caller asks whether the call is recorded."
+  }
+}

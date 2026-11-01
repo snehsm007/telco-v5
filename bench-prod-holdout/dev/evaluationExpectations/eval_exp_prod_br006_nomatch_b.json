@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br006_nomatch_b",
+  "llmCriteria": {
+    "prompt": "After three consecutive off-topic or unrecognized responses, the agent transfers the call to a human representative."
+  }
+}

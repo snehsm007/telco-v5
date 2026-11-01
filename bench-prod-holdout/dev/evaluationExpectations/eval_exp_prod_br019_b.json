@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br019_b",
+  "llmCriteria": {
+    "prompt": "The agent provides the billing answer upon returning to the billing inquiry without asking for identification again"
+  }
+}

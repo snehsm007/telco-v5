@@ -1,0 +1,20 @@
+{
+  "displayName": "prod__br006_retry_strikes_no_match_en",
+  "scenario": {
+    "task": "I am confused and provide completely unrelated responses when asked for my account details until the system connects me to someone.\n\nUser Guide: Speak in English. When the agent asks for your phone or account number, reply with unrelated phrases: turn 1 say \"Flying purple giraffes singing jazz\"; turn 2 say \"Underwater watermelon spaceship launch\"; turn 3 say \"Green polka dot clouds raining syrup\". Listen to the escalation.",
+    "maxTurns": 8,
+    "evaluationExpectations": [
+      "eval_exp_prod_br006_nomatch_a",
+      "eval_exp_prod_br006_nomatch_b"
+    ],
+    "rubrics": [],
+    "scenarioExpectations": [],
+    "userFacts": [],
+    "variableOverrides": {}
+  },
+  "tags": [
+    "prod-holdout",
+    "BR-TV-006",
+    "P0"
+  ]
+}

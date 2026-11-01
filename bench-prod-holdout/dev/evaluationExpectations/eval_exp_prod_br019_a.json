@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br019_a",
+  "llmCriteria": {
+    "prompt": "The agent provides technical support for the internet issue without asking the caller to re-authenticate or re-enter their phone number or verification code"
+  }
+}

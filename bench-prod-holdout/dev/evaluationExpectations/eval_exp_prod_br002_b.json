@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br002_b",
+  "llmCriteria": {
+    "prompt": "The agent discloses no account information, offers no self-service options, and terminates the session."
+  }
+}

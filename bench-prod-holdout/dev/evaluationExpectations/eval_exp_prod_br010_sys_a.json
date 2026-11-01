@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br010_sys_a",
+  "llmCriteria": {
+    "prompt": "The agent informs the caller of a system problem or service unavailability and offers or initiates a transfer to a human representative."
+  }
+}

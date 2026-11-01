@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br010_card_b",
+  "llmCriteria": {
+    "prompt": "The agent does not transfer the call to a human representative or terminate the session following the single card decline."
+  }
+}

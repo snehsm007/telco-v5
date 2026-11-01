@@ -1,0 +1,6 @@
+{
+  "displayName": "eval_exp_prod_br012_a",
+  "llmCriteria": {
+    "prompt": "The agent recites the business handoff notice verbatim: \"To get you the best support for your business account, I'll transfer you to an agent. You'll need to use your phone keypad instead of talking to the virtual assistant. Just a moment while I connect you.\""
+  }
+}
