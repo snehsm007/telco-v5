@@ -15,7 +15,7 @@ def send_login_code(
     Call this when a task tool returned error NOT_LOGGED_IN or authentication is needed.
 
     Args:
-        identifier: Optional phone or account number if not already in session.
+        identifier: Optional phone, account number, or email address if not already in session.
         channel: Delivery channel for the code (e.g. 'sms' or 'email').
         resend: Whether to re-dispatch a new code even if previously sent.
         language: BCP-47 language tag (e.g. en-US, fr-CA, es-US).
@@ -951,6 +951,13 @@ def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
 
+def _is_placeholder_email(email_str: str) -> bool:  # pragma: no cover
+    """Return True when an email string is empty or a synthetic user...@example.com placeholder."""
+    clean = str(email_str or "").strip()
+    if not clean:
+        return True
+    return bool(re.fullmatch(r"user\d*@example\.com", clean, re.IGNORECASE))
+
 def is_synthetic_wrong_identifier(raw_str: str, digits: str) -> bool:  # pragma: no cover
     """Return True when an identifier is intentionally invalid or synthetic wrong."""
     raw_low = raw_str.lower()
@@ -1174,7 +1181,7 @@ def _resolve_session_email_and_mask(  # pragma: no cover
 
     if (not email_on_file or email_on_file == "user@example.com") and state.get("account_id"):
         acc = find_account(state.get("account_id"))
-        if acc and acc.get("email"):
+        if acc and acc.get("email") and not _is_placeholder_email(acc["email"]):
             email_on_file = acc["email"]
             state["contact_email"] = email_on_file
 
@@ -1182,8 +1189,25 @@ def _resolve_session_email_and_mask(  # pragma: no cover
         email_on_file = "user@example.com"
         state["contact_email"] = email_on_file
 
-    first_char = email_on_file[:1].lower() if email_on_file else "u"
     domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
+    if _is_placeholder_email(email_on_file):
+        first_char = ""
+        masked = f"***@{domain}"
+        spoken = localized_text(
+            lang,
+            "For your security, I just sent a 6-digit verification code to the email address on file — please read it back to me.",
+            "Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier — veuillez me le lire.",
+            "Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado; por favor léamelo.",
+        )
+        action_text = localized_text(
+            lang,
+            f"Refer to the destination as 'the email address on file' without proactively naming an initial letter; if the caller asks to verify the email or domain, confirm the domain @{domain} or send the code to an email address they provide.",
+            f"Mentionnez la destination comme « l'adresse courriel au dossier » sans annoncer d'initiale spontanément; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
+            f"Mencione el destino como 'el correo electrónico registrado' sin indicar una inicial espontáneamente; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
+        )
+        return email_on_file, first_char, domain, masked, spoken, action_text
+
+    first_char = email_on_file[:1].lower()
     masked = f"{first_char}***@{domain}"
 
     spoken = localized_text(
@@ -1601,6 +1625,11 @@ def send_login_code_impl(  # pragma: no cover
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
+    caller_email = str(kwargs.get("email") or "").strip()
+    if not caller_email and "@" in str(id_val or "").strip():
+        caller_email = str(id_val).strip()
+    if "@" in str(id_val or "").strip():
+        id_val = ""
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -1615,9 +1644,16 @@ def send_login_code_impl(  # pragma: no cover
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
 
-        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+        l_res = lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state)
         if l_res.get("status") == "error":
             return l_res
+    if caller_email and "@" in caller_email:
+        state["contact_email"] = caller_email
+        if not state.get("account_id"):
+            l_res = lookup_account_impl(email=caller_email, language=lang, state=state)
+            if l_res.get("status") == "error":
+                return l_res
+        state["contact_email"] = caller_email
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -1700,18 +1736,21 @@ def send_login_code_impl(  # pragma: no cover
     if norm_chan == "email":
         state["mfa_email_code_sent"] = True
         email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
+        email_data: dict[str, Any] = {
+            "sent": True,
+            "already_verified": False,
+            "destination_last4": dest_last4,
+            "code_sent": True,
+            "channel": "email",
+            "email_domain": domain,
+            "expires_in_minutes": 10,
+            "spoken_message": spoken,
+            "agent_action": action_text,
+        }
+        if masked:
+            email_data["masked_email"] = masked
         reply = ok_reply(
-            {
-                "sent": True,
-                "already_verified": False,
-                "destination_last4": dest_last4,
-                "code_sent": True,
-                "channel": "email",
-                "masked_email": masked,
-                "expires_in_minutes": 10,
-                "spoken_message": spoken,
-                "agent_action": action_text,
-            },
+            email_data,
             reference,
             language=lang,
         )

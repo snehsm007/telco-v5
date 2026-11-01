@@ -667,6 +667,15 @@
       }
     },
     {
+      "name": "browsed_plan_category",
+      "description": "Plan category most recently browsed during sales flows.",
+      "schema": {
+        "type": "STRING",
+        "default": "",
+        "required": []
+      }
+    },
+    {
       "name": "shortlisted_plan_ids",
       "description": "Comma-separated list of plan IDs shortlisted.",
       "schema": {

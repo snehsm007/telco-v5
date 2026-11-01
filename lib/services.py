@@ -464,6 +464,178 @@ def _submit_request_fallback(
     return ok_reply({"submitted": True}, reference)
 
 
+def _active_account_plans(
+    state: dict[str, Any],
+    lang: str = "en-US",
+) -> dict[str, dict[str, str]]:
+    """Return localized active service plan details for an authenticated residential account."""
+    selected = str(state.get("selected_plan_id") or "").strip().upper()
+    dl_100 = localized_text(lang, "100 Mbps", "100 Mbit/s", "100 Mbps")
+    dl_500 = localized_text(lang, "500 Mbps", "500 Mbit/s", "500 Mbps")
+    dl_1g = localized_text(lang, "1 Gbps", "1 Gbit/s", "1 Gbps")
+    internet_plan = {
+        "plan_id": "NET-STARTER",
+        "name": localized_text(
+            lang,
+            "Fiber Internet 100",
+            "Fibre Internet 100",
+            "Fibra Internet 100",
+        ),
+        "monthly_price": "45.00",
+        "speed_or_data": localized_text(
+            lang,
+            "100 Mbps symmetrical",
+            "100 Mbit/s symétrique",
+            "100 Mbps simétricos",
+        ),
+        "download_speed": dl_100,
+        "upload_speed": dl_100,
+    }
+    if selected == "NET-PLUS":
+        internet_plan = {
+            "plan_id": "NET-PLUS",
+            "name": localized_text(
+                lang,
+                "Fiber Internet 500",
+                "Fibre Internet 500",
+                "Fibra Internet 500",
+            ),
+            "monthly_price": "75.00",
+            "speed_or_data": localized_text(
+                lang,
+                "500 Mbps symmetrical",
+                "500 Mbit/s symétrique",
+                "500 Mbps simétricos",
+            ),
+            "download_speed": dl_500,
+            "upload_speed": dl_500,
+        }
+    elif selected == "NET-GIG":
+        internet_plan = {
+            "plan_id": "NET-GIG",
+            "name": localized_text(
+                lang,
+                "Gigabit Fiber",
+                "Fibre Gigabit",
+                "Fibra Gigabit",
+            ),
+            "monthly_price": "95.00",
+            "speed_or_data": localized_text(
+                lang,
+                "1 Gbps symmetrical",
+                "1 Gbit/s symétrique",
+                "1 Gbps simétrico",
+            ),
+            "download_speed": dl_1g,
+            "upload_speed": dl_1g,
+        }
+    mobility_plan = {
+        "plan_id": "MOB-STARTER",
+        "name": localized_text(
+            lang,
+            "Mobility Starter 10GB",
+            "Mobilité Départ 10 Go",
+            "Movilidad Inicial 10 GB",
+        ),
+        "monthly_price": "35.00",
+        "speed_or_data": localized_text(
+            lang,
+            "10 GB 5G data",
+            "10 Go de données 5G",
+            "10 GB de datos 5G",
+        ),
+    }
+    if selected == "MOB-LITE":
+        mobility_plan = {
+            "plan_id": "MOB-LITE",
+            "name": localized_text(
+                lang,
+                "5G Essential 25GB",
+                "5G Essentiel 25 Go",
+                "5G Esencial 25 GB",
+            ),
+            "monthly_price": "45.00",
+            "speed_or_data": localized_text(
+                lang,
+                "25 GB 5G data",
+                "25 Go de données 5G",
+                "25 GB de datos 5G",
+            ),
+        }
+    elif selected == "MOB-UNLTD":
+        mobility_plan = {
+            "plan_id": "MOB-UNLTD",
+            "name": localized_text(
+                lang,
+                "5G Unlimited 60GB",
+                "5G Illimité 60 Go",
+                "5G Ilimitado 60 GB",
+            ),
+            "monthly_price": "55.00",
+            "speed_or_data": localized_text(
+                lang,
+                "60 GB 5G+ data",
+                "60 Go de données 5G+",
+                "60 GB de datos 5G+",
+            ),
+        }
+    elif selected == "MOB-PREM":
+        mobility_plan = {
+            "plan_id": "MOB-PREM",
+            "name": localized_text(
+                lang,
+                "5G North America Unlimited",
+                "5G Amérique du Nord Illimité",
+                "5G Norteamérica Ilimitado",
+            ),
+            "monthly_price": "75.00",
+            "speed_or_data": localized_text(
+                lang,
+                "100 GB 5G+ data",
+                "100 Go de données 5G+",
+                "100 GB de datos 5G+",
+            ),
+        }
+    tv_plan = {
+        "plan_id": "TV-STARTER",
+        "name": localized_text(
+            lang,
+            "Fibe TV Starter",
+            "Télé Fibe Départ",
+            "Fibe TV Inicial",
+        ),
+        "monthly_price": "25.00",
+        "speed_or_data": localized_text(
+            lang,
+            "35+ channels",
+            "35+ chaînes",
+            "35+ canales",
+        ),
+    }
+    if selected == "TV-MAX":
+        tv_plan = {
+            "plan_id": "TV-MAX",
+            "name": localized_text(
+                lang,
+                "Fibe TV Complete",
+                "Télé Fibe Complet",
+                "Fibe TV Completo",
+            ),
+            "monthly_price": "65.00",
+            "speed_or_data": localized_text(
+                lang,
+                "100+ channels",
+                "100+ chaînes",
+                "100+ canales",
+            ),
+        }
+    return {
+        "internet": internet_plan,
+        "mobility": mobility_plan,
+        "tv": tv_plan,
+    }
+
+
 def _maybe_inline_auth(
     identifier: str | int | float,
     verification_code: str | int | float,
@@ -765,6 +937,14 @@ def lookup_account_impl(
     )
 
 
+def _is_placeholder_email(email_str: str) -> bool:
+    """Return True when an email string is empty or a synthetic user...@example.com placeholder."""
+    clean = str(email_str or "").strip()
+    if not clean:
+        return True
+    return bool(re.fullmatch(r"user\d*@example\.com", clean, re.IGNORECASE))
+
+
 def _resolve_session_email_and_mask(
     state: dict[str, Any],
     lang: str = "en-US",
@@ -778,7 +958,7 @@ def _resolve_session_email_and_mask(
 
     if (not email_on_file or email_on_file == "user@example.com") and state.get("account_id"):
         acc = find_account(state.get("account_id"))
-        if acc and acc.get("email"):
+        if acc and acc.get("email") and not _is_placeholder_email(acc["email"]):
             email_on_file = acc["email"]
             state["contact_email"] = email_on_file
 
@@ -786,8 +966,25 @@ def _resolve_session_email_and_mask(
         email_on_file = "user@example.com"
         state["contact_email"] = email_on_file
 
-    first_char = email_on_file[:1].lower() if email_on_file else "u"
     domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
+    if _is_placeholder_email(email_on_file):
+        first_char = ""
+        masked = f"***@{domain}"
+        spoken = localized_text(
+            lang,
+            "For your security, I just sent a 6-digit verification code to the email address on file — please read it back to me.",
+            "Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier — veuillez me le lire.",
+            "Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado; por favor léamelo.",
+        )
+        action_text = localized_text(
+            lang,
+            f"Refer to the destination as 'the email address on file' without proactively naming an initial letter; if the caller asks to verify the email or domain, confirm the domain @{domain} or send the code to an email address they provide.",
+            f"Mentionnez la destination comme « l'adresse courriel au dossier » sans annoncer d'initiale spontanément; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
+            f"Mencione el destino como 'el correo electrónico registrado' sin indicar una inicial espontáneamente; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
+        )
+        return email_on_file, first_char, domain, masked, spoken, action_text
+
+    first_char = email_on_file[:1].lower()
     masked = f"{first_char}***@{domain}"
 
     spoken = localized_text(
@@ -831,6 +1028,11 @@ def send_login_code_impl(
     _record_audit(state)
 
     id_val = identifier if str(identifier or "").strip() else kwargs.get("phone_or_account", kwargs.get("account_id", kwargs.get("phone", kwargs.get("phone_number", ""))))
+    caller_email = str(kwargs.get("email") or "").strip()
+    if not caller_email and "@" in str(id_val or "").strip():
+        caller_email = str(id_val).strip()
+    if "@" in str(id_val or "").strip():
+        id_val = ""
     if str(id_val or "").strip():
         raw_digits = normalize_code(id_val)
         has_alpha = any(c.isalpha() for c in str(id_val or ""))
@@ -845,9 +1047,16 @@ def send_login_code_impl(
             state["caller_provided_phone_last4"] = caller_l4
             state["phone_last4"] = caller_l4
 
-        l_res = lookup_account_impl(identifier=id_val, language=lang, state=state)
+        l_res = lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state)
         if l_res.get("status") == "error":
             return l_res
+    if caller_email and "@" in caller_email:
+        state["contact_email"] = caller_email
+        if not state.get("account_id"):
+            l_res = lookup_account_impl(email=caller_email, language=lang, state=state)
+            if l_res.get("status") == "error":
+                return l_res
+        state["contact_email"] = caller_email
 
     if not state.get("account_id"):
         if not explicit_session:
@@ -930,18 +1139,21 @@ def send_login_code_impl(
     if norm_chan == "email":
         state["mfa_email_code_sent"] = True
         email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
+        email_data: dict[str, Any] = {
+            "sent": True,
+            "already_verified": False,
+            "destination_last4": dest_last4,
+            "code_sent": True,
+            "channel": "email",
+            "email_domain": domain,
+            "expires_in_minutes": 10,
+            "spoken_message": spoken,
+            "agent_action": action_text,
+        }
+        if masked:
+            email_data["masked_email"] = masked
         reply = ok_reply(
-            {
-                "sent": True,
-                "already_verified": False,
-                "destination_last4": dest_last4,
-                "code_sent": True,
-                "channel": "email",
-                "masked_email": masked,
-                "expires_in_minutes": 10,
-                "spoken_message": spoken,
-                "agent_action": action_text,
-            },
+            email_data,
             reference,
             language=lang,
         )
@@ -1059,14 +1271,17 @@ def verify_login_impl(
             state["card_last4"] = "7742"
         if not state.get("bank_last4"):
             state["bank_last4"] = "6789"
+        pass_data: dict[str, Any] = {
+            "verified": True,
+            "logged_in": True,
+            "auth_status": "pass",
+            "current_balance": state.get("current_balance", "85.50"),
+            "is_suspended": state.get("is_suspended", False),
+        }
+        if bool(state.get("browsed_plan_category")):
+            pass_data["current_active_plans"] = _active_account_plans(state, lang)
         return ok_reply(
-            {
-                "verified": True,
-                "logged_in": True,
-                "auth_status": "pass",
-                "current_balance": state.get("current_balance", "85.50"),
-                "is_suspended": state.get("is_suspended", False),
-            },
+            pass_data,
             reference,
             language=lang,
         )
@@ -1214,14 +1429,17 @@ def verify_login_impl(
     else:
         state["login_channel"] = "sms"
 
+    pass_data_final: dict[str, Any] = {
+        "verified": True,
+        "logged_in": True,
+        "auth_status": "pass",
+        "current_balance": state.get("current_balance", "85.50"),
+        "is_suspended": state.get("is_suspended", False),
+    }
+    if bool(state.get("browsed_plan_category")):
+        pass_data_final["current_active_plans"] = _active_account_plans(state, lang)
     return ok_reply(
-        {
-            "verified": True,
-            "logged_in": True,
-            "auth_status": "pass",
-            "current_balance": state.get("current_balance", "85.50"),
-            "is_suspended": state.get("is_suspended", False),
-        },
+        pass_data_final,
         reference,
         language=lang,
     )
@@ -2609,6 +2827,28 @@ def run_troubleshooting_and_sms_impl(
 # Tool 12: get_appointment_and_ticket_status
 # ============================================================================
 
+
+def _dynamic_appointments_data() -> dict[str, Any]:
+    """Return a copy of FAKE_APPOINTMENTS_DATA with dates relative to today."""
+    today = date.today()
+    apt = dict(FAKE_APPOINTMENTS_DATA["active_appointment"])
+    apt["scheduled_date"] = today.isoformat()
+    tkt = dict(FAKE_APPOINTMENTS_DATA["repair_ticket"])
+    tkt["reported_date"] = (today - timedelta(days=2)).isoformat()
+    slot_offsets = (2, 2, 3)
+    slots: list[dict[str, Any]] = []
+    for idx, raw_slot in enumerate(FAKE_APPOINTMENTS_DATA["available_reschedule_slots"]):
+        s_copy = dict(raw_slot)
+        offset = slot_offsets[idx] if idx < len(slot_offsets) else 3
+        s_copy["date"] = (today + timedelta(days=offset)).isoformat()
+        slots.append(s_copy)
+    return {
+        "active_appointment": apt,
+        "repair_ticket": tkt,
+        "available_reschedule_slots": slots,
+    }
+
+
 def get_appointment_and_ticket_status_impl(
     identifier: str | int | float = "",
     verification_code: str | int | float = "",
@@ -2640,9 +2880,10 @@ def get_appointment_and_ticket_status_impl(
 
     _record_audit(state)
 
-    apt = FAKE_APPOINTMENTS_DATA["active_appointment"]
-    tkt = FAKE_APPOINTMENTS_DATA["repair_ticket"]
-    slots = FAKE_APPOINTMENTS_DATA["available_reschedule_slots"]
+    dyn_apts = _dynamic_appointments_data()
+    apt = dyn_apts["active_appointment"]
+    tkt = dyn_apts["repair_ticket"]
+    slots = dyn_apts["available_reschedule_slots"]
 
     state["active_appointment_id"] = apt["appointment_id"]
     state["appointment_status"] = apt["status"]
@@ -2793,8 +3034,9 @@ def manage_appointment_impl(
     )
     sel = f"SLOT-{m_slot_num.group(1)}" if m_slot_num else raw_sel.upper()
     sel_low = sel.lower()
+    dyn_slots = _dynamic_appointments_data()["available_reschedule_slots"]
     slot_match = None
-    for s_item in FAKE_APPOINTMENTS_DATA["available_reschedule_slots"]:
+    for s_item in dyn_slots:
         if sel and (
             sel in s_item["slot_id"]
             or (len(sel) >= 4 and sel in s_item["date"])
@@ -2805,7 +3047,7 @@ def manage_appointment_impl(
             slot_match = s_item
             break
     if not slot_match:
-        slot_match = FAKE_APPOINTMENTS_DATA["available_reschedule_slots"][0]
+        slot_match = dyn_slots[0]
 
     state["appointment_status"] = "rescheduled"
     ref = tracking_id("RES_APT", account_id, slot_match["slot_id"])
@@ -2863,6 +3105,7 @@ def browse_plans_and_coverage_impl(
         state["service_address"] = s_addr
 
     cat = str(category or "internet").lower()
+    state["browsed_plan_category"] = cat
     catalog = FAKE_PLAN_CATALOG.get(cat, FAKE_PLAN_CATALOG["internet"])
 
     max_b = _parse_positive_money(max_budget)
@@ -2896,6 +3139,9 @@ def browse_plans_and_coverage_impl(
         p_copy["estimated_tax"] = str(p_tax)
         p_copy["estimated_total_monthly"] = str(p_total)
         p_copy["monthly_total_with_tax"] = str(p_total)
+        if max_b is not None:
+            p_copy["within_budget_before_tax"] = bool(p_price <= max_b)
+            p_copy["within_budget_after_tax"] = bool(p_total <= max_b)
         p_copy.setdefault("contract_required", False)
         shortlist.append(p_copy)
         if len(shortlist) >= 3:
@@ -2920,6 +3166,9 @@ def browse_plans_and_coverage_impl(
             p_copy["estimated_tax"] = str(p_tax)
             p_copy["estimated_total_monthly"] = str(p_total)
             p_copy["monthly_total_with_tax"] = str(p_total)
+            if max_b is not None:
+                p_copy["within_budget_before_tax"] = bool(p_price <= max_b)
+                p_copy["within_budget_after_tax"] = bool(p_total <= max_b)
             p_copy.setdefault("contract_required", False)
             shortlist.append(p_copy)
 
@@ -2995,6 +3244,9 @@ def browse_plans_and_coverage_impl(
             "Fibre Internet 500 ou Fibre Gigabit",
             "Fibra Internet 500 o Fibra Gigabit",
         )
+
+    if state.get("auth_status") == "pass":
+        browse_payload["current_active_plans"] = _active_account_plans(state, lang)
 
     return ok_reply(
         browse_payload,
@@ -3116,6 +3368,7 @@ def commit_plan_or_order_impl(
         "contract_term": contract_term,
         "delivery_eta": eff_date,
         "quote_summary": quote_summary,
+        "current_active_plans": _active_account_plans(state, lang),
     }
     if chosen_plan_id == "ADDON-SPORTS" or (plan_info and plan_info.get("category") == "tv"):
         quote_data["included_channels"] = "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD"
@@ -3167,6 +3420,7 @@ def commit_plan_or_order_impl(
         "shipping_address_on_file": state.get("service_address", "123 Maple Avenue, Montreal, QC"),
         "sms_receipt_sent": True,
         "destination_phone_last4": p_l4,
+        "current_active_plans": _active_account_plans(state, lang),
     }
     if chosen_plan_id == "ADDON-SPORTS" or (plan_info and plan_info.get("category") == "tv"):
         order_payload["included_channels"] = "TSN 1-5, Sportsnet, ESPN, FS1, RDS, NBA TV, MLB Network, NFL Network, Golf Channel, and regional sports networks in 4K/HD"
@@ -3612,12 +3866,24 @@ def manage_mfa_settings_impl(
     if mock_err:
         return mock_err
 
+    id_val: str | int | float = identifier
+    caller_email = str(kwargs.get("email") or "").strip()
+    if not caller_email and "@" in str(id_val or "").strip():
+        caller_email = str(id_val).strip()
+    if "@" in str(id_val or "").strip():
+        id_val = ""
+
     caller_fn = str(kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("first_name") or "").strip()
-    if caller_fn and (not state.get("contact_email") or state.get("contact_email") == "user@example.com"):
+    if caller_fn and (not state.get("contact_email") or _is_placeholder_email(str(state.get("contact_email") or ""))):
         state["contact_email"] = f"{caller_fn.split()[0].lower()}@example.com"
 
-    if identifier and not state.get("account_id"):
-        lookup_account_impl(identifier=identifier, language=lang, state=state, full_name=caller_fn)
+    if str(id_val or "").strip() and not state.get("account_id"):
+        lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state, full_name=caller_fn)
+    if caller_email and "@" in caller_email:
+        state["contact_email"] = caller_email
+        if not state.get("account_id"):
+            lookup_account_impl(email=caller_email, language=lang, state=state, full_name=caller_fn)
+        state["contact_email"] = caller_email
 
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("manage_mfa_settings", account_id, str(action))
@@ -3715,27 +3981,43 @@ def manage_mfa_settings_impl(
             state["mfa_email_code_sent"] = True
             email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
             if already_sent:
-                spoken = localized_text(
-                    lang,
-                    f"I have resent the 6-digit verification code to the email address on file starting with '{first_char}' — please check your inbox and read it back to me.",
-                    f"J'ai renvoyé le code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez vérifier votre boîte de réception et me le lire.",
-                    f"He reenviado el código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor revise su bandeja de entrada y léamelo.",
-                )
-                action_text = localized_text(
-                    lang,
-                    f"Confirm that the 6-digit verification code was resent to the email address on file starting with '{first_char}' and ask the caller to read it back.",
-                    f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier commençant par « {first_char} » et demandez au client de vous le lire.",
-                    f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado que comienza con '{first_char}' y pídale a quien llama que se lo lea.",
-                )
-            rep_data = {
+                if first_char:
+                    spoken = localized_text(
+                        lang,
+                        f"I have resent the 6-digit verification code to the email address on file starting with '{first_char}' — please check your inbox and read it back to me.",
+                        f"J'ai renvoyé le code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez vérifier votre boîte de réception et me le lire.",
+                        f"He reenviado el código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor revise su bandeja de entrada y léamelo.",
+                    )
+                    action_text = localized_text(
+                        lang,
+                        f"Confirm that the 6-digit verification code was resent to the email address on file starting with '{first_char}' and ask the caller to read it back.",
+                        f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier commençant par « {first_char} » et demandez au client de vous le lire.",
+                        f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado que comienza con '{first_char}' y pídale a quien llama que se lo lea.",
+                    )
+                else:
+                    spoken = localized_text(
+                        lang,
+                        "I have resent the 6-digit verification code to the email address on file — please check your inbox and read it back to me.",
+                        "J'ai renvoyé le code de vérification à 6 chiffres à l'adresse courriel au dossier — veuillez vérifier votre boîte de réception et me le lire.",
+                        "He reenviado el código de verificación de 6 dígitos al correo electrónico registrado; por favor revise su bandeja de entrada y léamelo.",
+                    )
+                    action_text = localized_text(
+                        lang,
+                        f"Confirm that the 6-digit verification code was resent to the email address on file without proactively naming an initial letter and ask the caller to read it back; if the caller asks to verify the email or domain, confirm the domain @{domain} or send the code to an email address they provide.",
+                        f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier sans annoncer d'initiale spontanément et demandez au client de vous le lire; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
+                        f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado sin indicar una inicial espontáneamente y pídale a quien llama que se lo lea; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
+                    )
+            rep_data: dict[str, Any] = {
                 "requires_email_step_up": True,
                 "requires_step_up": True,
                 "step_up_channel": "email",
+                "email_domain": domain,
                 "mfa_updated": False,
-                "masked_backup_email": masked,
                 "spoken_message": spoken,
                 "agent_action": action_text,
             }
+            if masked:
+                rep_data["masked_backup_email"] = masked
             if already_sent:
                 rep_data["code_resent"] = True
             reply = ok_reply(

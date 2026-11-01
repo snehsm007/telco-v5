@@ -55,6 +55,228 @@ MAX_LOGIN_ATTEMPTS = 3  # pragma: no cover
 
 SECRET_PIN_LENGTH = 4  # pragma: no cover
 
+def resolve_locale(language: str | None) -> str:  # pragma: no cover
+    """Normalize a language tag, name, or code into a canonical BCP-47 locale."""
+    raw = str(language or "").strip()
+    if not raw:
+        return "en-US"
+    low = raw.lower().replace("_", "-")
+    if low in ("primary",) or low.startswith(("en", "english", "anglais")):
+        return "en-US"
+    if low in ("secondary",) or low.startswith(("fr", "french", "francais", "français")):
+        return "fr-CA"
+    if low.startswith(("es", "spanish", "espanol", "español")):
+        return "es-US"
+    if low.startswith(("pt", "portug")):
+        return "pt-BR"
+    if low.startswith(("de", "german", "deutsch")):
+        return "de-DE"
+    if low.startswith(("it", "ital")):
+        return "it-IT"
+    if low.startswith(("zh", "chin", "mandarin")):
+        return "zh-CN"
+    if low.startswith(("hi", "hindi")):
+        return "hi-IN"
+    if low.startswith(("ar", "arab")):
+        return "ar-XA"
+    if low.startswith(("ja", "japan")):
+        return "ja-JP"
+    if low.startswith(("ko", "korean")):
+        return "ko-KR"
+    m = re.match(r"^([a-zA-Z]{2,3})-([a-zA-Z0-9]{2,4})$", raw)
+    if m:
+        return f"{m.group(1).lower()}-{m.group(2).upper()}"
+    return "en-US"
+
+def resolve_copy_locale(language: str | None) -> str:  # pragma: no cover
+    """Pick one of the three primary supported copy locales."""
+    loc = resolve_locale(language)
+    if loc == "fr-CA":
+        return "fr-CA"
+    if loc == "es-US":
+        return "es-US"
+    return "en-US"
+
+def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:  # pragma: no cover
+    """Return text localized for the caller's target language."""
+    loc = resolve_copy_locale(language)
+    if loc == "fr-CA":
+        return fr
+    if loc == "es-US":
+        return es or en
+    return en
+
+def _active_account_plans(  # pragma: no cover
+    state: dict[str, Any],
+    lang: str = "en-US",
+) -> dict[str, dict[str, str]]:
+    """Return localized active service plan details for an authenticated residential account."""
+    selected = str(state.get("selected_plan_id") or "").strip().upper()
+    dl_100 = localized_text(lang, "100 Mbps", "100 Mbit/s", "100 Mbps")
+    dl_500 = localized_text(lang, "500 Mbps", "500 Mbit/s", "500 Mbps")
+    dl_1g = localized_text(lang, "1 Gbps", "1 Gbit/s", "1 Gbps")
+    internet_plan = {
+        "plan_id": "NET-STARTER",
+        "name": localized_text(
+            lang,
+            "Fiber Internet 100",
+            "Fibre Internet 100",
+            "Fibra Internet 100",
+        ),
+        "monthly_price": "45.00",
+        "speed_or_data": localized_text(
+            lang,
+            "100 Mbps symmetrical",
+            "100 Mbit/s symétrique",
+            "100 Mbps simétricos",
+        ),
+        "download_speed": dl_100,
+        "upload_speed": dl_100,
+    }
+    if selected == "NET-PLUS":
+        internet_plan = {
+            "plan_id": "NET-PLUS",
+            "name": localized_text(
+                lang,
+                "Fiber Internet 500",
+                "Fibre Internet 500",
+                "Fibra Internet 500",
+            ),
+            "monthly_price": "75.00",
+            "speed_or_data": localized_text(
+                lang,
+                "500 Mbps symmetrical",
+                "500 Mbit/s symétrique",
+                "500 Mbps simétricos",
+            ),
+            "download_speed": dl_500,
+            "upload_speed": dl_500,
+        }
+    elif selected == "NET-GIG":
+        internet_plan = {
+            "plan_id": "NET-GIG",
+            "name": localized_text(
+                lang,
+                "Gigabit Fiber",
+                "Fibre Gigabit",
+                "Fibra Gigabit",
+            ),
+            "monthly_price": "95.00",
+            "speed_or_data": localized_text(
+                lang,
+                "1 Gbps symmetrical",
+                "1 Gbit/s symétrique",
+                "1 Gbps simétrico",
+            ),
+            "download_speed": dl_1g,
+            "upload_speed": dl_1g,
+        }
+    mobility_plan = {
+        "plan_id": "MOB-STARTER",
+        "name": localized_text(
+            lang,
+            "Mobility Starter 10GB",
+            "Mobilité Départ 10 Go",
+            "Movilidad Inicial 10 GB",
+        ),
+        "monthly_price": "35.00",
+        "speed_or_data": localized_text(
+            lang,
+            "10 GB 5G data",
+            "10 Go de données 5G",
+            "10 GB de datos 5G",
+        ),
+    }
+    if selected == "MOB-LITE":
+        mobility_plan = {
+            "plan_id": "MOB-LITE",
+            "name": localized_text(
+                lang,
+                "5G Essential 25GB",
+                "5G Essentiel 25 Go",
+                "5G Esencial 25 GB",
+            ),
+            "monthly_price": "45.00",
+            "speed_or_data": localized_text(
+                lang,
+                "25 GB 5G data",
+                "25 Go de données 5G",
+                "25 GB de datos 5G",
+            ),
+        }
+    elif selected == "MOB-UNLTD":
+        mobility_plan = {
+            "plan_id": "MOB-UNLTD",
+            "name": localized_text(
+                lang,
+                "5G Unlimited 60GB",
+                "5G Illimité 60 Go",
+                "5G Ilimitado 60 GB",
+            ),
+            "monthly_price": "55.00",
+            "speed_or_data": localized_text(
+                lang,
+                "60 GB 5G+ data",
+                "60 Go de données 5G+",
+                "60 GB de datos 5G+",
+            ),
+        }
+    elif selected == "MOB-PREM":
+        mobility_plan = {
+            "plan_id": "MOB-PREM",
+            "name": localized_text(
+                lang,
+                "5G North America Unlimited",
+                "5G Amérique du Nord Illimité",
+                "5G Norteamérica Ilimitado",
+            ),
+            "monthly_price": "75.00",
+            "speed_or_data": localized_text(
+                lang,
+                "100 GB 5G+ data",
+                "100 Go de données 5G+",
+                "100 GB de datos 5G+",
+            ),
+        }
+    tv_plan = {
+        "plan_id": "TV-STARTER",
+        "name": localized_text(
+            lang,
+            "Fibe TV Starter",
+            "Télé Fibe Départ",
+            "Fibe TV Inicial",
+        ),
+        "monthly_price": "25.00",
+        "speed_or_data": localized_text(
+            lang,
+            "35+ channels",
+            "35+ chaînes",
+            "35+ canales",
+        ),
+    }
+    if selected == "TV-MAX":
+        tv_plan = {
+            "plan_id": "TV-MAX",
+            "name": localized_text(
+                lang,
+                "Fibe TV Complete",
+                "Télé Fibe Complet",
+                "Fibe TV Completo",
+            ),
+            "monthly_price": "65.00",
+            "speed_or_data": localized_text(
+                lang,
+                "100+ channels",
+                "100+ chaînes",
+                "100+ canales",
+            ),
+        }
+    return {
+        "internet": internet_plan,
+        "mobility": mobility_plan,
+        "tv": tv_plan,
+    }
+
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INVALID_INPUT",
     "NOT_FOUND",
@@ -617,48 +839,6 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
         ),
     },
 }
-
-def resolve_locale(language: str | None) -> str:  # pragma: no cover
-    """Normalize a language tag, name, or code into a canonical BCP-47 locale."""
-    raw = str(language or "").strip()
-    if not raw:
-        return "en-US"
-    low = raw.lower().replace("_", "-")
-    if low in ("primary",) or low.startswith(("en", "english", "anglais")):
-        return "en-US"
-    if low in ("secondary",) or low.startswith(("fr", "french", "francais", "français")):
-        return "fr-CA"
-    if low.startswith(("es", "spanish", "espanol", "español")):
-        return "es-US"
-    if low.startswith(("pt", "portug")):
-        return "pt-BR"
-    if low.startswith(("de", "german", "deutsch")):
-        return "de-DE"
-    if low.startswith(("it", "ital")):
-        return "it-IT"
-    if low.startswith(("zh", "chin", "mandarin")):
-        return "zh-CN"
-    if low.startswith(("hi", "hindi")):
-        return "hi-IN"
-    if low.startswith(("ar", "arab")):
-        return "ar-XA"
-    if low.startswith(("ja", "japan")):
-        return "ja-JP"
-    if low.startswith(("ko", "korean")):
-        return "ko-KR"
-    m = re.match(r"^([a-zA-Z]{2,3})-([a-zA-Z0-9]{2,4})$", raw)
-    if m:
-        return f"{m.group(1).lower()}-{m.group(2).upper()}"
-    return "en-US"
-
-def resolve_copy_locale(language: str | None) -> str:  # pragma: no cover
-    """Pick one of the three primary supported copy locales."""
-    loc = resolve_locale(language)
-    if loc == "fr-CA":
-        return "fr-CA"
-    if loc == "es-US":
-        return "es-US"
-    return "en-US"
 
 def tracking_id(prefix: str, *parts: object) -> str:  # pragma: no cover
     """Return a deterministic short reference number (R followed by 6 digits)."""
@@ -1224,15 +1404,6 @@ def find_account(identifier: Any, first_name: str = "") -> dict[str, Any] | None
 
     return None
 
-def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:  # pragma: no cover
-    """Return text localized for the caller's target language."""
-    loc = resolve_copy_locale(language)
-    if loc == "fr-CA":
-        return fr
-    if loc == "es-US":
-        return es or en
-    return en
-
 ALWAYS_WRONG_LOGIN_CODES: frozenset[str] = frozenset(  # pragma: no cover
     {"0000", "000000", "1111", "111111", "9999", "999999"}
 )
@@ -1653,14 +1824,17 @@ def verify_login_impl(  # pragma: no cover
             state["card_last4"] = "7742"
         if not state.get("bank_last4"):
             state["bank_last4"] = "6789"
+        pass_data: dict[str, Any] = {
+            "verified": True,
+            "logged_in": True,
+            "auth_status": "pass",
+            "current_balance": state.get("current_balance", "85.50"),
+            "is_suspended": state.get("is_suspended", False),
+        }
+        if bool(state.get("browsed_plan_category")):
+            pass_data["current_active_plans"] = _active_account_plans(state, lang)
         return ok_reply(
-            {
-                "verified": True,
-                "logged_in": True,
-                "auth_status": "pass",
-                "current_balance": state.get("current_balance", "85.50"),
-                "is_suspended": state.get("is_suspended", False),
-            },
+            pass_data,
             reference,
             language=lang,
         )
@@ -1808,14 +1982,17 @@ def verify_login_impl(  # pragma: no cover
     else:
         state["login_channel"] = "sms"
 
+    pass_data_final: dict[str, Any] = {
+        "verified": True,
+        "logged_in": True,
+        "auth_status": "pass",
+        "current_balance": state.get("current_balance", "85.50"),
+        "is_suspended": state.get("is_suspended", False),
+    }
+    if bool(state.get("browsed_plan_category")):
+        pass_data_final["current_active_plans"] = _active_account_plans(state, lang)
     return ok_reply(
-        {
-            "verified": True,
-            "logged_in": True,
-            "auth_status": "pass",
-            "current_balance": state.get("current_balance", "85.50"),
-            "is_suspended": state.get("is_suspended", False),
-        },
+        pass_data_final,
         reference,
         language=lang,
     )

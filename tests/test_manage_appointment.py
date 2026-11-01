@@ -86,3 +86,29 @@ def test_manage_appointment_reschedule_numeric_and_spanish_window(monkeypatch) -
     res_s3 = tool.manage_appointment(action="reschedule", selected_slot=3, language="en-US")
     assert res_s3["status"] == "ok"
     assert res_s3["data"]["slot_id"] == "SLOT-3"
+
+
+def test_manage_appointment_reschedule_dynamic_dates(monkeypatch) -> None:
+    from datetime import date, timedelta
+
+    today = date.today()
+    session = SimpleNamespace(
+        state={"auth_status": "pass", "account_id": "A1001", "active_appointment_id": "APT-4021"}
+    )
+    monkeypatch.setattr(tool, "context", session, raising=False)
+
+    res_slot2 = tool.manage_appointment(action="reschedule", selected_slot="SLOT-2", language="en-US")
+    assert res_slot2["status"] == "ok"
+    assert res_slot2["data"]["slot_id"] == "SLOT-2"
+    assert res_slot2["data"]["scheduled_date"] == (today + timedelta(days=2)).isoformat()
+
+    res_slot3 = tool.manage_appointment(action="reschedule", selected_slot="SLOT-3", language="en-US")
+    assert res_slot3["status"] == "ok"
+    assert res_slot3["data"]["slot_id"] == "SLOT-3"
+    assert res_slot3["data"]["scheduled_date"] == (today + timedelta(days=3)).isoformat()
+
+    res_fallback = tool.manage_appointment(action="reschedule", selected_slot="", language="en-US")
+    assert res_fallback["status"] == "ok"
+    assert res_fallback["data"]["slot_id"] == "SLOT-1"
+    assert res_fallback["data"]["scheduled_date"] == (today + timedelta(days=2)).isoformat()
+

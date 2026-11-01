@@ -81,3 +81,22 @@ def test_get_appointment_and_ticket_status_single_language_replies(
         assert "window_fr" not in s
         assert "window_es" not in s
 
+
+def test_get_appointment_and_ticket_status_dynamic_relative_dates(monkeypatch) -> None:
+    from datetime import date, timedelta
+
+    today = date.today()
+    session = SimpleNamespace(state={"auth_status": "pass", "account_id": "A1001"})
+    monkeypatch.setattr(tool, "context", session, raising=False)
+    res = tool.get_appointment_and_ticket_status(language="en-US")
+    assert res["status"] == "ok"
+    data = res["data"]
+    assert data["scheduled_date"] == today.isoformat()
+    assert data["active_appointment"]["scheduled_date"] == today.isoformat()
+    assert data["repair_ticket"]["reported_date"] == (today - timedelta(days=2)).isoformat()
+    slots = data["available_slots"]
+    assert slots[0]["date"] == (today + timedelta(days=2)).isoformat()
+    assert slots[1]["date"] == (today + timedelta(days=2)).isoformat()
+    assert slots[2]["date"] == (today + timedelta(days=3)).isoformat()
+
+

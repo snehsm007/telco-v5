@@ -288,6 +288,228 @@ FAKE_PLAN_CATALOG: dict[str, list[dict[str, Any]]] = {  # pragma: no cover
 
 SALES_TAX_RATE: float = 0.15  # pragma: no cover
 
+def resolve_locale(language: str | None) -> str:  # pragma: no cover
+    """Normalize a language tag, name, or code into a canonical BCP-47 locale."""
+    raw = str(language or "").strip()
+    if not raw:
+        return "en-US"
+    low = raw.lower().replace("_", "-")
+    if low in ("primary",) or low.startswith(("en", "english", "anglais")):
+        return "en-US"
+    if low in ("secondary",) or low.startswith(("fr", "french", "francais", "français")):
+        return "fr-CA"
+    if low.startswith(("es", "spanish", "espanol", "español")):
+        return "es-US"
+    if low.startswith(("pt", "portug")):
+        return "pt-BR"
+    if low.startswith(("de", "german", "deutsch")):
+        return "de-DE"
+    if low.startswith(("it", "ital")):
+        return "it-IT"
+    if low.startswith(("zh", "chin", "mandarin")):
+        return "zh-CN"
+    if low.startswith(("hi", "hindi")):
+        return "hi-IN"
+    if low.startswith(("ar", "arab")):
+        return "ar-XA"
+    if low.startswith(("ja", "japan")):
+        return "ja-JP"
+    if low.startswith(("ko", "korean")):
+        return "ko-KR"
+    m = re.match(r"^([a-zA-Z]{2,3})-([a-zA-Z0-9]{2,4})$", raw)
+    if m:
+        return f"{m.group(1).lower()}-{m.group(2).upper()}"
+    return "en-US"
+
+def resolve_copy_locale(language: str | None) -> str:  # pragma: no cover
+    """Pick one of the three primary supported copy locales."""
+    loc = resolve_locale(language)
+    if loc == "fr-CA":
+        return "fr-CA"
+    if loc == "es-US":
+        return "es-US"
+    return "en-US"
+
+def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:  # pragma: no cover
+    """Return text localized for the caller's target language."""
+    loc = resolve_copy_locale(language)
+    if loc == "fr-CA":
+        return fr
+    if loc == "es-US":
+        return es or en
+    return en
+
+def _active_account_plans(  # pragma: no cover
+    state: dict[str, Any],
+    lang: str = "en-US",
+) -> dict[str, dict[str, str]]:
+    """Return localized active service plan details for an authenticated residential account."""
+    selected = str(state.get("selected_plan_id") or "").strip().upper()
+    dl_100 = localized_text(lang, "100 Mbps", "100 Mbit/s", "100 Mbps")
+    dl_500 = localized_text(lang, "500 Mbps", "500 Mbit/s", "500 Mbps")
+    dl_1g = localized_text(lang, "1 Gbps", "1 Gbit/s", "1 Gbps")
+    internet_plan = {
+        "plan_id": "NET-STARTER",
+        "name": localized_text(
+            lang,
+            "Fiber Internet 100",
+            "Fibre Internet 100",
+            "Fibra Internet 100",
+        ),
+        "monthly_price": "45.00",
+        "speed_or_data": localized_text(
+            lang,
+            "100 Mbps symmetrical",
+            "100 Mbit/s symétrique",
+            "100 Mbps simétricos",
+        ),
+        "download_speed": dl_100,
+        "upload_speed": dl_100,
+    }
+    if selected == "NET-PLUS":
+        internet_plan = {
+            "plan_id": "NET-PLUS",
+            "name": localized_text(
+                lang,
+                "Fiber Internet 500",
+                "Fibre Internet 500",
+                "Fibra Internet 500",
+            ),
+            "monthly_price": "75.00",
+            "speed_or_data": localized_text(
+                lang,
+                "500 Mbps symmetrical",
+                "500 Mbit/s symétrique",
+                "500 Mbps simétricos",
+            ),
+            "download_speed": dl_500,
+            "upload_speed": dl_500,
+        }
+    elif selected == "NET-GIG":
+        internet_plan = {
+            "plan_id": "NET-GIG",
+            "name": localized_text(
+                lang,
+                "Gigabit Fiber",
+                "Fibre Gigabit",
+                "Fibra Gigabit",
+            ),
+            "monthly_price": "95.00",
+            "speed_or_data": localized_text(
+                lang,
+                "1 Gbps symmetrical",
+                "1 Gbit/s symétrique",
+                "1 Gbps simétrico",
+            ),
+            "download_speed": dl_1g,
+            "upload_speed": dl_1g,
+        }
+    mobility_plan = {
+        "plan_id": "MOB-STARTER",
+        "name": localized_text(
+            lang,
+            "Mobility Starter 10GB",
+            "Mobilité Départ 10 Go",
+            "Movilidad Inicial 10 GB",
+        ),
+        "monthly_price": "35.00",
+        "speed_or_data": localized_text(
+            lang,
+            "10 GB 5G data",
+            "10 Go de données 5G",
+            "10 GB de datos 5G",
+        ),
+    }
+    if selected == "MOB-LITE":
+        mobility_plan = {
+            "plan_id": "MOB-LITE",
+            "name": localized_text(
+                lang,
+                "5G Essential 25GB",
+                "5G Essentiel 25 Go",
+                "5G Esencial 25 GB",
+            ),
+            "monthly_price": "45.00",
+            "speed_or_data": localized_text(
+                lang,
+                "25 GB 5G data",
+                "25 Go de données 5G",
+                "25 GB de datos 5G",
+            ),
+        }
+    elif selected == "MOB-UNLTD":
+        mobility_plan = {
+            "plan_id": "MOB-UNLTD",
+            "name": localized_text(
+                lang,
+                "5G Unlimited 60GB",
+                "5G Illimité 60 Go",
+                "5G Ilimitado 60 GB",
+            ),
+            "monthly_price": "55.00",
+            "speed_or_data": localized_text(
+                lang,
+                "60 GB 5G+ data",
+                "60 Go de données 5G+",
+                "60 GB de datos 5G+",
+            ),
+        }
+    elif selected == "MOB-PREM":
+        mobility_plan = {
+            "plan_id": "MOB-PREM",
+            "name": localized_text(
+                lang,
+                "5G North America Unlimited",
+                "5G Amérique du Nord Illimité",
+                "5G Norteamérica Ilimitado",
+            ),
+            "monthly_price": "75.00",
+            "speed_or_data": localized_text(
+                lang,
+                "100 GB 5G+ data",
+                "100 Go de données 5G+",
+                "100 GB de datos 5G+",
+            ),
+        }
+    tv_plan = {
+        "plan_id": "TV-STARTER",
+        "name": localized_text(
+            lang,
+            "Fibe TV Starter",
+            "Télé Fibe Départ",
+            "Fibe TV Inicial",
+        ),
+        "monthly_price": "25.00",
+        "speed_or_data": localized_text(
+            lang,
+            "35+ channels",
+            "35+ chaînes",
+            "35+ canales",
+        ),
+    }
+    if selected == "TV-MAX":
+        tv_plan = {
+            "plan_id": "TV-MAX",
+            "name": localized_text(
+                lang,
+                "Fibe TV Complete",
+                "Télé Fibe Complet",
+                "Fibe TV Completo",
+            ),
+            "monthly_price": "65.00",
+            "speed_or_data": localized_text(
+                lang,
+                "100+ channels",
+                "100+ chaînes",
+                "100+ canales",
+            ),
+        }
+    return {
+        "internet": internet_plan,
+        "mobility": mobility_plan,
+        "tv": tv_plan,
+    }
+
 ERROR_CODES: tuple[str, ...] = (  # pragma: no cover
     "INVALID_INPUT",
     "NOT_FOUND",
@@ -851,48 +1073,6 @@ LOCALIZED_ERROR_DEFAULTS: dict[str, dict[str, tuple[str, str]]] = {  # pragma: n
     },
 }
 
-def resolve_locale(language: str | None) -> str:  # pragma: no cover
-    """Normalize a language tag, name, or code into a canonical BCP-47 locale."""
-    raw = str(language or "").strip()
-    if not raw:
-        return "en-US"
-    low = raw.lower().replace("_", "-")
-    if low in ("primary",) or low.startswith(("en", "english", "anglais")):
-        return "en-US"
-    if low in ("secondary",) or low.startswith(("fr", "french", "francais", "français")):
-        return "fr-CA"
-    if low.startswith(("es", "spanish", "espanol", "español")):
-        return "es-US"
-    if low.startswith(("pt", "portug")):
-        return "pt-BR"
-    if low.startswith(("de", "german", "deutsch")):
-        return "de-DE"
-    if low.startswith(("it", "ital")):
-        return "it-IT"
-    if low.startswith(("zh", "chin", "mandarin")):
-        return "zh-CN"
-    if low.startswith(("hi", "hindi")):
-        return "hi-IN"
-    if low.startswith(("ar", "arab")):
-        return "ar-XA"
-    if low.startswith(("ja", "japan")):
-        return "ja-JP"
-    if low.startswith(("ko", "korean")):
-        return "ko-KR"
-    m = re.match(r"^([a-zA-Z]{2,3})-([a-zA-Z0-9]{2,4})$", raw)
-    if m:
-        return f"{m.group(1).lower()}-{m.group(2).upper()}"
-    return "en-US"
-
-def resolve_copy_locale(language: str | None) -> str:  # pragma: no cover
-    """Pick one of the three primary supported copy locales."""
-    loc = resolve_locale(language)
-    if loc == "fr-CA":
-        return "fr-CA"
-    if loc == "es-US":
-        return "es-US"
-    return "en-US"
-
 def tracking_id(prefix: str, *parts: object) -> str:  # pragma: no cover
     """Return a deterministic short reference number (R followed by 6 digits)."""
     raw = "|".join([prefix, *(str(value).strip().lower() for value in parts)])
@@ -1325,15 +1505,6 @@ def localize_catalog_copy(text: str, language: str | None = "en-US") -> str:  # 
         return entry.get(loc, text)
     return text
 
-def localized_text(language: str | None, en: str, fr: str, es: str = "") -> str:  # pragma: no cover
-    """Return text localized for the caller's target language."""
-    loc = resolve_copy_locale(language)
-    if loc == "fr-CA":
-        return fr
-    if loc == "es-US":
-        return es or en
-    return en
-
 OK_STATUS = _StatusStr("ok")  # pragma: no cover
 
 def ok_reply(  # pragma: no cover
@@ -1400,6 +1571,7 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
         state["service_address"] = s_addr
 
     cat = str(category or "internet").lower()
+    state["browsed_plan_category"] = cat
     catalog = FAKE_PLAN_CATALOG.get(cat, FAKE_PLAN_CATALOG["internet"])
 
     max_b = _parse_positive_money(max_budget)
@@ -1433,6 +1605,9 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
         p_copy["estimated_tax"] = str(p_tax)
         p_copy["estimated_total_monthly"] = str(p_total)
         p_copy["monthly_total_with_tax"] = str(p_total)
+        if max_b is not None:
+            p_copy["within_budget_before_tax"] = bool(p_price <= max_b)
+            p_copy["within_budget_after_tax"] = bool(p_total <= max_b)
         p_copy.setdefault("contract_required", False)
         shortlist.append(p_copy)
         if len(shortlist) >= 3:
@@ -1457,6 +1632,9 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
             p_copy["estimated_tax"] = str(p_tax)
             p_copy["estimated_total_monthly"] = str(p_total)
             p_copy["monthly_total_with_tax"] = str(p_total)
+            if max_b is not None:
+                p_copy["within_budget_before_tax"] = bool(p_price <= max_b)
+                p_copy["within_budget_after_tax"] = bool(p_total <= max_b)
             p_copy.setdefault("contract_required", False)
             shortlist.append(p_copy)
 
@@ -1532,6 +1710,9 @@ def browse_plans_and_coverage_impl(  # pragma: no cover
             "Fibre Internet 500 ou Fibre Gigabit",
             "Fibra Internet 500 o Fibra Gigabit",
         )
+
+    if state.get("auth_status") == "pass":
+        browse_payload["current_active_plans"] = _active_account_plans(state, lang)
 
     return ok_reply(
         browse_payload,

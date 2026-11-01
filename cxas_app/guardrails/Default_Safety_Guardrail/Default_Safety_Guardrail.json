@@ -4,7 +4,7 @@
   "enabled": true,
   "action": {
     "generativeAnswer": {
-      "prompt": "Reply in the exact same language the caller is using in one short polite sentence: I cannot fulfill that request. How else may I assist with your account?"
+      "prompt": "Respond strictly in the exact same language the caller is speaking in the conversation (for example French if the caller spoke French, Spanish if Spanish, or English if English; never reply in English on a French or Spanish call). In one brief, polite sentence in the caller's language, apologize and ask them to rephrase their request or share their account details so you can help."
     }
   },
   "modelSafety": {

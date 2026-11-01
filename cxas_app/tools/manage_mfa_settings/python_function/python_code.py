@@ -20,7 +20,7 @@ def manage_mfa_settings(
         lost_authenticator: Flag indicating lost primary MFA device.
         step_up_code: Backup verification code entered by user.
         preferred_mfa_channel: MFA communication channel (e.g. 'sms').
-        identifier: Account identifier or phone number.
+        identifier: Optional phone, account number, or email address if not already in session.
         verification_code: Alternative verification code parameter.
         language: Preferred language code.
 
@@ -980,6 +980,13 @@ def is_placeholder_code(val: Any) -> bool:  # pragma: no cover
 
 _is_placeholder_code = is_placeholder_code  # pragma: no cover
 
+def _is_placeholder_email(email_str: str) -> bool:  # pragma: no cover
+    """Return True when an email string is empty or a synthetic user...@example.com placeholder."""
+    clean = str(email_str or "").strip()
+    if not clean:
+        return True
+    return bool(re.fullmatch(r"user\d*@example\.com", clean, re.IGNORECASE))
+
 def _record_audit(state: dict[str, Any]) -> None:  # pragma: no cover
     """Increment audit log count inside auth, mutation, and handover tools."""
     state["audit_log_count"] = read_count(state, "audit_log_count") + 1
@@ -1192,7 +1199,7 @@ def _resolve_session_email_and_mask(  # pragma: no cover
 
     if (not email_on_file or email_on_file == "user@example.com") and state.get("account_id"):
         acc = find_account(state.get("account_id"))
-        if acc and acc.get("email"):
+        if acc and acc.get("email") and not _is_placeholder_email(acc["email"]):
             email_on_file = acc["email"]
             state["contact_email"] = email_on_file
 
@@ -1200,8 +1207,25 @@ def _resolve_session_email_and_mask(  # pragma: no cover
         email_on_file = "user@example.com"
         state["contact_email"] = email_on_file
 
-    first_char = email_on_file[:1].lower() if email_on_file else "u"
     domain = email_on_file.split("@")[-1] if "@" in email_on_file else "example.com"
+    if _is_placeholder_email(email_on_file):
+        first_char = ""
+        masked = f"***@{domain}"
+        spoken = localized_text(
+            lang,
+            "For your security, I just sent a 6-digit verification code to the email address on file — please read it back to me.",
+            "Pour votre sécurité, je viens d'envoyer un code de vérification à 6 chiffres à l'adresse courriel au dossier — veuillez me le lire.",
+            "Por su seguridad, acabo de enviar un código de verificación de 6 dígitos al correo electrónico registrado; por favor léamelo.",
+        )
+        action_text = localized_text(
+            lang,
+            f"Refer to the destination as 'the email address on file' without proactively naming an initial letter; if the caller asks to verify the email or domain, confirm the domain @{domain} or send the code to an email address they provide.",
+            f"Mentionnez la destination comme « l'adresse courriel au dossier » sans annoncer d'initiale spontanément; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
+            f"Mencione el destino como 'el correo electrónico registrado' sin indicar una inicial espontáneamente; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
+        )
+        return email_on_file, first_char, domain, masked, spoken, action_text
+
+    first_char = email_on_file[:1].lower()
     masked = f"{first_char}***@{domain}"
 
     spoken = localized_text(
@@ -1633,12 +1657,24 @@ def manage_mfa_settings_impl(  # pragma: no cover
     if mock_err:
         return mock_err
 
+    id_val: str | int | float = identifier
+    caller_email = str(kwargs.get("email") or "").strip()
+    if not caller_email and "@" in str(id_val or "").strip():
+        caller_email = str(id_val).strip()
+    if "@" in str(id_val or "").strip():
+        id_val = ""
+
     caller_fn = str(kwargs.get("full_name") or kwargs.get("caller_name") or kwargs.get("first_name") or "").strip()
-    if caller_fn and (not state.get("contact_email") or state.get("contact_email") == "user@example.com"):
+    if caller_fn and (not state.get("contact_email") or _is_placeholder_email(str(state.get("contact_email") or ""))):
         state["contact_email"] = f"{caller_fn.split()[0].lower()}@example.com"
 
-    if identifier and not state.get("account_id"):
-        lookup_account_impl(identifier=identifier, language=lang, state=state, full_name=caller_fn)
+    if str(id_val or "").strip() and not state.get("account_id"):
+        lookup_account_impl(identifier=id_val, email=caller_email, language=lang, state=state, full_name=caller_fn)
+    if caller_email and "@" in caller_email:
+        state["contact_email"] = caller_email
+        if not state.get("account_id"):
+            lookup_account_impl(email=caller_email, language=lang, state=state, full_name=caller_fn)
+        state["contact_email"] = caller_email
 
     account_id = str(state.get("account_id") or "")
     reference = tracking_id("manage_mfa_settings", account_id, str(action))
@@ -1736,27 +1772,43 @@ def manage_mfa_settings_impl(  # pragma: no cover
             state["mfa_email_code_sent"] = True
             email_on_file, first_char, domain, masked, spoken, action_text = _resolve_session_email_and_mask(state, lang)
             if already_sent:
-                spoken = localized_text(
-                    lang,
-                    f"I have resent the 6-digit verification code to the email address on file starting with '{first_char}' — please check your inbox and read it back to me.",
-                    f"J'ai renvoyé le code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez vérifier votre boîte de réception et me le lire.",
-                    f"He reenviado el código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor revise su bandeja de entrada y léamelo.",
-                )
-                action_text = localized_text(
-                    lang,
-                    f"Confirm that the 6-digit verification code was resent to the email address on file starting with '{first_char}' and ask the caller to read it back.",
-                    f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier commençant par « {first_char} » et demandez au client de vous le lire.",
-                    f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado que comienza con '{first_char}' y pídale a quien llama que se lo lea.",
-                )
-            rep_data = {
+                if first_char:
+                    spoken = localized_text(
+                        lang,
+                        f"I have resent the 6-digit verification code to the email address on file starting with '{first_char}' — please check your inbox and read it back to me.",
+                        f"J'ai renvoyé le code de vérification à 6 chiffres à l'adresse courriel au dossier commençant par « {first_char} » — veuillez vérifier votre boîte de réception et me le lire.",
+                        f"He reenviado el código de verificación de 6 dígitos al correo electrónico registrado que comienza con '{first_char}'; por favor revise su bandeja de entrada y léamelo.",
+                    )
+                    action_text = localized_text(
+                        lang,
+                        f"Confirm that the 6-digit verification code was resent to the email address on file starting with '{first_char}' and ask the caller to read it back.",
+                        f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier commençant par « {first_char} » et demandez au client de vous le lire.",
+                        f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado que comienza con '{first_char}' y pídale a quien llama que se lo lea.",
+                    )
+                else:
+                    spoken = localized_text(
+                        lang,
+                        "I have resent the 6-digit verification code to the email address on file — please check your inbox and read it back to me.",
+                        "J'ai renvoyé le code de vérification à 6 chiffres à l'adresse courriel au dossier — veuillez vérifier votre boîte de réception et me le lire.",
+                        "He reenviado el código de verificación de 6 dígitos al correo electrónico registrado; por favor revise su bandeja de entrada y léamelo.",
+                    )
+                    action_text = localized_text(
+                        lang,
+                        f"Confirm that the 6-digit verification code was resent to the email address on file without proactively naming an initial letter and ask the caller to read it back; if the caller asks to verify the email or domain, confirm the domain @{domain} or send the code to an email address they provide.",
+                        f"Confirmez que le code de vérification à 6 chiffres a été renvoyé à l'adresse courriel au dossier sans annoncer d'initiale spontanément et demandez au client de vous le lire; si le client demande de vérifier l'adresse courriel ou le domaine, confirmez le domaine @{domain} ou envoyez le code à l'adresse courriel qu'il indique.",
+                        f"Confirme que el código de verificación de 6 dígitos se reenvió al correo electrónico registrado sin indicar una inicial espontáneamente y pídale a quien llama que se lo lea; si el cliente pide verificar el correo o el dominio, confirme el dominio @{domain} o envíe el código al correo que indique.",
+                    )
+            rep_data: dict[str, Any] = {
                 "requires_email_step_up": True,
                 "requires_step_up": True,
                 "step_up_channel": "email",
+                "email_domain": domain,
                 "mfa_updated": False,
-                "masked_backup_email": masked,
                 "spoken_message": spoken,
                 "agent_action": action_text,
             }
+            if masked:
+                rep_data["masked_backup_email"] = masked
             if already_sent:
                 rep_data["code_resent"] = True
             reply = ok_reply(
