@@ -810,6 +810,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Je peux uniquement vous aider avec les services de télécommunications et les demandes de compte Telco. Merci de votre appel, au revoir.",
         "es-US": "Solo puedo ayudarle con servicios de telecomunicaciones y solicitudes de cuenta de Telco. Gracias por llamar, hasta luego.",
     },
+    "polite_closing": {
+        "en-US": "Thank you for calling Telco. Goodbye.",
+        "fr-CA": "Merci d'avoir appelé Telco. Au revoir.",
+        "es-US": "Gracias por llamar a Telco. Hasta luego.",
+    },
 }
 
 def spoken_line(key: str, language: str | None = "en-US", *args: object, **slots: object) -> str:  # pragma: no cover

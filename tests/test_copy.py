@@ -178,3 +178,12 @@ def test_localized_error_defaults() -> None:
             err_msg, agent_action = LOCALIZED_ERROR_DEFAULTS[loc][code]
             assert isinstance(err_msg, str) and len(err_msg) > 0
             assert isinstance(agent_action, str) and len(agent_action) > 0
+
+
+def test_closing_and_deflection_spoken_lines() -> None:
+    for key in ("blocked_caller_deflection", "malicious_closing", "polite_closing"):
+        assert key in SPOKEN_LINES
+        for loc in ("en-US", "fr-CA", "es-US"):
+            line = spoken_line(key, loc)
+            assert isinstance(line, str) and len(line) > 10
+

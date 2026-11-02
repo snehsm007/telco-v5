@@ -97,3 +97,29 @@ def test_callbacks_coemitted_handover_and_end_session(cb) -> None:
     assert out is resp
     assert "cuenta comercial" in resp.content.parts[0].text
 
+
+@pytest.mark.parametrize("cb", ALL_AGENT_CALLBACKS)
+def test_callbacks_never_silent_on_end_session(cb) -> None:
+    from lib.copy import spoken_line
+
+    for reason, expected_key in (
+        ("blocked_caller", "blocked_caller_deflection"),
+        ("malicious_input", "malicious_closing"),
+        ("off_topic", "malicious_closing"),
+        ("resolved", "polite_closing"),
+    ):
+        parts = [
+            SimpleNamespace(
+                text=None,
+                function_call=SimpleNamespace(
+                    name="end_session",
+                    args={"reason": reason},
+                ),
+            )
+        ]
+        resp = SimpleNamespace(content=SimpleNamespace(parts=parts))
+        out = cb.after_model_callback(SimpleNamespace(state={"language": "fr-CA"}), resp)
+        assert out is resp
+        assert resp.content.parts[0].text == spoken_line(expected_key, "fr-CA")
+
+

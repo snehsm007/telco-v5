@@ -231,3 +231,134 @@ def test_multipart_handover_replacement_and_append_across_queues(callback) -> No
     assert resp_inline.content.parts[1].text == ""
     assert resp_inline.content.parts[1].function_call is fc_inline
 
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_end_session_blocked_caller_silent_and_partial_en_fr(callback) -> None:
+    from lib.copy import spoken_line
+
+    for loc in ("en-US", "fr-CA"):
+        expected = spoken_line("blocked_caller_deflection", loc)
+        # 1. Silent end_session(reason="blocked_caller")
+        resp_silent = SimpleNamespace(
+            content=SimpleNamespace(
+                parts=[
+                    SimpleNamespace(
+                        text=None,
+                        function_call=SimpleNamespace(
+                            name="end_session",
+                            args={"reason": "blocked_caller"},
+                        ),
+                    )
+                ]
+            )
+        )
+        out = callback.after_model_callback(SimpleNamespace(state={"language": loc}), resp_silent)
+        assert out is resp_silent
+        assert resp_silent.content.parts[0].text == expected
+
+        # 2. Partial non-verbatim spoken text with end_session(reason="blocked_caller")
+        resp_partial = SimpleNamespace(
+            content=SimpleNamespace(
+                parts=[
+                    SimpleNamespace(text="This number is restricted.", function_call=None),
+                    SimpleNamespace(
+                        text=None,
+                        function_call=SimpleNamespace(
+                            name="end_session",
+                            args={"reason": "blocked_caller"},
+                        ),
+                    ),
+                ]
+            )
+        )
+        out_p = callback.after_model_callback(SimpleNamespace(state={"language": loc}), resp_partial)
+        assert out_p is resp_partial
+        assert expected in resp_partial.content.parts[0].text
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_end_session_malicious_input_silent_en_fr(callback) -> None:
+    from lib.copy import spoken_line
+
+    for loc in ("en-US", "fr-CA"):
+        expected = spoken_line("malicious_closing", loc)
+        resp_silent = SimpleNamespace(
+            content=SimpleNamespace(
+                parts=[
+                    SimpleNamespace(
+                        text=None,
+                        function_call=SimpleNamespace(
+                            name="end_session",
+                            args={"reason": "malicious_input"},
+                        ),
+                    )
+                ]
+            )
+        )
+        out = callback.after_model_callback(SimpleNamespace(state={"language": loc}), resp_silent)
+        assert out is resp_silent
+        assert resp_silent.content.parts[0].text == expected
+
+
+@pytest.mark.parametrize("callback", CALLBACKS)
+def test_end_session_resolved_silent_and_existing_speech_en_fr(callback) -> None:
+    from lib.copy import spoken_line
+
+    for loc in ("en-US", "fr-CA"):
+        expected_polite = spoken_line("polite_closing", loc)
+        # 1. Silent end_session(reason="resolved")
+        resp_resolved = SimpleNamespace(
+            content=SimpleNamespace(
+                parts=[
+                    SimpleNamespace(
+                        text=None,
+                        function_call=SimpleNamespace(
+                            name="end_session",
+                            args={"reason": "resolved"},
+                        ),
+                    )
+                ]
+            )
+        )
+        out_r = callback.after_model_callback(SimpleNamespace(state={"language": loc}), resp_resolved)
+        assert out_r is resp_resolved
+        assert resp_resolved.content.parts[0].text == expected_polite
+
+        # 2. Silent end_session(args={}) with no reason
+        resp_empty = SimpleNamespace(
+            content=SimpleNamespace(
+                parts=[
+                    SimpleNamespace(
+                        text=None,
+                        function_call=SimpleNamespace(
+                            name="end_session",
+                            args={},
+                        ),
+                    )
+                ]
+            )
+        )
+        out_e = callback.after_model_callback(SimpleNamespace(state={"language": loc}), resp_empty)
+        assert out_e is resp_empty
+        assert resp_empty.content.parts[0].text == expected_polite
+
+        # 3. Normal closing already spoken with end_session(reason="resolved") -> unchanged
+        spoken_closing = "Thank you for calling, have a great day!"
+        resp_spoken = SimpleNamespace(
+            content=SimpleNamespace(
+                parts=[
+                    SimpleNamespace(text=spoken_closing, function_call=None),
+                    SimpleNamespace(
+                        text=None,
+                        function_call=SimpleNamespace(
+                            name="end_session",
+                            args={"reason": "resolved"},
+                        ),
+                    ),
+                ]
+            )
+        )
+        assert callback.after_model_callback(SimpleNamespace(state={"language": loc}), resp_spoken) is None
+        assert resp_spoken.content.parts[0].text == spoken_closing
+
+
