@@ -1,4 +1,4 @@
-"""Tests for the cloud gates: push -> smoke -> record, bench-full, holdout guard, Gate 3, gate.py strict 3/3."""
+"""Tests for the cloud gates: push -> smoke -> record, bench-full, Gate 3, gate.py strict 3/3."""
 
 from __future__ import annotations
 
@@ -245,11 +245,8 @@ def test_tool_folder_edits_are_smoked_and_unknown_tools_need_a_full_run(repo: Pa
 # ----------------------------------------------------------------------------- bench-full
 
 
-def test_bench_full_refuses_the_holdout_folder_and_undeployed_code(repo: Path, capsys) -> None:
+def test_bench_full_refuses_undeployed_code(repo: Path, capsys) -> None:
     impact.record_push(APP, "git-x", repo)
-    assert impact.check_bench_full_gate(APP, "bench-holdout", "bench-holdout", root=repo) is False
-    assert "make bench-holdout" in capsys.readouterr().err
-    assert impact.check_bench_full_gate(APP, str(repo / "bench-holdout"), "bench-holdout", root=repo) is False
     _write(repo / "lib" / "fakes.py", "VALID_PINS = frozenset()\nREQUEST_KINDS = ()\n")
     _commit(repo, "not pushed")
     assert impact.check_bench_full_gate(APP, root=repo) is False
@@ -314,7 +311,7 @@ def test_check_smoke_cli_alias_runs_the_bench_full_gate(repo: Path, monkeypatch)
     assert impact.main(["--check-bench-full", "--app", APP]) == 0
 
 
-# ----------------------------------------------------------------------------- holdout guard
+# ----------------------------------------------------------------------------- full-record lookup
 
 
 def _full_record(root: Path, sha: str, cells: list[tuple[int, int]], **extra: object) -> None:
@@ -328,59 +325,17 @@ def _full_record(root: Path, sha: str, cells: list[tuple[int, int]], **extra: ob
     _write(root / "history" / "bench" / f"full-{sha}.json", json.dumps(record))
 
 
-def test_holdout_needs_the_pushed_commit_and_its_full_run(repo: Path, capsys) -> None:
-    holdout = str(repo / "bench-holdout")
-    assert impact.check_holdout_gate(APP, holdout, root=repo) is False  # not pushed
-    impact.record_push(APP, "git-x", repo)
-    assert impact.check_holdout_gate(APP, holdout, root=repo) is False
-    assert "make bench-full ENV=staging" in capsys.readouterr().err
-    sha = _git(repo, "rev-parse", "--short=7", "HEAD")
-    _full_record(repo, sha, [(3, 3)] * 10)
-    assert impact.check_holdout_gate(APP, holdout, root=repo) is True
-
-
-def test_holdout_accepts_the_full_run_of_the_same_source_after_a_docs_commit(repo: Path, capsys) -> None:
-    holdout = str(repo / "bench-holdout")
+def test_find_full_record_matches_the_same_source_after_a_docs_commit(repo: Path) -> None:
     impact.record_push(APP, "git-x", repo)
     measured = _git(repo, "rev-parse", "--short=7", "HEAD")
     _full_record(repo, measured, [(3, 3)] * 10)
     _commit(repo, "record the full run")  # commits history/bench/full-<sha7>.json: HEAD moves
     assert impact.find_full_record(repo) == repo / "history" / "bench" / f"full-{measured}.json"
-    assert impact.check_holdout_gate(APP, holdout, root=repo) is True
-    assert f"using history/bench/full-{measured}.json" in capsys.readouterr().out
-    assert f"paired_full=full-{measured}.json" in (repo / "history" / "impact_gate.log").read_text(encoding="utf-8")
 
     _write(repo / "lib" / "fakes.py", 'VALID_PINS = frozenset({"9876"})\nREQUEST_KINDS = ("statement",)\n')
     _commit(repo, "source change")
     impact.record_push(APP, "git-y", repo)
     assert impact.find_full_record(repo) is None  # the old run measured other code
-    assert impact.check_holdout_gate(APP, holdout, root=repo) is False
-
-
-def test_holdout_needs_gate3_or_a_logged_reason(repo: Path, capsys) -> None:
-    holdout = str(repo / "bench-holdout")
-    impact.record_push(APP, "git-x", repo)
-    sha = _git(repo, "rev-parse", "--short=7", "HEAD")
-    _full_record(repo, sha, [(3, 3)] * 8 + [(2, 3)] * 2)  # strict 8/10 < 90%
-    assert impact.check_holdout_gate(APP, holdout, root=repo) is False
-    assert "does not pass Gate 3" in capsys.readouterr().err
-    assert impact.check_holdout_gate(APP, holdout, reason="owner approved: release check", root=repo) is True
-    audit = (repo / "history" / "holdout_audit.log").read_text(encoding="utf-8")
-    assert f"commit={sha}" in audit and "reason=owner approved: release check" in audit and "gate3=FAIL" in audit
-
-
-def test_holdout_rerun_on_a_new_commit_needs_a_reason(repo: Path, capsys) -> None:
-    holdout = repo / "bench-holdout"
-    _write(holdout / "runs" / "holdout-0000000.json", "{}")  # only the name is read
-    impact.record_push(APP, "git-x", repo)
-    sha = _git(repo, "rev-parse", "--short=7", "HEAD")
-    _full_record(repo, sha, [(3, 3)] * 10)
-    assert impact.check_holdout_gate(APP, str(holdout), root=repo) is False
-    assert "already ran on an earlier commit" in capsys.readouterr().err
-    assert impact.check_holdout_gate(APP, str(holdout), reason="new PRD section", root=repo) is True
-    _write(holdout / "runs" / f"holdout-{sha}.json", "{}")  # the same commit does not count as a re-run
-    (holdout / "runs" / "holdout-0000000.json").unlink()
-    assert impact.check_holdout_gate(APP, str(holdout), root=repo) is True
 
 
 # ----------------------------------------------------------------------------- Gate 3

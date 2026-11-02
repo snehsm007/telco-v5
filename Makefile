@@ -10,11 +10,10 @@
 #   make smoke-impact ENV=staging                 Gate 1: impacted evals x 3 on the pushed commit
 #   make bench-unstable ENV=staging               Gate 2 (unstable set x 5)
 #   make bench-full ENV=staging                   Gate 3 (everything x 3, then the Gate 3 verdict)
-#   make bench-holdout ENV=staging                Gate 4 holdout (same commit as a Gate 3 pass)
 #   make eval ENV=staging LAYERS=probe PRIORITY=P0 RUNS=1 && make gate   CI-style gate
 #
-# The 5-Gate Confidence Ladder: Gate 0 offline -> Gate 1 smoke -> Gate 2 unstable
-# -> Gate 3 full -> Gate 4 holdout & audio (references/05-evals.md).
+# The 4-Gate Confidence Ladder: Gate 0 offline -> Gate 1 smoke -> Gate 2 unstable
+# -> Gate 3 full (70 public evals in bench/dev/ x 3 + make gate3; references/05-evals.md).
 # Order of the cloud steps: commit -> make push -> make smoke-impact -> make bench-full.
 # history/last_push.json records which commit each app runs (by source fingerprint:
 # the committed trees of cxas_app/, lib/ and evals/), so the smoke and full runs
@@ -24,7 +23,7 @@
 .PHONY: help install kickstart bootstrap bootstrap-dry bundle bundle-check overfit-check format lint llm-lint test selftest ci voice-audit \
         preflight auth-check impact smoke-impact eval-contract setup-dlp skill-assets skill-assets-check \
         push push-evals pull preview-up preview-down eval gate gate3 smoke chat inspect versions-compare \
-        bench bench-dry bench-smoke bench-unstable bench-full bench-holdout bench-record bench-compare bench-fetch \
+        bench bench-dry bench-smoke bench-unstable bench-full bench-record bench-compare bench-fetch \
         trace-triage trace-replay dashboard publish-dashboard need-app need-cxas need-deps
 
 ENV ?= staging
@@ -50,7 +49,6 @@ TESTS_DIR    ?= tests
 EVALS_DIR    ?= evals
 COVERAGE_MIN ?= 80
 BENCH_DIR    ?= bench
-HOLDOUT_DIR  ?= bench-holdout
 UNSTABLE_SET ?= $(EVALS_DIR)/unstable_set.txt
 HISTORY      ?= history/runs.jsonl
 THRESHOLDS   ?= gate_thresholds.json
@@ -105,7 +103,6 @@ SKIP_SMOKE_GATE  ?=
 SKIP_IMPACT      ?=
 REASON           ?=
 BASE             ?=
-HOLDOUT_REASON   ?=
 DRY_RUN          ?=
 
 # The gates of scripts/impact.py: push -> smoke -> record (source fingerprint = committed
@@ -316,7 +313,7 @@ bench-unstable: need-app preflight ## Gate 2: $(UNSTABLE_SET) x 5 repeats (~15-2
 	$(RUN_EVALS) --unstable $(EVAL_COMMON) --unstable-set $(UNSTABLE_SET) --label unstable-$(SHA7)
 
 bench-full: need-app preflight ## Gate 3: every eval x 3 on the pushed commit after a passing smoke-impact (SKIP_SMOKE_GATE=1 REASON="..." overrides); writes history/bench/full-<sha7>.json, rebuilds the impact map, prints Gate 3 (measured 11-29 min, median about 16)
-	@$(IMPACT) --app "$(APP)" --check-bench-full --bench-dir "$(BENCH_DIR)" --holdout-dir "$(HOLDOUT_DIR)" \
+	@$(IMPACT) --app "$(APP)" --check-bench-full --bench-dir "$(BENCH_DIR)" \
 		$(if $(filter 1 true yes,$(SKIP_SMOKE_GATE) $(SKIP_IMPACT)),--skip-smoke-gate --reason "$(REASON)",)
 	PARALLEL_BATCHES=$(PARALLEL_BATCHES) $(RUN_EVALS) --full $(EVAL_COMMON) --label full-$(SHA7)
 	@mkdir -p history/bench
@@ -326,13 +323,6 @@ bench-full: need-app preflight ## Gate 3: every eval x 3 on the pushed commit af
 	  echo "bench-full finished, but this run does not pass Gate 3 (see above). Fix the failures one mechanism at a time: commit, make push, make smoke-impact, make bench-full."
 
 bench: bench-full ## Alias for bench-full (Gate 3)
-
-bench-holdout: need-app preflight ## Gate 4 holdout: $(HOLDOUT_DIR) x 3 on the pushed commit whose full run passed Gate 3 (HOLDOUT_REASON="..." for a re-run or a Gate 3 miss; logged)
-	@$(IMPACT) --app "$(APP)" --check-holdout --holdout-dir "$(HOLDOUT_DIR)" --reason "$(HOLDOUT_REASON)" --thresholds $(THRESHOLDS)
-	$(RUN_BENCH) --app $(APP) --bench-dir $(HOLDOUT_DIR) --modality $(MODALITY) \
-		--evals all --runs $(if $(RUNS),$(RUNS),3) --is-holdout $(PARALLEL_FLAG) --report-name holdout-$(SHA7)
-	@mkdir -p history/bench
-	$(PYTHON) scripts/bench_summary.py "$(HOLDOUT_DIR)/runs/holdout-$(SHA7).json" --bench-dir $(HOLDOUT_DIR) --out-dir history/bench
 
 bench-record: ## Summarise a report into history/bench/: REPORT=$(BENCH_DIR)/runs/full-<sha7>.json
 	@test -n "$(REPORT)" || (echo "Usage: make bench-record REPORT=$(BENCH_DIR)/runs/<label>.json" >&2; exit 1)

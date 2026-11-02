@@ -717,7 +717,7 @@ def build_run(
 
 
 def _select_baseline_full(runs: list[dict]) -> dict | None:
-    """Select the pre-hill-climb 50-eval baseline (v4_final_report if present, else first full run)."""
+    """Select the pre-hill-climb 70-eval baseline (v4_final_report if present, else first full run)."""
     for r in runs:
         if r["label"] == "v4_final_report":
             return r
@@ -1647,14 +1647,14 @@ def render_trend_svg(runs: list[dict]) -> str:
             )
     for x, y, r in zip(xs, ys, runs):
         color = "#0969da" if r["is_full_run"] else "#bf3989"
-        kind = "full 50" if r["is_full_run"] else "unstable 20"
+        kind = "full 70" if r["is_full_run"] else "unstable 20"
         parts.append(
             f"<a href='#run-{_e(r['label'])}' onclick=\"openRunAnchor('run-{_e(r['label'])}')\"><circle cx='{x:.1f}' cy='{y:.1f}' r='5' fill='{color}'>"
             f"<title>{_e(r['label'])} ({kind}): {r['passes']}/{r['total']} = {_pct(r['passes'], r['total'])}% ({_e(_fmt_ts(r['timestamp']))})</title></circle></a>"
             f"<text x='{x:.1f}' y='{h - pad + 14}' text-anchor='middle'>{_e(r['label'][:18])}</text>"
         )
     parts.append(
-        f"<text x='{pad}' y='14' fill='#0969da'>● full visible set (50 x 3)</text><text x='{pad + 220}' y='14' fill='#bf3989'>● unstable set (20 x 5)</text></svg>"
+        f"<text x='{pad}' y='14' fill='#0969da'>● full public set (70 x 3)</text><text x='{pad + 220}' y='14' fill='#bf3989'>● unstable set (20 x 5)</text></svg>"
     )
     return "".join(parts)
 
@@ -1693,7 +1693,7 @@ def render_run_section(run: dict, previous: dict | None, app_resource: str = "")
         "Targeted Smoke Batch (3 repeats per target)"
         if run.get("is_smoke_run")
         else (
-            "Full 50-Eval Suite (50 × 3 = 150 convs)"
+            "Full 70-Eval Suite (70 × 3 = 210 convs)"
             if run["is_full_run"]
             else "Unstable 20-Eval Suite (20 × 5 = 100 convs)"
         )
@@ -1880,11 +1880,11 @@ def _render_master_evals_block(master_evals: list[dict]) -> str:
             "</tr>"
         )
     return f"""
-<h2>Master 50-Evaluation Scorecard — Before vs. After</h2>
-<p class='muted small'>One clean row per evaluation (<code>VE-01..VE-50</code>) comparing the pre-hill-climb 50-eval baseline (<code>{_e(base_hdr)}</code>) against the latest 50-eval run (<code>{_e(full_hdr)}</code>) and any targeted smoke fix (<code>smoke-*</code>, shown in full in Tab 2). Click any red square (<code>F</code>) to open the conversation transcript &amp; judge breakdown, or click <b>CES Console ↗</b> to open the evaluation in GCP.</p>
+<h2>Master 70-Evaluation Scorecard — Before vs. After</h2>
+<p class='muted small'>One clean row per evaluation (<code>VE-01..VE-70</code>) comparing the pre-hill-climb 70-eval baseline (<code>{_e(base_hdr)}</code>) against the latest 70-eval run (<code>{_e(full_hdr)}</code>) and any targeted smoke fix (<code>smoke-*</code>, shown in full in Tab 2). Click any red square (<code>F</code>) to open the conversation transcript &amp; judge breakdown, or click <b>CES Console ↗</b> to open the evaluation in GCP.</p>
 <div class='filter-bar'>
   <select id='flt-status' onchange='filterMasterEvals()' aria-label='Filter by status'>
-    <option value='ALL'>All 50 Evaluations ({len(master_evals)})</option>
+    <option value='ALL'>All 70 Evaluations ({len(master_evals)})</option>
     <option value='STILL_FAILING'>Still Failing ({failing_cnt})</option>
     <option value='FLIPPED_PASS'>Flipped FAIL → PASS ({flipped_cnt})</option>
     <option value='PASSING'>Passing ({passing_cnt})</option>
@@ -1906,7 +1906,7 @@ def _render_master_evals_block(master_evals: list[dict]) -> str:
     <th>VE</th>
     <th>Scenario &amp; CES Console</th>
     <th>Before ({_e(base_hdr)})<div class='small muted' style='font-weight:400'>{_e(base_ts)}</div></th>
-    <th>Latest 50-Eval Suite ({_e(full_hdr)})<div class='small muted' style='font-weight:400'>{_e(full_ts)}</div></th>
+    <th>Latest 70-Eval Suite ({_e(full_hdr)})<div class='small muted' style='font-weight:400'>{_e(full_ts)}</div></th>
     <th>Targeted Fix Smoke (If Re-Tested)</th>
     <th>Current Status &amp; Proof</th>
     <th>Defect &amp; Node</th>
@@ -1932,7 +1932,7 @@ def render_index(model: dict) -> str:
     kpis = []
     if bf:
         kpis.append(
-            f"<div class='kpi'><span class='muted small'>Before — Baseline 50-Eval ({_e(bf['label'])})</span><b>{bf['majority_pass']}/{bf['evals_count']}</b><span class='small muted'>{bf['passes']}/{bf['total']} convs · {_e(_fmt_ts(bf['timestamp']))}</span></div>"
+            f"<div class='kpi'><span class='muted small'>Before — Baseline 70-Eval ({_e(bf['label'])})</span><b>{bf['majority_pass']}/{bf['evals_count']}</b><span class='small muted'>{bf['passes']}/{bf['total']} convs · {_e(_fmt_ts(bf['timestamp']))}</span></div>"
         )
     if master_evals:
         kpis.append(
@@ -1940,7 +1940,7 @@ def render_index(model: dict) -> str:
         )
     if lf and (not bf or lf["label"] != bf["label"]):
         kpis.append(
-            f"<div class='kpi'><span class='muted small'>Last 50-Eval Full Run ({_e(lf['label'])})</span><b>{lf['majority_pass']}/{lf['evals_count']}</b><span class='small muted'>{lf['passes']}/{lf['total']} convs · {_e(_fmt_ts(lf['timestamp']))}</span></div>"
+            f"<div class='kpi'><span class='muted small'>Last 70-Eval Full Run ({_e(lf['label'])})</span><b>{lf['majority_pass']}/{lf['evals_count']}</b><span class='small muted'>{lf['passes']}/{lf['total']} convs · {_e(_fmt_ts(lf['timestamp']))}</span></div>"
         )
     if ls:
         kpis.append(
@@ -1981,7 +1981,7 @@ def render_index(model: dict) -> str:
     )
     tab_smoke_html = f"""
 <h2>Targeted Failure Smoke Batches (<code>make bench-smoke</code>) <span class='pill pill-ours'>Step-by-Step Targeted Fixes</span></h2>
-<p class='muted small'>Each fix branch was tested first on only its target failing evaluations (3 repeats per target) before running the full 50-evaluation suite. Ordered chronologically from Batch 1 to Batch {len(smoke_runs)}.</p>
+<p class='muted small'>Each fix branch was tested first on only its target failing evaluations (3 repeats per target) before running the full 70-evaluation suite. Ordered chronologically from Batch 1 to Batch {len(smoke_runs)}.</p>
 <table>
   <tr><th>Batch &amp; Smoke Run</th><th>Time (UTC)</th><th>Commit</th><th>Defects Targeted</th><th>Targeted Evals (Pass/Total)</th><th>Batch Result</th></tr>
   {"".join(smoke_table_rows) or "<tr><td colspan=6 class='muted'>No targeted smoke runs recorded yet.</td></tr>"}
@@ -2015,23 +2015,6 @@ def render_index(model: dict) -> str:
         if va
         else "—"
     )
-    holdout_files = sorted(
-        (REPO / "history" / "bench").glob("holdout-*.json"),
-        key=lambda p: p.stat().st_mtime,
-    ) if (REPO / "history" / "bench").exists() else []
-    if holdout_files:
-        try:
-            hd = json.loads(holdout_files[-1].read_text(encoding="utf-8"))
-            hd_cell = (
-                f"<span class='ok'>PASS · {_e(hd.get('label', holdout_files[-1].stem))}: "
-                f"strict 3/3 {hd.get('strict_pass', '?')}/{hd.get('evals', 20)} · "
-                f"majority {hd.get('majority_pass', '?')}/{hd.get('evals', 20)} "
-                f"({hd.get('passes', '?')}/{hd.get('total', 60)} convs)</span>"
-            )
-        except Exception:
-            hd_cell = "<span class='muted'>Locked until visible suite verified &amp; owner approval</span>"
-    else:
-        hd_cell = "<span class='muted'>Locked until visible suite verified &amp; owner approval</span>"
     scorecard_block = f"""
 <h2>Multi-Layer Verification Gates <span class='pill pill-ours'>4-Gate Confidence Ladder</span></h2>
 <table>
@@ -2040,13 +2023,12 @@ def render_index(model: dict) -> str:
   <tr><td><b>Gate 0b — SCRAPI Voice Readiness Audit</b></td><td><code>audit_agent.py</code> (<code>make voice-audit</code>)</td><td>—</td><td><span class='ok'>{_e(va_score)}</span></td></tr>
   <tr><td><b>Gate 1 — Targeted Failure Cloud Smoke</b></td><td><code>make bench-smoke TARGETS=VE-xx</code> (3 repeats)</td><td>—</td><td><span class='ok'>{_e(ls_score)}</span></td></tr>
   <tr><td><b>Gate 2 — Working Gauge (20 Unstable Evals)</b></td><td><code>make bench-unstable</code> (20 &times; 5 = 100 convs)</td><td>67/100 convs (14/20)</td><td><b>{_e(lu_score)}</b></td></tr>
-  <tr><td><b>Gate 3 — Visible Public Eval Suite (50 Evals)</b></td><td><code>make bench-full</code> (50 &times; 3 = 150 convs)</td><td>{_e(bf_score)}</td><td><b>{_e(lf_score)}</b> · Effective with smoke fixes: <b>{effective_pass_cnt}/{len(master_evals) or 50}</b></td></tr>
-  <tr><td><b>Gate 4 — Holdout Gate (20 Hidden Evals)</b></td><td><code>make bench-holdout</code> (owner approval only)</td><td>Locked</td><td>{hd_cell}</td></tr>
+  <tr><td><b>Gate 3 — Public Eval Suite (70 Evals)</b></td><td><code>make bench-full</code> (70 &times; 3 = 210 convs) + <code>make gate3</code></td><td>{_e(bf_score)}</td><td><b>{_e(lf_score)}</b> · Effective with smoke fixes: <b>{effective_pass_cnt}/{len(master_evals) or 70}</b></td></tr>
 </table>"""
 
     run_rows = "".join(
         f"<tr><td><a href='#run-{_e(r['label'])}' onclick=\"openRunAnchor('run-{_e(r['label'])}')\">{_e(r['label'])}</a></td>"
-        f"<td>{'Full 50 × 3 (150 convs)' if r['is_full_run'] else 'Unstable 20 × 5 (100 convs)'}</td>"
+        f"<td>{'Full 70 × 3 (210 convs)' if r['is_full_run'] else 'Unstable 20 × 5 (100 convs)'}</td>"
         f"<td><code>{_e(r['commit'])}</code></td>"
         f"<td><b>{r['majority_pass'] if r['majority_pass'] is not None else '?'}/{r['evals_count']}</b> evals</td>"
         f"<td>{r['passes']}/{r['total']} ({_pct(r['passes'], r['total'])}%)</td>"
@@ -2122,7 +2104,7 @@ def render_index(model: dict) -> str:
         )
         scrapi_run_rows.append(
             f"<tr><td><a href='#run-{_e(r['label'])}' onclick=\"openRunAnchor('run-{_e(r['label'])}')\">{_e(r['label'])}</a></td>"
-            f"<td>{'Smoke Batch' if r.get('is_smoke_run') else ('Full 50×3' if r.get('is_full_run') else 'Unstable 20×5')}</td>"
+            f"<td>{'Smoke Batch' if r.get('is_smoke_run') else ('Full 70×3' if r.get('is_full_run') else 'Unstable 20×5')}</td>"
             f"<td>{_e(_fmt_ts(r['timestamp']))}</td>"
             f"<td>{len(r.get('conversations', []))} failing convs</td>"
             f"<td>{cat_badges}</td></tr>"
@@ -2152,11 +2134,11 @@ def render_index(model: dict) -> str:
     <div class='legend-bar'>
       <span class='pill pill-ours'>OUR REPO: Hill-Climb Ledger (history/bench, docs/defects.md, docs/experiment_log.md)</span>
       <span class='pill pill-scrapi'>SCRAPI BUILT-IN: audit_agent.py, triage-results.py, cxas trace CLI</span>
-      <span class='pill pill-borrow'>BORROWED UI: Clean Tabbed Navigation, 50-Eval Before/After Filter Matrix &amp; CES Console Links</span>
+      <span class='pill pill-borrow'>BORROWED UI: Clean Tabbed Navigation, 70-Eval Before/After Filter Matrix &amp; CES Console Links</span>
       <span class='muted small'>Updated {_e(_fmt_ts(model["generated_at"]))}</span>
     </div>
     <nav class='nav-tabs' role='tablist'>
-      <button class='tab-btn active' data-tab='tab-overview' onclick="switchTab('tab-overview')">1. 50-Eval Scorecard (Before → After)</button>
+      <button class='tab-btn active' data-tab='tab-overview' onclick="switchTab('tab-overview')">1. 70-Eval Scorecard (Before → After)</button>
       <button class='tab-btn' data-tab='tab-smoke' onclick="switchTab('tab-smoke')">2. Targeted Smoke Batches ({len(smoke_runs)})</button>
       <button class='tab-btn' data-tab='tab-runs' onclick="switchTab('tab-runs')">3. Full &amp; Unstable Suite Runs ({len(runs)})</button>
       <button class='tab-btn' data-tab='tab-defects' onclick="switchTab('tab-defects')">4. Defects (DEF-01..09) &amp; Iterations ({len(model["defects"])})</button>
@@ -2179,7 +2161,7 @@ def render_index(model: dict) -> str:
     {scorecard_block}
     <h2>Progress over time (Full &amp; Unstable Suite Runs Only)</h2>
     {render_trend_svg(runs)}
-    <h2>Full (50 × 3) &amp; Unstable (20 × 5) Suite Runs</h2>
+    <h2>Full (70 × 3) &amp; Unstable (20 × 5) Suite Runs</h2>
     <table><tr><th>run</th><th>suite type</th><th>commit</th><th>evals passed (majority)</th><th>conversations passed</th><th>top failing nodes</th><th>time (UTC)</th></tr>{run_rows}</table>
     <h2>Detailed Per-Run Breakdowns (Full &amp; Unstable Suites)</h2>
     {sections}

@@ -3026,7 +3026,6 @@ coverage.json
 # uv.lock stays local: on a Google cloudtop it points at the corp package mirror, which GitHub can't reach.
 uv.lock
 bench/runs/
-bench-holdout/runs/
 history/last_impact.json
 history/impact_gate.log
 history/eval_impact_map.json

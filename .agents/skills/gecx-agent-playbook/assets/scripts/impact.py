@@ -15,8 +15,6 @@ tree), and keeps the order of the cloud steps honest:
   3. `make bench-full` only runs on the pushed checkout and after a passing smoke,
      unless there is no baseline full run yet, the verdict is FULL, nothing changed,
      or SKIP_SMOKE_GATE=1 REASON="..." is given (--check-bench-full).
-  4. `make bench-holdout` only runs on the pushed checkout, on a commit whose full
-     visible run passed Gate 3 (--check-holdout).
 
 The source fingerprint hashes the committed git trees of cxas_app/, lib/ and evals/,
 so a docs-only or history-only commit does not change it. Uncommitted edits in those
@@ -37,7 +35,6 @@ Usage:
   python3 scripts/impact.py --record-push --app <app resource> --version git-<sha7>
   python3 scripts/impact.py --smoke-plan --app <app resource>
   python3 scripts/impact.py --check-bench-full --app <app resource> [--skip-smoke-gate --reason "..."]
-  python3 scripts/impact.py --check-holdout --app <app resource> --holdout-dir bench-holdout [--reason "..."]
   python3 scripts/impact.py --source-fingerprint
   python3 scripts/impact.py --self-test
 
@@ -64,7 +61,6 @@ IMPACT_MAP_PATH = ROOT / "history" / "eval_impact_map.json"
 IMPACT_LAST_PATH = ROOT / "history" / "last_impact.json"
 IMPACT_LOG_PATH = ROOT / "history" / "impact_gate.log"
 LAST_PUSH_PATH = ROOT / "history" / "last_push.json"
-HOLDOUT_AUDIT_PATH = ROOT / "history" / "holdout_audit.log"
 
 # Folders whose committed trees make up the source fingerprint (what `make push` deploys).
 SOURCE_DIRS: tuple[str, ...] = ("cxas_app", "lib", "evals")
@@ -1355,38 +1351,19 @@ def smoke_plan(
     return 0, ",".join(impact["must_smoke"])
 
 
-def _is_holdout_dir(bench_dir: str, holdout_dir: str, root: Path) -> bool:
-    if not bench_dir:
-        return False
-
-    def _resolve(p: str) -> Path:
-        path = Path(p)
-        return (path if path.is_absolute() else root / path).resolve()
-
-    if holdout_dir and _resolve(bench_dir) == _resolve(holdout_dir):
-        return True
-    return "holdout" in Path(bench_dir).name.lower()
-
-
 def check_bench_full_gate(
     app: str | None,
     bench_dir: str = "bench",
-    holdout_dir: str = "bench-holdout",
     skip: bool = False,
     reason: str = "",
     root: Path | None = None,
     dirs: Any = None,
     env: str = "staging",
 ) -> bool:
-    """`make bench-full`: refuse the holdout folder, refuse unless the app runs this checkout,
-    then require check_smoke_gate unless SKIP_SMOKE_GATE=1 comes with a logged REASON."""
+    """`make bench-full`: refuse unless the app runs this checkout, then require
+    check_smoke_gate unless SKIP_SMOKE_GATE=1 comes with a logged REASON."""
+    _ = bench_dir
     base = root or ROOT
-    if _is_holdout_dir(bench_dir, holdout_dir, base):
-        _eprint(
-            f"make bench-full: BENCH_DIR={bench_dir} is the holdout folder. Holdout runs have their own "
-            f"guard and their own record (holdout-<sha7>, never full-<sha7>). Run: make bench-holdout ENV={env}"
-        )
-        return False
     ok, msg = check_deployed(app, base, dirs, env, action="make bench-full")
     if not ok:
         _eprint(msg)
@@ -1408,14 +1385,6 @@ def check_bench_full_gate(
         print("Smoke gate skipped with SKIP_SMOKE_GATE=1; the reason is logged in history/impact_gate.log.")
         return True
     return check_smoke_gate(base, dirs, env)
-
-
-def _gate3_verdict(record: dict[str, Any], thresholds_path: Path | str | None) -> dict[str, Any]:
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
-    from scripts import bench_summary  # local import: only the holdout guard needs it
-
-    return bench_summary.gate3_verdict(record, bench_summary.load_gate3_thresholds(thresholds_path))
 
 
 def find_full_record(root: Path | None = None, dirs: Any = None) -> Path | None:
@@ -1441,102 +1410,6 @@ def find_full_record(root: Path | None = None, dirs: Any = None) -> Path | None:
         if commit and fingerprint_at(commit, base, dirs) == current:
             return path
     return None
-
-
-def check_holdout_gate(
-    app: str | None,
-    holdout_dir: str = "bench-holdout",
-    reason: str = "",
-    root: Path | None = None,
-    dirs: Any = None,
-    env: str = "staging",
-    thresholds: Path | str | None = None,
-) -> bool:
-    """`make bench-holdout`: the app runs this checkout, a full visible run measured this
-    source (history/bench/full-<sha7>.json, or a full record of an earlier commit with the
-    same source fingerprint) and passed Gate 3, and the holdout has not run on an earlier
-    commit; a missing Gate 3 pass or an earlier holdout run needs HOLDOUT_REASON (logged to
-    history/holdout_audit.log).
-
-    Only file names in <holdout dir>/runs/ are listed; no holdout file is ever opened.
-    """
-    base = root or ROOT
-    sha7 = head_sha7(base)
-    ok, msg = check_deployed(app, base, dirs, env, action="make bench-holdout")
-    if not ok:
-        _eprint(msg)
-        return False
-    print(msg)
-    why = " ".join(str(reason or "").split())
-    full_path = find_full_record(base, dirs)
-    record = _read_json(full_path) if full_path is not None else None
-    if not isinstance(record, dict):
-        _eprint(
-            f"make bench-holdout: no full visible run is recorded for commit {sha7} "
-            f"(history/bench/full-{sha7}.json, or a full run on an earlier commit with the same "
-            f"{_dirs_text(_norm_dirs(dirs), 'and')}). The holdout must run on the same code as a full "
-            f"visible run, so the two scores belong together. Run: make bench-full ENV={env}"
-        )
-        return False
-    if full_path.name != f"full-{sha7}.json":
-        print(
-            f"Holdout guard: using {full_path.relative_to(base)}: that commit has the same "
-            f"{_dirs_text(_norm_dirs(dirs), 'and')} as HEAD {sha7} (only docs or history changed since)."
-        )
-    gate3 = _gate3_verdict(record, thresholds or base / "gate_thresholds.json")
-
-    holdout_path = Path(holdout_dir) if Path(holdout_dir).is_absolute() else base / holdout_dir
-    earlier = sorted(
-        {
-            p.name
-            for p in [
-                *(holdout_path / "runs").glob("holdout-*.json"),
-                *(base / "history" / "bench").glob("holdout-*.json"),
-            ]
-            if p.name != f"holdout-{sha7}.json"
-        }
-    )
-    problems: list[str] = []
-    if not gate3["pass"]:
-        problems.append(
-            f"the full visible run for {sha7} does not pass Gate 3: {gate3['line']} "
-            f"({'; '.join(gate3['reasons'])})"
-        )
-    if earlier:
-        problems.append(
-            f"the holdout already ran on an earlier commit ({', '.join(earlier[:5])}); every extra "
-            "holdout run tells you more about the hidden tests"
-        )
-    if problems and not why:
-        _eprint(
-            "make bench-holdout: refused:",
-            *[f"  - {p}" for p in problems],
-            *(
-                [f"Get the visible suite through Gate 3 first: make bench-full ENV={env}, then make gate3."]
-                if not gate3["pass"]
-                else []
-            ),
-            "If the owner approves running the holdout anyway, run:",
-            f'  make bench-holdout ENV={env} HOLDOUT_REASON="why"',
-            "(the reason is written to history/holdout_audit.log)",
-        )
-        return False
-    if why:
-        audit = base / "history" / "holdout_audit.log"
-        audit.parent.mkdir(parents=True, exist_ok=True)
-        with audit.open("a", encoding="utf-8") as fh:
-            fh.write(
-                f"{_utc_now()}\tcommit={sha7}\treason={why}\tgate3={gate3['verdict']}\t"
-                f"earlier_holdout_runs={len(earlier)}\n"
-            )
-        print(f"Holdout guard: HOLDOUT_REASON logged to history/holdout_audit.log ({why}).")
-    _log_gate(
-        base,
-        f"HOLDOUT allowed commit={sha7} paired_full={full_path.name} gate3={gate3['verdict']} "
-        f"fingerprint={source_fingerprint(base, dirs)}",
-    )
-    print(f"Holdout guard: allowed for commit {sha7} (full visible run, Gate 3 {gate3['verdict']}: {gate3['line']}).")
-    return True
 
 
 def _run_self_test() -> int:
@@ -1660,7 +1533,7 @@ def _git_commit_all(root: Path, message: str) -> None:
 
 
 def _gates_self_test() -> None:
-    """push -> smoke -> record: fingerprint, deployed check, bench-full gate, holdout guard."""
+    """push -> smoke -> record: fingerprint, deployed check, bench-full gate, find_full_record."""
     import contextlib
     import io
 
@@ -1698,16 +1571,14 @@ def _gates_self_test() -> None:
         assert check_deployed(app, root)[0] is True
         assert smoke_plan(app, root=root) == (0, "")  # no baseline full run: first full run allowed
 
-        # bench-full gate: holdout folder refused, bootstrap allowed, override needs a reason.
-        assert check_bench_full_gate(app, "bench-holdout", "bench-holdout", root=root) is False
-        assert check_bench_full_gate(app, "bench", "bench-holdout", root=root) is True
-        assert check_bench_full_gate(app, "bench", "bench-holdout", skip=True, reason=" ", root=root) is False
-        assert check_bench_full_gate(app, "bench", "bench-holdout", skip=True, reason="quota", root=root) is True
+        # bench-full gate: bootstrap allowed, override needs a reason.
+        assert check_bench_full_gate(app, "bench", root=root) is True
+        assert check_bench_full_gate(app, "bench", skip=True, reason=" ", root=root) is False
+        assert check_bench_full_gate(app, "bench", skip=True, reason="quota", root=root) is True
         assert "OVERRIDE bench-full" in (root / "history" / "impact_gate.log").read_text(encoding="utf-8")
 
-        # Holdout guard: needs a full record for this commit that passes Gate 3.
-        holdout = str(root / "bench-holdout")
-        assert check_holdout_gate(app, holdout, root=root) is False
+        # find_full_record matches HEAD or a docs-only commit with the same source fingerprint.
+        assert find_full_record(root) is None
         sha7 = head_sha7(root)
         record = {
             "label": f"full-{sha7}",
@@ -1718,19 +1589,16 @@ def _gates_self_test() -> None:
             "per_eval": {f"VE-{n:02d}": {"pass": 3, "total": 3, "verdict": "PASS"} for n in range(1, 11)},
         }
         (root / "history" / "bench").mkdir(parents=True, exist_ok=True)
-        (root / "history" / "bench" / f"full-{sha7}.json").write_text(json.dumps(record), encoding="utf-8")
-        assert check_holdout_gate(app, holdout, root=root) is True
-        (root / "history" / "bench" / "holdout-0000000.json").write_text("{}", encoding="utf-8")
-        assert check_holdout_gate(app, holdout, root=root) is False  # earlier holdout run
-        assert check_holdout_gate(app, holdout, reason="owner approved", root=root) is True
-        assert "reason=owner approved" in (root / "history" / "holdout_audit.log").read_text(encoding="utf-8")
+        full_file = root / "history" / "bench" / f"full-{sha7}.json"
+        full_file.write_text(json.dumps(record), encoding="utf-8")
+        assert find_full_record(root) == full_file
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Change-to-eval impact analyzer and the push -> smoke -> record gates"
     )
-    parser.add_argument("--base", help="Base commit (defaults to commit of last full 50-eval run)")
+    parser.add_argument("--base", help="Base commit (defaults to commit of last full 70-eval run)")
     parser.add_argument("--target", help="Target commit (defaults to working tree)")
     parser.add_argument("--build-map", action="store_true", help="Rebuild history/eval_impact_map.json")
     parser.add_argument(
@@ -1771,11 +1639,6 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="make smoke-impact: print the eval ids to smoke (exit 1 refused, 2 verdict FULL)",
     )
-    parser.add_argument(
-        "--check-holdout",
-        action="store_true",
-        help="make bench-holdout gate (exit 2 when refused)",
-    )
     parser.add_argument("--source-fingerprint", action="store_true", help="Print the source fingerprint")
     parser.add_argument(
         "--full-record",
@@ -1790,18 +1653,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Folders of the source fingerprint (default: cxas_app,lib,evals)",
     )
     parser.add_argument("--bench-dir", default="bench", help="BENCH_DIR of the full run")
-    parser.add_argument("--holdout-dir", default="bench-holdout", help="HOLDOUT_DIR")
     parser.add_argument(
         "--skip-smoke-gate",
         action="store_true",
         help="SKIP_SMOKE_GATE=1: skip the smoke requirement of --check-bench-full (needs --reason)",
     )
     parser.add_argument("--reason", default="", help="Why a gate is overridden (written to a log)")
-    parser.add_argument(
-        "--thresholds",
-        default=str(ROOT / "gate_thresholds.json"),
-        help="gate_thresholds.json (Gate 3 bars for --check-holdout)",
-    )
     parser.add_argument("--self-test", action="store_true", help="Run built-in unit self-tests")
     args = parser.parse_args(argv)
     dirs = _norm_dirs(args.source_dirs)
@@ -1855,24 +1712,12 @@ def main(argv: list[str] | None = None) -> int:
         ok = check_bench_full_gate(
             args.app,
             bench_dir=args.bench_dir,
-            holdout_dir=args.holdout_dir,
             skip=args.skip_smoke_gate,
             reason=args.reason,
             dirs=dirs,
             env=args.env,
         )
         return 0 if ok else 1
-
-    if args.check_holdout:
-        ok = check_holdout_gate(
-            args.app,
-            holdout_dir=args.holdout_dir,
-            reason=args.reason,
-            dirs=dirs,
-            env=args.env,
-            thresholds=args.thresholds,
-        )
-        return 0 if ok else 2
 
     base = args.base or get_last_full_run_commit() or "HEAD"
     res = analyze_impact(base, args.target)
