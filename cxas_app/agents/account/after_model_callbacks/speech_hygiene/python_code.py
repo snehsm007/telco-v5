@@ -31,6 +31,7 @@ def after_model_callback(
             if fc_args is not None and fc_name in (
                 "handover_to_person",
                 "execute_live_agent_handover",
+                "end_session",
             ):
                 tool_args_list.append(dict(fc_args))
 
@@ -44,8 +45,16 @@ def after_model_callback(
                 changed = True
 
     has_handover_tool = any(
-        t in ("handover_to_person", "execute_live_agent_handover")
+        t in ("handover_to_person", "execute_live_agent_handover", "end_session")
         for t in called_tools
+    ) or (
+        not called_tools
+        and bool(
+            state_dict.get("caller_blocked")
+            or state_dict.get("is_blocked")
+            or state_dict.get("malicious_input")
+            or state_dict.get("session_end_reason")
+        )
     )
     if spoken_indices and has_handover_tool:
         last_idx = spoken_indices[-1]
@@ -553,6 +562,11 @@ SPOKEN_LINES: dict[str, dict[str, str]] = {  # pragma: no cover
         "fr-CA": "Je peux uniquement vous aider avec les services de télécommunications et les demandes de compte Telco. Merci de votre appel, au revoir.",
         "es-US": "Solo puedo ayudarle con servicios de telecomunicaciones y solicitudes de cuenta de Telco. Gracias por llamar, hasta luego.",
     },
+    "polite_closing": {
+        "en-US": "Thank you for calling Telco. Goodbye.",
+        "fr-CA": "Merci d'avoir appelé Telco. Au revoir.",
+        "es-US": "Gracias por llamar a Telco. Hasta luego.",
+    },
 }
 
 def spoken_line(key: str, language: str | None = "en-US", *args: object, **slots: object) -> str:  # pragma: no cover
@@ -585,15 +599,24 @@ def enforce_handover_utterance(  # pragma: no cover
     called_tools: tuple[str, ...] | list[str] = (),
     tool_args_list: tuple[dict[str, Any], ...] | list[dict[str, Any]] = (),
 ) -> str:
-    """Ensure a handover turn produces a valid localized transfer line."""
+    """Ensure a handover or session-closing turn produces a valid localized line."""
     params = session_params if callable(getattr(session_params, "get", None)) else {}
     has_handover_call = any(
         name in ("handover_to_person", "execute_live_agent_handover")
         for name in called_tools
     )
+    has_end_session = "end_session" in called_tools or (
+        not called_tools
+        and bool(
+            params.get("caller_blocked")
+            or params.get("is_blocked")
+            or params.get("malicious_input")
+            or params.get("session_end_reason")
+        )
+    )
     existing = (text or "").strip()
 
-    if not has_handover_call:
+    if not has_handover_call and not has_end_session:
         if existing:
             return text
         if params.get("handover_complete") and params.get("handoff_message"):
@@ -602,23 +625,132 @@ def enforce_handover_utterance(  # pragma: no cover
                 return handoff_msg
         return text
 
-    reason = ""
+    reasons: list[str] = []
+    state_end_reason = str(params.get("session_end_reason") or "").strip().lower()
+    if state_end_reason:
+        reasons.append(state_end_reason)
     target_queue = ""
     lang = params.get("language")
     is_business = bool(params.get("business_flag"))
+    is_blocked_flag = bool(params.get("caller_blocked") or params.get("is_blocked"))
+    is_malicious_flag = bool(params.get("malicious_input"))
+    is_escalated_flag = False
     for args in tool_args_list:
         if callable(getattr(args, "get", None)):
             if args.get("reason"):
-                reason = str(args.get("reason")).lower()
+                reasons.append(str(args.get("reason")).lower())
+            if args.get("session_end_reason"):
+                reasons.append(str(args.get("session_end_reason")).lower())
             if args.get("target_queue"):
                 target_queue = str(args.get("target_queue")).lower()
             if args.get("language"):
                 lang = args.get("language")
             if args.get("is_business"):
                 is_business = True
+            if args.get("caller_blocked") or args.get("is_blocked"):
+                is_blocked_flag = True
+            if args.get("malicious_input"):
+                is_malicious_flag = True
+            if args.get("session_escalated"):
+                is_escalated_flag = True
 
+    reason = " ".join(reasons)
     full_loc = resolve_locale(lang)
     loc = resolve_copy_locale(lang)
+
+    if not has_handover_call:
+        is_blocked = is_blocked_flag or any(
+            term in reason
+            for term in (
+                "blocked_caller",
+                "restricted_caller",
+                "blocked_number",
+                "blocklist",
+            )
+        )
+        if is_blocked:
+            deflection = spoken_line("blocked_caller_deflection", loc)
+            if not existing:
+                return deflection
+            if _norm_ws(deflection) in _norm_ws(existing):
+                return text
+            return f"{existing} {deflection}"
+
+        is_malicious = is_malicious_flag or any(
+            term in reason
+            for term in (
+                "malicious",
+                "abusive",
+                "abuse",
+                "inappropriate",
+                "injection",
+                "profanity",
+                "harassment",
+                "threat",
+            )
+        )
+        if is_malicious:
+            closing = spoken_line("malicious_closing", loc)
+            if not existing:
+                return closing
+            if _norm_ws(closing) in _norm_ws(existing):
+                return text
+            return f"{existing} {closing}"
+
+        if existing:
+            return text
+
+        if params.get("handover_complete") and params.get("handoff_message"):
+            handoff_msg = str(params.get("handoff_message") or "").strip()
+            if handoff_msg:
+                return handoff_msg
+
+        if any(term in reason for term in ("off_topic", "out_of_scope", "unrelated")):
+            return spoken_line("malicious_closing", loc)
+
+        is_biz_end = (
+            is_business
+            or target_queue == "business_solutions"
+            or any(term in reason for term in _SP_BIZ_TERMS)
+        )
+        is_fraud_end = target_queue == "fraud_and_security_24x7" or any(
+            term in reason for term in _SP_FRAUD_TERMS
+        )
+        is_specialist_end = target_queue == "billing_specialist" or any(
+            term in reason for term in _SP_SPECIALIST_TERMS
+        )
+        is_handover_end = is_escalated_flag or any(
+            term in reason
+            for term in (
+                "escalat",
+                "handover",
+                "handoff",
+                "agent",
+                "person",
+                "representative",
+                "after_hours",
+                "transfer",
+                "lockout",
+                "locked_out",
+                "no_input",
+                "disambig",
+                "unavailable",
+            )
+        )
+        if is_biz_end:
+            return spoken_line("business_handoff", loc)
+        if is_fraud_end:
+            return " ".join(
+                [
+                    spoken_line("empathy_protocol", loc),
+                    spoken_line("live_agent_handoff", loc),
+                ]
+            )
+        if is_specialist_end:
+            return spoken_line("transfer_to_specialist", loc)
+        if is_handover_end:
+            return spoken_line("live_agent_handoff", loc)
+        return spoken_line("polite_closing", loc)
 
     is_biz = (
         is_business

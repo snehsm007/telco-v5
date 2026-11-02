@@ -484,3 +484,185 @@ def test_enforce_handover_fraud_empathy_precedes_hold_line() -> None:
         tool_args_list=({"reason": "fraud_escalation", "language": "en-US"},),
     )
     assert lead_in_out.index("facing challenges") < lead_in_out.index("Please hold")
+
+
+def test_enforce_handover_end_session_blocked_caller() -> None:
+    from lib.copy import spoken_line
+
+    for loc in ("en-US", "fr-CA", "es-US"):
+        expected = spoken_line("blocked_caller_deflection", loc)
+        # Silent end_session with reason="blocked_caller"
+        out_silent = enforce_handover_utterance(
+            "",
+            {"language": loc},
+            called_tools=("end_session",),
+            tool_args_list=({"reason": "blocked_caller"},),
+        )
+        assert out_silent == expected
+
+        # Partial non-verbatim text with reason="blocked_caller"
+        out_partial = enforce_handover_utterance(
+            "Sorry, this number cannot be used.",
+            {"language": loc},
+            called_tools=("end_session",),
+            tool_args_list=({"reason": "blocked_caller"},),
+        )
+        assert expected in out_partial
+
+        # Already verbatim text is preserved without duplication
+        out_verbatim = enforce_handover_utterance(
+            expected,
+            {"language": loc},
+            called_tools=("end_session",),
+            tool_args_list=({"reason": "blocked_caller"},),
+        )
+        assert out_verbatim == expected
+
+        # State-driven caller_blocked / is_blocked / session_end_reason
+        assert (
+            enforce_handover_utterance(
+                "",
+                {"language": loc, "caller_blocked": True},
+                called_tools=("end_session",),
+                tool_args_list=({},),
+            )
+            == expected
+        )
+        assert (
+            enforce_handover_utterance(
+                "",
+                {"language": loc, "is_blocked": True},
+                called_tools=("end_session",),
+                tool_args_list=({},),
+            )
+            == expected
+        )
+        assert (
+            enforce_handover_utterance(
+                "",
+                {"language": loc, "session_end_reason": "blocked_caller"},
+                called_tools=(),
+                tool_args_list=(),
+            )
+            == expected
+        )
+        assert (
+            enforce_handover_utterance(
+                "",
+                {"language": loc},
+                called_tools=("end_session",),
+                tool_args_list=({"caller_blocked": True, "session_end_reason": "blocked_caller"},),
+            )
+            == expected
+        )
+
+
+def test_enforce_handover_end_session_malicious_input() -> None:
+    from lib.copy import spoken_line
+
+    for loc in ("en-US", "fr-CA", "es-US"):
+        expected = spoken_line("malicious_closing", loc)
+        out_silent = enforce_handover_utterance(
+            "",
+            {"language": loc},
+            called_tools=("end_session",),
+            tool_args_list=({"reason": "malicious_input", "malicious_input": True},),
+        )
+        assert out_silent == expected
+
+        out_state = enforce_handover_utterance(
+            "",
+            {"language": loc, "session_end_reason": "malicious_input"},
+            called_tools=("end_session",),
+            tool_args_list=({},),
+        )
+        assert out_state == expected
+
+        out_partial = enforce_handover_utterance(
+            "I cannot continue.",
+            {"language": loc},
+            called_tools=("end_session",),
+            tool_args_list=({"reason": "malicious_input"},),
+        )
+        assert expected in out_partial
+
+        out_verbatim = enforce_handover_utterance(
+            expected,
+            {"language": loc},
+            called_tools=("end_session",),
+            tool_args_list=({"reason": "malicious_input"},),
+        )
+        assert out_verbatim == expected
+
+
+def test_enforce_handover_end_session_resolved_and_off_topic() -> None:
+    from lib.copy import spoken_line
+
+    for loc in ("en-US", "fr-CA", "es-US"):
+        expected_polite = spoken_line("polite_closing", loc)
+        # Silent end_session with reason="resolved" or no reason injects polite closing
+        assert (
+            enforce_handover_utterance(
+                "",
+                {"language": loc},
+                called_tools=("end_session",),
+                tool_args_list=({"reason": "resolved"},),
+            )
+            == expected_polite
+        )
+        assert (
+            enforce_handover_utterance(
+                "",
+                {"language": loc},
+                called_tools=("end_session",),
+                tool_args_list=({},),
+            )
+            == expected_polite
+        )
+        # Silent end_session with reason="off_topic" injects non-empty localized closing
+        out_off_topic = enforce_handover_utterance(
+            "",
+            {"language": loc},
+            called_tools=("end_session",),
+            tool_args_list=({"reason": "off_topic"},),
+        )
+        assert out_off_topic == spoken_line("malicious_closing", loc)
+
+        # Already spoken closing sentence with reason="resolved" is preserved unchanged
+        normal_closing = "Glad I could help with your bill today. Have a wonderful day!"
+        assert (
+            enforce_handover_utterance(
+                normal_closing,
+                {"language": loc},
+                called_tools=("end_session",),
+                tool_args_list=({"reason": "resolved"},),
+            )
+            == normal_closing
+        )
+
+    # Silent end_session with handover reason falls back to appropriate handover line
+    assert "business account" in enforce_handover_utterance(
+        "",
+        {"language": "en-US"},
+        called_tools=("end_session",),
+        tool_args_list=({"reason": "business_handoff"},),
+    )
+    assert "facing challenges" in enforce_handover_utterance(
+        "",
+        {"language": "en-US"},
+        called_tools=("end_session",),
+        tool_args_list=({"reason": "fraud_escalation"},),
+    )
+    assert "billing specialist" in enforce_handover_utterance(
+        "",
+        {"language": "en-US"},
+        called_tools=("end_session",),
+        tool_args_list=({"reason": "refund_threshold_exceeded"},),
+    )
+    assert "representative who can help" in enforce_handover_utterance(
+        "",
+        {"language": "en-US"},
+        called_tools=("end_session",),
+        tool_args_list=({"reason": "user_requested_agent"},),
+    )
+
